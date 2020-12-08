@@ -52,7 +52,10 @@ impl PieceType {
             .collect()
     }
 
-    pub fn get_moves(&self, field: Field<HiveBoard>) -> Option<FieldSearchResult<OpenIndex>> {
+    pub fn get_moves<'a>(
+        &self,
+        field: Field<'a, HiveBoard>,
+    ) -> impl Iterator<Item = Field<'a, HiveBoard>> {
         assert!(!field.is_empty());
         let mut search = field.search();
         match self {
@@ -69,17 +72,16 @@ impl PieceType {
                 }
             }
             PieceType::Grasshopper => {
-                return Some(
-                    field
-                        .neighbors_by_direction()
-                        .filter(|(_, f)| !f.is_empty())
-                        .map(|(d, f)| {
-                            f.iter_line(d)
-                                .find(|target_field| target_field.is_empty())
-                                .expect("Found no empty field for Grasshopper movement.")
-                        })
-                        .collect(),
-                );
+                search = field
+                    .neighbors_by_direction()
+                    .filter(|(_, f)| !f.is_empty())
+                    .map(|(d, f)| {
+                        f.iter_line(d)
+                            .find(|target_field| target_field.is_empty())
+                            .expect("Found no empty field for Grasshopper movement.")
+                    })
+                    .collect::<Option<_>>()
+                    .expect("Grasshopper has no adjacent piece.");
             }
             PieceType::Beetle => {
                 search.replace(|f| Self::feasible_steps(f));
@@ -89,7 +91,7 @@ impl PieceType {
                 }
             }
         }
-        Some(search.iter().collect())
+        search.into_iter()
     }
 
     pub fn is_movable(&self, field: Field<HiveBoard>) -> bool {
@@ -104,4 +106,7 @@ impl PieceType {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
-pub struct Piece(Player, PieceType);
+pub struct Piece {
+    pub player: Player,
+    pub p_type: PieceType,
+}

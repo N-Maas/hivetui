@@ -29,18 +29,69 @@ impl HiveGameState {
         }
     }
 
-    pub fn pieces_mut(&mut self) -> &mut BTreeMap<PieceType, u32> {
+    pub fn get_all_movables(&self) -> impl Iterator<Item = Field<HiveBoard>> {
+        let moves_enabled = self.pieces()[&PieceType::Queen] == 0;
+        self.board.iter_fields().filter(move |f| {
+            let valid_field = f
+                .content()
+                .last()
+                .map_or(false, |piece| piece.player == self.current_player);
+            moves_enabled && valid_field && can_move(*f)
+        })
+    }
+
+    pub fn get_all_placement_targets(&self) -> impl Iterator<Item = Field<HiveBoard>> {
+        self.board.iter_fields().filter(move |f| {
+            f.is_empty()
+                && !f.neighbors().any(|n| {
+                    n.content()
+                        .last()
+                        .map_or(false, |piece| piece.player != self.current_player)
+                })
+        })
+    }
+
+    pub fn get_possible_moves<'a>(
+        &self,
+        field: Field<'a, HiveBoard>,
+    ) -> impl Iterator<Item = Field<'a, HiveBoard>> {
+        assert!(!field.is_empty() && can_move(field));
+        // unwrap: correct because of assertion
+        let Piece { p_type, .. } = field.content().last().unwrap();
+        p_type.get_moves(field).into_iter()
+    }
+
+    pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
+        assert!(
+            self.pieces()[&p_type] > 0
+                && self.board.get_field(target).map_or(false, |f| f.is_empty())
+        );
+        let pieces = self.pieces_mut();
+        pieces.entry(p_type).and_modify(|count| *count -= 1);
+        self.board[target].push(Piece {
+            player: self.current_player,
+            p_type,
+        });
+        self.add_new_neighbors(target);
+        self.current_player.switch();
+    }
+
+    pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex) {
+        assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
+        let piece = self.board[from]
+            .pop()
+            .expect(&format!("Piece was not present at: {:?}", from));
+        self.board[to].push(piece);
+        self.remove_old_neighbors(from);
+        self.add_new_neighbors(to);
+        self.current_player.switch();
+    }
+
+    fn pieces_mut(&mut self) -> &mut BTreeMap<PieceType, u32> {
         match self.current_player {
             Player::White => &mut self.white_pieces,
             Player::Black => &mut self.black_pieces,
         }
-    }
-
-    pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
-        let pieces = self.pieces_mut();
-        assert!(
-            pieces[&p_type] > 0 && self.board.get_field(target).map_or(false, |f| f.is_empty())
-        );
     }
 
     fn add_new_neighbors(&mut self, target: OpenIndex) {
@@ -50,7 +101,7 @@ impl HiveGameState {
                 .get_field(target)
                 .expect(&format!("Invalid index: {:?}", target));
             if !field.has_next(d) {
-                self.board.insert(target + d, Vec::new());
+                self.board.extend_and_insert(target + d, Vec::new());
             }
         }
     }
@@ -71,6 +122,12 @@ impl HiveGameState {
             }
         }
     }
+}
+
+fn can_move(field: Field<HiveBoard>) -> bool {
+    assert!(!field.is_empty());
+    let Piece { p_type, .. } = field.content().last().unwrap();
+    p_type.is_movable(field) && !move_violates_ohr(field)
 }
 
 fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
