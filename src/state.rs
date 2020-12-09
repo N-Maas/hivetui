@@ -19,9 +19,22 @@ pub struct HiveGameState {
     white_pieces: BTreeMap<PieceType, u32>,
     black_pieces: BTreeMap<PieceType, u32>,
     board: HiveBoard,
+    pieces_on_board: u8,
 }
 
 impl HiveGameState {
+    pub fn new(pieces: BTreeMap<PieceType, u32>) -> Self {
+        let mut board = HiveBoard::new(OffsetStructure::new());
+        board.extend_and_insert(OpenIndex::from((0, 0)), Vec::new());
+        Self {
+            current_player: Player::White,
+            white_pieces: pieces.clone(),
+            black_pieces: pieces,
+            board,
+            pieces_on_board: 0,
+        }
+    }
+
     pub fn pieces(&self) -> &BTreeMap<PieceType, u32> {
         match self.current_player {
             Player::White => &self.white_pieces,
@@ -41,13 +54,18 @@ impl HiveGameState {
     }
 
     pub fn get_all_placement_targets(&self) -> impl Iterator<Item = Field<HiveBoard>> {
+        let init_pos = OpenIndex::from((0, 0)) + HexaDirection::Up;
         self.board.iter_fields().filter(move |f| {
-            f.is_empty()
-                && !f.neighbors().any(|n| {
-                    n.content()
-                        .last()
-                        .map_or(false, |piece| piece.player != self.current_player)
-                })
+            if self.pieces_on_board == 1 {
+                f.index() == init_pos
+            } else {
+                f.is_empty()
+                    && !f.neighbors().any(|n| {
+                        n.content()
+                            .last()
+                            .map_or(false, |piece| piece.player != self.current_player)
+                    })
+            }
         })
     }
 
@@ -59,6 +77,13 @@ impl HiveGameState {
         // unwrap: correct because of assertion
         let Piece { p_type, .. } = field.content().last().unwrap();
         p_type.get_moves(field).into_iter()
+    }
+
+    pub fn get_available_pieces(&self) -> impl Iterator<Item = PieceType> + '_ {
+        self.pieces()
+            .iter()
+            .filter(|&(_, count)| *count > 0)
+            .map(|(p, _)| *p)
     }
 
     pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
@@ -73,6 +98,7 @@ impl HiveGameState {
             p_type,
         });
         self.add_new_neighbors(target);
+        self.pieces_on_board += 1;
         self.current_player.switch();
     }
 
@@ -108,7 +134,11 @@ impl HiveGameState {
 
     fn remove_old_neighbors(&mut self, target: OpenIndex) {
         let field = self.board.get_field_unchecked(target);
-        let indizes = field.neighbors().map(|f| f.index()).collect::<Vec<_>>();
+        let indizes = field
+            .neighbors()
+            .filter(|f| f.is_empty())
+            .map(|f| f.index())
+            .collect::<Vec<_>>();
         for i in indizes {
             let adjacent_to_occupied_field = self
                 .board
@@ -118,7 +148,7 @@ impl HiveGameState {
                 .neighbors()
                 .any(|f| !f.is_empty());
             if !adjacent_to_occupied_field {
-                self.board.delete(i);
+                assert!(self.board.delete(i));
             }
         }
     }
