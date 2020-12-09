@@ -169,7 +169,7 @@ fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
     let mut occupied_fields = Vec::new();
     for f in neighbor_cycle {
         if prev_empty && !f.is_empty() {
-            occupied_fields.push(f);
+            occupied_fields.push(f.index());
         }
         prev_empty = f.is_empty();
     }
@@ -181,7 +181,54 @@ fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
     // unwrap: correct due to previous length check
     let mut hypothetical = Hypothetical::from_field(field);
     hypothetical.clear_field(field);
-    let mut component = occupied_fields.first().unwrap().search();
+    let mut component = hypothetical
+        .get_field_unchecked(*occupied_fields.first().unwrap())
+        .search();
     component.grow_repeated(|f| !f.is_empty());
     occupied_fields.into_iter().any(|f| !component.contains(f))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn first_moves_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Beetle, 1);
+        let mut state = HiveGameState::new(pieces);
+        assert_eq!(
+            state.get_all_placement_targets().next().unwrap().index(),
+            OpenIndex::from((0, 0))
+        );
+        state.place_piece(PieceType::Queen, OpenIndex::from((0, 0)));
+        assert_eq!(state.board.size(), 7);
+        assert_eq!(
+            state.get_all_placement_targets().next().unwrap().index(),
+            OpenIndex::from((0, 1))
+        );
+        state.place_piece(PieceType::Queen, OpenIndex::from((0, 1)));
+        assert_eq!(state.board.size(), 10);
+        assert_eq!(
+            state.get_all_movables().next().unwrap().index(),
+            OpenIndex::from((0, 0))
+        );
+        let moves = state
+            .get_possible_moves(state.board.get_field_unchecked(OpenIndex::from((0, 0))))
+            .map(|f| f.index())
+            .collect::<Vec<_>>();
+        assert_eq!(moves.len(), 2);
+        assert!(moves.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
+        assert!(moves.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
+        state.move_piece(
+            OpenIndex::from((0, 0)),
+            OpenIndex::from((0, 0)) + HexaDirection::UpRight,
+        );
+        assert_eq!(state.board.size(), 10);
+        state.place_piece(PieceType::Beetle, OpenIndex::from((0, 2)));
+        assert!(move_violates_ohr(
+            state.board.get_field_unchecked(OpenIndex::from((0, 1)))
+        ));
+    }
 }
