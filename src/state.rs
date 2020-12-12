@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 use tgp::board::{
     directions::{DirectionEnumerable, HexaDirection},
     hypothetical::Hypothetical,
-    open_board::OpenBoard,
-    open_board::OpenIndex,
+    open_board::{OpenBoard, OpenIndex},
     search::Searchable,
     structures::OffsetStructure,
     Board, Field,
@@ -111,6 +110,33 @@ impl HiveGameState {
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
         self.current_player.switch();
+    }
+
+    pub fn test_game_finished(&self, target: OpenIndex) -> Option<&'static str> {
+        let field = self.board.get_field_unchecked(target);
+        let white_win = self.is_adjacent_to_surrounded_queeen(field, Player::Black);
+        let black_win = self.is_adjacent_to_surrounded_queeen(field, Player::White);
+        match (white_win, black_win) {
+            (true, true) => Some("The game ended with a draw!"),
+            (true, false) => Some("The white player has won!"),
+            (false, true) => Some("The black player has won!"),
+            _ => None,
+        }
+    }
+
+    fn is_adjacent_to_surrounded_queeen(&self, field: Field<HiveBoard>, player: Player) -> bool {
+        let queen = field.neighbors().find(|f| {
+            f.content().first()
+                == Some(&Piece {
+                    player,
+                    p_type: PieceType::Queen,
+                })
+        });
+        if let Some(f) = queen {
+            !f.neighbors().any(|n| n.is_empty())
+        } else {
+            false
+        }
     }
 
     fn pieces_mut(&mut self) -> &mut BTreeMap<PieceType, u32> {
