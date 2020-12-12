@@ -2,16 +2,17 @@ use std::fmt::Display;
 
 use crate::{
     pieces::{Piece, Player},
-    state::HiveBoard,
+    state::{HiveBoard, HiveGameState},
 };
 
 use tgp::board::{directions::HexaDirection, open_board::OpenIndex, Board, BoardToMap, IndexMap};
 type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
 
-pub fn print_annotated_board<T: Display>(board: &HiveBoard, map: &HiveMap<T>) {
+pub fn print_annotated_board<T: Display>(state: &HiveGameState, map: &HiveMap<T>) {
+    let board = state.board();
     let num_lines = 4 * board.num_rows() + 2 * board.num_cols() + 1;
     let mut lines = vec![String::new(); num_lines];
-    lines[0].push(' ');
+    lines[0].push_str("  ");
     for x in 0..board.num_cols() as isize {
         let buffer_y = (board.num_cols() as isize - x) / 2;
         for y in (-buffer_y..board.num_rows() as isize).rev() {
