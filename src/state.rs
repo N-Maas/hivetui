@@ -18,7 +18,8 @@ pub struct HiveGameState {
     white_pieces: BTreeMap<PieceType, u32>,
     black_pieces: BTreeMap<PieceType, u32>,
     board: HiveBoard,
-    pieces_on_board: u8,
+    white_pieces_on_board: u8,
+    black_pieces_on_board: u8,
 }
 
 impl HiveGameState {
@@ -30,23 +31,24 @@ impl HiveGameState {
             white_pieces: pieces.clone(),
             black_pieces: pieces,
             board,
-            pieces_on_board: 0,
+            white_pieces_on_board: 0,
+            black_pieces_on_board: 0,
         }
     }
 
-    pub fn pieces(&self) -> &BTreeMap<PieceType, u32> {
     pub fn board(&self) -> &HiveBoard {
         &self.board
     }
 
+    pub fn pieces(&self) -> (&BTreeMap<PieceType, u32>, u8) {
         match self.current_player {
-            Player::White => &self.white_pieces,
-            Player::Black => &self.black_pieces,
+            Player::White => (&self.white_pieces, self.white_pieces_on_board),
+            Player::Black => (&self.black_pieces, self.black_pieces_on_board),
         }
     }
 
     pub fn get_all_movables(&self) -> impl Iterator<Item = Field<HiveBoard>> {
-        let moves_enabled = self.pieces()[&PieceType::Queen] == 0;
+        let moves_enabled = self.pieces().0[&PieceType::Queen] == 0;
         self.board.iter_fields().filter(move |f| {
             let valid_field = f
                 .content()
@@ -59,7 +61,7 @@ impl HiveGameState {
     pub fn get_all_placement_targets(&self) -> impl Iterator<Item = Field<HiveBoard>> {
         let init_pos = OpenIndex::from((0, 0)) + HexaDirection::Up;
         self.board.iter_fields().filter(move |f| {
-            if self.pieces_on_board == 1 {
+            if self.white_pieces_on_board + self.black_pieces_on_board == 1 {
                 f.index() == init_pos
             } else {
                 f.is_empty()
@@ -82,16 +84,21 @@ impl HiveGameState {
         p_type.get_moves(field).into_iter()
     }
 
-    pub fn get_available_pieces(&self) -> impl Iterator<Item = PieceType> + '_ {
-        self.pieces()
+    pub fn get_available_pieces(&self) -> Vec<PieceType> {
+        let (pieces, num) = self.pieces();
+        if pieces[&PieceType::Queen] > 0 && num == 3 {
+            return vec![PieceType::Queen];
+        }
+        pieces
             .iter()
             .filter(|&(_, count)| *count > 0)
             .map(|(p, _)| *p)
+            .collect()
     }
 
-    pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
+    pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) -> Option<&'static str> {
         assert!(
-            self.pieces()[&p_type] > 0
+            self.pieces().0[&p_type] > 0
                 && self.board.get_field(target).map_or(false, |f| f.is_empty())
         );
         let pieces = self.pieces_mut();
@@ -101,11 +108,15 @@ impl HiveGameState {
             p_type,
         });
         self.add_new_neighbors(target);
-        self.pieces_on_board += 1;
+        match self.current_player {
+            Player::White => self.white_pieces_on_board += 1,
+            Player::Black => self.black_pieces_on_board += 1,
+        }
         self.current_player.switch();
+        self.test_game_finished(target)
     }
 
-    pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex) {
+    pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex) -> Option<&'static str> {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
         let piece = self.board[from]
             .pop()
@@ -114,6 +125,7 @@ impl HiveGameState {
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
         self.current_player.switch();
+        self.test_game_finished(to)
     }
 
     pub fn test_game_finished(&self, target: OpenIndex) -> Option<&'static str> {
@@ -210,7 +222,9 @@ fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
     // determine the connectivity component of one of the occupied field - it must contain all pieces
     // unwrap: correct due to previous length check
     let mut hypothetical = Hypothetical::from_field(field);
-    hypothetical.clear_field(field);
+    let mut modified_content = field.content().clone();
+    modified_content.pop();
+    hypothetical.replace(field.index(), modified_content);
     let mut component = hypothetical
         .get_field_unchecked(*occupied_fields.first().unwrap())
         .search();
