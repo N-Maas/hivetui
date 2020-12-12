@@ -21,7 +21,7 @@ fn main() {
     let mut state = HiveGameState::new(pieces);
     let mut map = HashIndexMap::new();
 
-    loop {
+    let final_msg = loop {
         map.clear();
         let movables = state.get_all_movables().collect::<Vec<_>>();
         let placables_offset = movables.len();
@@ -32,7 +32,7 @@ fn main() {
         for (i, &f) in placables.iter().enumerate() {
             map.insert(f.index(), i + placables_offset);
         }
-        print_annotated_board(&state, &map);
+        print_annotated_board(&state, &map, false);
         if movables.is_empty() && placables.is_empty() {
             println!("Current player can not move, skip turn.");
             continue;
@@ -48,7 +48,7 @@ fn main() {
             for (i, &f) in moves.iter().enumerate() {
                 map.insert(f.index(), i);
             }
-            print_annotated_board(&state, &map);
+            print_annotated_board(&state, &map, false);
             println!("Target: ");
             let move_choice = get_choice(moves.len());
             let (from, to) = (movables[choice].index(), moves[move_choice].index());
@@ -58,7 +58,7 @@ fn main() {
             let available_pieces = state.get_available_pieces();
             let output = available_pieces
                 .iter()
-                .map(|p| p.to_string())
+                .map(|p| format!("{} ({})", p.to_string(), state.pieces().0[p]))
                 .collect::<Vec<_>>();
             println!("Choose piece: {}", output.join(", "));
             let p_type = loop {
@@ -82,13 +82,13 @@ fn main() {
             state.place_piece(p_type, target)
         };
         match result {
-            Some(s) => {
-                println!("{}", s);
-                return;
-            }
+            Some(s) => break s,
             None => {}
         }
-    }
+    };
+    map.clear();
+    print_annotated_board(&state, &map, false);
+    println!("{}", final_msg);
 }
 
 fn get_choice(num_indizes: usize) -> usize {
