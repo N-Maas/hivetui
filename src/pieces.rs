@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use tgp::board::{
     directions::DirectionEnumerable,
     open_board::OpenIndex,
@@ -113,6 +115,21 @@ impl ToString for PieceType {
             PieceType::Spider => "S".to_string(),
             PieceType::Grasshopper => "G".to_string(),
             PieceType::Beetle => "B".to_string(),
+        }
+    }
+}
+
+impl FromStr for PieceType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            _ if s.starts_with("Q") => Ok(PieceType::Queen),
+            _ if s.starts_with("A") => Ok(PieceType::Ant),
+            _ if s.starts_with("S") => Ok(PieceType::Spider),
+            _ if s.starts_with("G") => Ok(PieceType::Grasshopper),
+            _ if s.starts_with("B") => Ok(PieceType::Beetle),
+            _ => Err(()),
         }
     }
 }
