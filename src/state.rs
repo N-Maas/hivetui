@@ -222,9 +222,7 @@ fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
     // determine the connectivity component of one of the occupied field - it must contain all pieces
     // unwrap: correct due to previous length check
     let mut hypothetical = Hypothetical::from_field(field);
-    let mut modified_content = field.content().clone();
-    modified_content.pop();
-    hypothetical.replace(field.index(), modified_content);
+    hypothetical[field].pop();
     let mut component = hypothetical
         .get_field_unchecked(*occupied_fields.first().unwrap())
         .search();

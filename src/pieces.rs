@@ -64,9 +64,7 @@ impl PieceType {
     pub fn get_moves<'a>(&self, field: Field<'a, HiveBoard>) -> Vec<Field<'a, HiveBoard>> {
         assert!(!field.is_empty());
         let mut hypothetical = Hypothetical::from_field(field);
-        let mut modified_content = field.content().clone();
-        modified_content.pop();
-        hypothetical.replace(field.index(), modified_content);
+        hypothetical[field].pop();
         let new_field = hypothetical.get_field_unchecked(field.index());
         let mut search = new_field.search();
         match self {
