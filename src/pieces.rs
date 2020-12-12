@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
 use tgp::board::{
-    directions::DirectionEnumerable,
+    directions::{DirectionEnumerable, HexaDirection},
+    hypothetical::Hypothetical,
     open_board::OpenIndex,
     search::{FieldSearchResult, Searchable},
-    Field,
+    Board, DirectionStructure, Field,
 };
 
 use crate::state::HiveBoard;
@@ -37,29 +38,37 @@ pub enum PieceType {
 
 // note that both get_moves and is_movable do not consider the OHR yet
 impl PieceType {
-    fn feasible_steps(field: Field<HiveBoard>) -> FieldSearchResult<OpenIndex> {
+    fn feasible_steps<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
+    where
+        B: Board<Index = OpenIndex, Content = Vec<Piece>>,
+        B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+    {
         field
             .neighbors_by_direction()
             .filter(move |(d, f)| {
-                let left_is_free = field
+                let height = field.content().len();
+                let down = f.content().len() < height;
+                let left_is_plain = field
                     .next(d.prev_direction())
-                    .map_or(true, |f| f.is_empty());
-                let right_is_free = field
+                    .map_or(true, |f| f.content().len() == height);
+                let right_is_plain = field
                     .next(d.next_direction())
-                    .map_or(true, |f| f.is_empty());
+                    .map_or(true, |f| f.content().len() == height);
                 // we move along the _border_ of the hive
-                (left_is_free != right_is_free) && f.is_empty()
+                down || (left_is_plain != right_is_plain && f.is_empty())
             })
             .map(|(_, f)| f)
             .collect()
     }
 
-    pub fn get_moves<'a>(
-        &self,
-        field: Field<'a, HiveBoard>,
-    ) -> impl Iterator<Item = Field<'a, HiveBoard>> {
+    pub fn get_moves<'a>(&self, field: Field<'a, HiveBoard>) -> Vec<Field<'a, HiveBoard>> {
         assert!(!field.is_empty());
-        let mut search = field.search();
+        let mut hypothetical = Hypothetical::from_field(field);
+        let mut modified_content = field.content().clone();
+        modified_content.pop();
+        hypothetical.replace(field.index(), modified_content);
+        let new_field = hypothetical.get_field_unchecked(field.index());
+        let mut search = new_field.search();
         match self {
             PieceType::Queen => {
                 search.replace(|f| Self::feasible_steps(f));
@@ -74,7 +83,7 @@ impl PieceType {
                 }
             }
             PieceType::Grasshopper => {
-                search = field
+                search = new_field
                     .neighbors_by_direction()
                     .filter(|(_, f)| !f.is_empty())
                     .map(|(d, f)| {
@@ -88,12 +97,15 @@ impl PieceType {
             PieceType::Beetle => {
                 search.replace(|f| Self::feasible_steps(f));
                 // TODO: edge case: beetle needs to check freedom of movement also on top of the hive
-                for f in field.neighbors().filter(|f| !f.is_empty()) {
+                for f in new_field.neighbors().filter(|f| !f.is_empty()) {
                     search.insert(f);
                 }
             }
         }
-        search.into_iter()
+        search
+            .into_iter()
+            .map(|f| f.original_field(field.board()))
+            .collect()
     }
 
     pub fn is_movable(&self, field: Field<HiveBoard>) -> bool {
