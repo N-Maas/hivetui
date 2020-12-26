@@ -4,7 +4,8 @@ use tgp::board::{
     directions::{DirectionEnumerable, HexaDirection},
     hypothetical::Hypothetical,
     open_board::OpenIndex,
-    search::{FieldSearchResult, Searchable},
+    search::FieldSearchResult,
+    search_tree::SearchMode,
     Board, DirectionStructure, Field,
 };
 
@@ -76,9 +77,11 @@ impl PieceType {
                 search.extend_repeated(|f| Self::feasible_steps(f));
             }
             PieceType::Spider => {
+                let mut tree = new_field.search_tree();
                 for _ in 0..3 {
-                    search.replace(|f| Self::feasible_steps(f));
+                    tree.extend(|f| Self::feasible_steps(f), SearchMode::NoCycles);
                 }
+                search = tree.into_endpoint_set();
             }
             PieceType::Grasshopper => {
                 search = new_field

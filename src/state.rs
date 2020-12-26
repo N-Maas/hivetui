@@ -4,7 +4,6 @@ use tgp::board::{
     directions::{DirectionEnumerable, HexaDirection},
     hypothetical::Hypothetical,
     open_board::{OpenBoard, OpenIndex},
-    search::Searchable,
     structures::OffsetStructure,
     Board, Field,
 };
