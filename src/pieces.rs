@@ -48,15 +48,20 @@ impl PieceType {
             .neighbors_by_direction()
             .filter(move |(d, f)| {
                 let height = field.content().len();
-                let down = f.content().len() < height;
+                let plain = f.content().len() <= height;
                 let left_is_plain = field
                     .next(d.prev_direction())
-                    .map_or(true, |f| f.content().len() == height);
+                    .map_or(true, |f| f.content().len() <= height);
                 let right_is_plain = field
                     .next(d.next_direction())
-                    .map_or(true, |f| f.content().len() == height);
-                // we move along the _border_ of the hive
-                down || (left_is_plain != right_is_plain && f.is_empty())
+                    .map_or(true, |f| f.content().len() <= height);
+                if height == 0 {
+                    // we either move along the _border_ of the hive..
+                    (left_is_plain != right_is_plain) && plain
+                } else {
+                    // ..or on top of the hive
+                    (left_is_plain || right_is_plain) && plain
+                }
             })
             .map(|(_, f)| f)
             .collect()
@@ -96,9 +101,13 @@ impl PieceType {
                     .expect("Grasshopper has no adjacent piece.");
             }
             PieceType::Beetle => {
+                // plain or downwards move
                 search.replace(|f| Self::feasible_steps(f));
-                // TODO: edge case: beetle needs to check freedom of movement also on top of the hive
-                for f in new_field.neighbors().filter(|f| !f.is_empty()) {
+                // upwards move
+                for f in new_field
+                    .neighbors()
+                    .filter(|f| f.content().len() > new_field.content().len())
+                {
                     search.insert(f);
                 }
             }
@@ -113,7 +122,12 @@ impl PieceType {
         assert!(!field.is_empty());
         match self {
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
-                Self::feasible_steps(field).into_iter().count() > 0
+                let mut hypothetical = Hypothetical::from_field(field);
+                hypothetical[field].pop();
+                Self::feasible_steps(hypothetical.get_field_unchecked(field.index()))
+                    .into_iter()
+                    .count()
+                    > 0
             }
             PieceType::Grasshopper | PieceType::Beetle => true,
         }
