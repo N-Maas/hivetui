@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 
-use tgp::board::{
-    directions::{DirectionEnumerable, HexaDirection},
+use tgp_board::{
     hypothetical::Hypothetical,
     open_board::{OpenBoard, OpenIndex},
-    structures::OffsetStructure,
-    Board, Field,
+    prelude::*,
+    structures::{
+        directions::{DirectionEnumerable, HexaDirection},
+        OffsetStructure,
+    },
 };
 
 use crate::pieces::{Piece, PieceType, Player};

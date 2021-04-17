@@ -1,12 +1,15 @@
 use std::str::FromStr;
 
-use tgp::board::{
-    directions::{DirectionEnumerable, HexaDirection},
+use tgp_board::{
     hypothetical::Hypothetical,
     open_board::OpenIndex,
+    prelude::*,
     search::FieldSearchResult,
-    search_tree::SearchMode,
-    Board, DirectionStructure, Field,
+    search::SearchMode,
+    structures::{
+        directions::{DirectionEnumerable, HexaDirection},
+        DirectionStructure,
+    },
 };
 
 use crate::state::HiveBoard;

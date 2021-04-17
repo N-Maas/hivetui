@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, str::FromStr};
 
+use tgp_board::{prelude::*, search::HashIndexMap};
+
 use display::print_annotated_board;
 use pieces::PieceType;
 use state::HiveGameState;
 use text_io::{read, try_read};
-use tgp::board::search::HashIndexMap;
-use tgp::board::IndexMap;
 
 pub mod display;
 pub mod pieces;

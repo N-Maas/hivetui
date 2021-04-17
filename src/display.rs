@@ -5,7 +5,8 @@ use crate::{
     state::{HiveBoard, HiveGameState},
 };
 
-use tgp::board::{directions::HexaDirection, open_board::OpenIndex, Board, BoardToMap, IndexMap};
+use tgp_board::open_board::OpenIndex;
+use tgp_board::{prelude::*, structures::directions::HexaDirection};
 type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
 
 // TODO: cut empty space
