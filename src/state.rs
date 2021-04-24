@@ -1,5 +1,9 @@
 use std::collections::BTreeMap;
 
+use tgp::{
+    mapped_decision::MappedDecision, plain_decision::PlainDecision, vec_context::VecContext,
+    Decision, GameData, Outcome,
+};
 use tgp_board::{
     hypothetical::Hypothetical,
     open_board::{OpenBoard, OpenIndex},
@@ -14,6 +18,32 @@ use crate::pieces::{Piece, PieceType, Player};
 
 pub type HiveBoard = OpenBoard<Vec<Piece>, OffsetStructure<OpenIndex, HexaDirection>>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum HiveContext {
+    BaseField(VecContext<OpenIndex>),
+    TargetField(VecContext<OpenIndex, OpenIndex>),
+    Piece(VecContext<(PieceType, u32), OpenIndex>),
+    SkipPlayer,
+}
+
+impl From<VecContext<OpenIndex>> for HiveContext {
+    fn from(vc: VecContext<OpenIndex>) -> Self {
+        Self::BaseField(vc)
+    }
+}
+
+impl From<VecContext<OpenIndex, OpenIndex>> for HiveContext {
+    fn from(vc: VecContext<OpenIndex, OpenIndex>) -> Self {
+        Self::TargetField(vc)
+    }
+}
+
+impl From<VecContext<(PieceType, u32), OpenIndex>> for HiveContext {
+    fn from(vc: VecContext<(PieceType, u32), OpenIndex>) -> Self {
+        Self::Piece(vc)
+    }
+}
+
 pub struct HiveGameState {
     current_player: Player,
     white_pieces: BTreeMap<PieceType, u32>,
@@ -21,6 +51,7 @@ pub struct HiveGameState {
     board: HiveBoard,
     white_pieces_on_board: u8,
     black_pieces_on_board: u8,
+    result: Option<&'static str>,
 }
 
 impl HiveGameState {
@@ -34,6 +65,7 @@ impl HiveGameState {
             board,
             white_pieces_on_board: 0,
             black_pieces_on_board: 0,
+            result: None,
         }
     }
 
@@ -48,18 +80,29 @@ impl HiveGameState {
         }
     }
 
-    pub fn get_all_movables(&self) -> impl Iterator<Item = Field<HiveBoard>> {
+    pub fn result(&self) -> Option<&'static str> {
+        self.result
+    }
+
+    fn player_usize(&self) -> usize {
+        match self.current_player {
+            Player::White => 0,
+            Player::Black => 1,
+        }
+    }
+
+    fn get_all_movables(&self) -> impl Iterator<Item = Field<HiveBoard>> {
         let moves_enabled = self.pieces().0[&PieceType::Queen] == 0;
         self.board.iter_fields().filter(move |f| {
             let valid_field = f
                 .content()
                 .last()
                 .map_or(false, |piece| piece.player == self.current_player);
-            moves_enabled && valid_field && can_move(*f)
+            moves_enabled && valid_field && self.can_move(*f)
         })
     }
 
-    pub fn get_all_placement_targets(&self) -> impl Iterator<Item = Field<HiveBoard>> {
+    fn get_all_placement_targets(&self) -> impl Iterator<Item = Field<HiveBoard>> {
         let init_pos = OpenIndex::from((0, 0)) + HexaDirection::Up;
         self.board.iter_fields().filter(move |f| {
             if self.white_pieces_on_board + self.black_pieces_on_board == 1 {
@@ -75,29 +118,7 @@ impl HiveGameState {
         })
     }
 
-    pub fn get_possible_moves<'a>(
-        &self,
-        field: Field<'a, HiveBoard>,
-    ) -> impl Iterator<Item = Field<'a, HiveBoard>> {
-        assert!(!field.is_empty() && can_move(field));
-        // unwrap: correct because of assertion
-        let Piece { p_type, .. } = field.content().last().unwrap();
-        p_type.get_moves(field).into_iter()
-    }
-
-    pub fn get_available_pieces(&self) -> Vec<PieceType> {
-        let (pieces, num) = self.pieces();
-        if pieces[&PieceType::Queen] > 0 && num == 3 {
-            return vec![PieceType::Queen];
-        }
-        pieces
-            .iter()
-            .filter(|&(_, count)| *count > 0)
-            .map(|(p, _)| *p)
-            .collect()
-    }
-
-    pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) -> Option<&'static str> {
+    fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
         assert!(
             self.pieces().0[&p_type] > 0
                 && self.board.get_field(target).map_or(false, |f| f.is_empty())
@@ -114,10 +135,10 @@ impl HiveGameState {
             Player::Black => self.black_pieces_on_board += 1,
         }
         self.current_player.switch();
-        self.test_game_finished(target)
+        self.result = self.test_game_finished(target);
     }
 
-    pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex) -> Option<&'static str> {
+    fn move_piece(&mut self, from: OpenIndex, to: OpenIndex) {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
         let piece = self.board[from]
             .pop()
@@ -126,10 +147,10 @@ impl HiveGameState {
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
         self.current_player.switch();
-        self.test_game_finished(to)
+        self.result = self.test_game_finished(to);
     }
 
-    pub fn test_game_finished(&self, target: OpenIndex) -> Option<&'static str> {
+    fn test_game_finished(&self, target: OpenIndex) -> Option<&'static str> {
         let field = self.board.get_field_unchecked(target);
         let white_win = self.is_adjacent_to_surrounded_queeen(field, Player::Black);
         let black_win = self.is_adjacent_to_surrounded_queeen(field, Player::White);
@@ -154,6 +175,12 @@ impl HiveGameState {
         } else {
             false
         }
+    }
+
+    fn can_move(&self, field: Field<HiveBoard>) -> bool {
+        assert!(!field.is_empty());
+        let Piece { p_type, player } = field.content().last().unwrap();
+        p_type.is_movable(field) && !move_violates_ohr(field) && *player == self.current_player
     }
 
     fn pieces_mut(&mut self) -> &mut BTreeMap<PieceType, u32> {
@@ -195,12 +222,80 @@ impl HiveGameState {
             }
         }
     }
+
+    fn create_placement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
+        assert!(self.board.get_field_unchecked(index).is_empty());
+        let mut dec = MappedDecision::with_inner(self.player_usize(), index);
+
+        let (pieces, num) = self.pieces();
+        if pieces[&PieceType::Queen] > 0 && num == 3 {
+            dec.add_option((PieceType::Queen, 1));
+        } else {
+            for (&p_type, &count) in pieces {
+                if count > 0 {
+                    dec.add_option((p_type, count));
+                }
+            }
+        }
+        dec.to_effect(|&index, &(p_type, _)| {
+            move |game_state: &mut HiveGameState| {
+                game_state.place_piece(p_type, index);
+                None
+            }
+        })
+    }
+
+    fn create_movement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
+        let field = self.board.get_field_unchecked(index);
+        assert!(self.can_move(field));
+        // unwrap: correct because of assertion
+        let Piece { p_type, .. } = field.content().last().unwrap();
+        let mut dec = MappedDecision::with_inner(self.player_usize(), index);
+
+        for field in p_type.get_moves(field).into_iter() {
+            dec.add_option(field.index());
+        }
+        dec.to_effect(|&from, &to| {
+            move |game_state: &mut HiveGameState| {
+                game_state.move_piece(from, to);
+                None
+            }
+        })
+    }
 }
 
-fn can_move(field: Field<HiveBoard>) -> bool {
-    assert!(!field.is_empty());
-    let Piece { p_type, .. } = field.content().last().unwrap();
-    p_type.is_movable(field) && !move_violates_ohr(field)
+impl GameData for HiveGameState {
+    type Context = HiveContext;
+
+    fn next_decision(&self) -> Option<Box<dyn Decision<Self>>> {
+        if self.result.is_some() {
+            return None;
+        }
+
+        let mut base_dec = MappedDecision::new(self.player_usize());
+        for field in self.get_all_placement_targets() {
+            base_dec.add_option(field.index());
+        }
+        for field in self.get_all_movables() {
+            base_dec.add_option(field.index());
+        }
+        if base_dec.is_empty() {
+            let dec = PlainDecision::with_context(self.player_usize(), HiveContext::SkipPlayer);
+            Some(Box::new(dec))
+        } else {
+            let result =
+                base_dec.to_outcome(|game_state: &HiveGameState, _: &(), &index: &OpenIndex| {
+                    let field = game_state.board.get_field_unchecked(index);
+                    let child_dec = if field.is_empty() {
+                        game_state.create_placement_decision(index)
+                    } else {
+                        game_state.create_movement_decision(index)
+                    };
+                    Outcome::FollowUp(child_dec)
+                });
+            Some(result)
+        }
+    }
 }
 
 fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
@@ -257,13 +352,17 @@ mod test {
             state.get_all_movables().next().unwrap().index(),
             OpenIndex::from((0, 0))
         );
-        let moves = state
-            .get_possible_moves(state.board.get_field_unchecked(OpenIndex::from((0, 0))))
-            .map(|f| f.index())
-            .collect::<Vec<_>>();
-        assert_eq!(moves.len(), 2);
-        assert!(moves.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
-        assert!(moves.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
+        let moves = state.create_movement_decision(OpenIndex::from((0, 0)));
+        assert_eq!(moves.option_count(), 2);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                assert!(context.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
+                assert!(context.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
         state.move_piece(
             OpenIndex::from((0, 0)),
             OpenIndex::from((0, 0)) + HexaDirection::UpRight,

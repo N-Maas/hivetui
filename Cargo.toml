@@ -7,5 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tgp = { path = "../tgp/tgp" }
 tgp-board = { path = "../tgp/tgp-board" }
 text_io = "0.1.8"
+either = "1.6"
