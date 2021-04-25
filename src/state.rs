@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use tgp::{
     mapped_decision::MappedDecision, plain_decision::PlainDecision, vec_context::VecContext,
-    Decision, GameData, Outcome,
+    Decision, GameData, Outcome, RevEffect,
 };
 use tgp_board::{
     hypothetical::Hypothetical,
@@ -138,7 +138,23 @@ impl HiveGameState {
         self.result = self.test_game_finished(target);
     }
 
-    fn move_piece(&mut self, from: OpenIndex, to: OpenIndex) {
+    fn remove_piece(&mut self, target: OpenIndex) {
+        assert!(self
+            .board
+            .get_field(target)
+            .map_or(false, |f| !f.is_empty()));
+        self.current_player.switch();
+        let piece = self.board[target].pop().unwrap();
+        let pieces = self.pieces_mut();
+        pieces.entry(piece.p_type).and_modify(|count| *count += 1);
+        self.remove_old_neighbors(target);
+        match self.current_player {
+            Player::White => self.white_pieces_on_board -= 1,
+            Player::Black => self.black_pieces_on_board -= 1,
+        }
+    }
+
+    fn move_piece(&mut self, from: OpenIndex, to: OpenIndex, test_for_finished: bool) {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
         let piece = self.board[from]
             .pop()
@@ -147,7 +163,9 @@ impl HiveGameState {
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
         self.current_player.switch();
-        self.result = self.test_game_finished(to);
+        if test_for_finished {
+            self.result = self.test_game_finished(to);
+        }
     }
 
     fn test_game_finished(&self, target: OpenIndex) -> Option<&'static str> {
@@ -237,11 +255,16 @@ impl HiveGameState {
                 }
             }
         }
-        dec.to_effect(|&index, &(p_type, _)| {
-            move |game_state: &mut HiveGameState| {
-                game_state.place_piece(p_type, index);
-                None
-            }
+        dec.to_rev_effect(|&index, &(p_type, _)| {
+            (
+                move |game_state: &mut HiveGameState| {
+                    game_state.place_piece(p_type, index);
+                    None
+                },
+                move |game_state: &mut HiveGameState| {
+                    game_state.remove_piece(index);
+                },
+            )
         })
     }
 
@@ -255,17 +278,23 @@ impl HiveGameState {
         for field in p_type.get_moves(field).into_iter() {
             dec.add_option(field.index());
         }
-        dec.to_effect(|&from, &to| {
-            move |game_state: &mut HiveGameState| {
-                game_state.move_piece(from, to);
-                None
-            }
+        dec.to_rev_effect(|&from, &to| {
+            (
+                move |game_state: &mut HiveGameState| {
+                    game_state.move_piece(from, to, true);
+                    None
+                },
+                move |game_state: &mut HiveGameState| {
+                    game_state.move_piece(to, from, false);
+                },
+            )
         })
     }
 }
 
 impl GameData for HiveGameState {
     type Context = HiveContext;
+    type EffectType = dyn RevEffect<Self>;
 
     fn next_decision(&self) -> Option<Box<dyn Decision<Self>>> {
         if self.result.is_some() {
@@ -366,6 +395,7 @@ mod test {
         state.move_piece(
             OpenIndex::from((0, 0)),
             OpenIndex::from((0, 0)) + HexaDirection::UpRight,
+            true,
         );
         assert_eq!(state.board.size(), 10);
         state.place_piece(PieceType::Beetle, OpenIndex::from((0, 2)));
