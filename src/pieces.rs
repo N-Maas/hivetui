@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use tgp_board::{
     hypothetical::Hypothetical,
     open_board::OpenIndex,
@@ -78,16 +76,16 @@ impl PieceType {
         let mut search = new_field.search();
         match self {
             PieceType::Queen => {
-                search.replace(|f| Self::feasible_steps(f));
+                search.replace(Self::feasible_steps);
             }
             PieceType::Ant => {
-                search.replace(|f| Self::feasible_steps(f));
-                search.extend_repeated(|f| Self::feasible_steps(f));
+                search.replace(Self::feasible_steps);
+                search.extend_repeated(Self::feasible_steps);
             }
             PieceType::Spider => {
                 let mut tree = new_field.search_tree();
                 for _ in 0..3 {
-                    tree.extend(|f| Self::feasible_steps(f), SearchMode::NoCycles);
+                    tree.extend(Self::feasible_steps, SearchMode::NoCycles);
                 }
                 search = tree.into_endpoint_set();
             }
@@ -105,7 +103,7 @@ impl PieceType {
             }
             PieceType::Beetle => {
                 // plain or downwards move
-                search.replace(|f| Self::feasible_steps(f));
+                search.replace(Self::feasible_steps);
                 // upwards move
                 for f in new_field
                     .neighbors()
@@ -149,20 +147,20 @@ impl ToString for PieceType {
     }
 }
 
-impl FromStr for PieceType {
-    type Err = ();
+// impl FromStr for PieceType {
+//     type Err = ();
 
-    fn from_str(s: &str) -> Result<Self, ()> {
-        match s {
-            _ if s.starts_with("Q") => Ok(PieceType::Queen),
-            _ if s.starts_with("A") => Ok(PieceType::Ant),
-            _ if s.starts_with("S") => Ok(PieceType::Spider),
-            _ if s.starts_with("G") => Ok(PieceType::Grasshopper),
-            _ if s.starts_with("B") => Ok(PieceType::Beetle),
-            _ => Err(()),
-        }
-    }
-}
+//     fn from_str(s: &str) -> Result<Self, ()> {
+//         match s {
+//             _ if s.starts_with('Q') => Ok(PieceType::Queen),
+//             _ if s.starts_with('A') => Ok(PieceType::Ant),
+//             _ if s.starts_with('S') => Ok(PieceType::Spider),
+//             _ if s.starts_with('G') => Ok(PieceType::Grasshopper),
+//             _ if s.starts_with('B') => Ok(PieceType::Beetle),
+//             _ => Err(()),
+//         }
+//     }
+// }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct Piece {

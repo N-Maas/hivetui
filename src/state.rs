@@ -158,7 +158,7 @@ impl HiveGameState {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
         let piece = self.board[from]
             .pop()
-            .expect(&format!("Piece was not present at: {:?}", from));
+            .unwrap_or_else(|| panic!("Piece was not present at: {:?}", from));
         self.board[to].push(piece);
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
@@ -213,7 +213,7 @@ impl HiveGameState {
             let field = self
                 .board
                 .get_field(target)
-                .expect(&format!("Invalid index: {:?}", target));
+                .unwrap_or_else(|| panic!("Invalid index: {:?}", target));
             if !field.has_next(d) {
                 self.board.extend_and_insert(target + d, Vec::new());
             }
@@ -255,7 +255,7 @@ impl HiveGameState {
                 }
             }
         }
-        dec.to_rev_effect(|&index, &(p_type, _)| {
+        dec.spawn_by_rev_effect(|&index, &(p_type, _)| {
             (
                 move |game_state: &mut HiveGameState| {
                     game_state.place_piece(p_type, index);
@@ -278,7 +278,7 @@ impl HiveGameState {
         for field in p_type.get_moves(field).into_iter() {
             dec.add_option(field.index());
         }
-        dec.to_rev_effect(|&from, &to| {
+        dec.spawn_by_rev_effect(|&from, &to| {
             (
                 move |game_state: &mut HiveGameState| {
                     game_state.move_piece(from, to, true);
@@ -312,8 +312,8 @@ impl GameData for HiveGameState {
             let dec = PlainDecision::with_context(self.player_usize(), HiveContext::SkipPlayer);
             Some(Box::new(dec))
         } else {
-            let result =
-                base_dec.to_outcome(|game_state: &HiveGameState, _: &(), &index: &OpenIndex| {
+            let result = base_dec.spawn_by_outcome(
+                |game_state: &HiveGameState, _: &(), &index: &OpenIndex| {
                     let field = game_state.board.get_field_unchecked(index);
                     let child_dec = if field.is_empty() {
                         game_state.create_placement_decision(index)
@@ -321,7 +321,8 @@ impl GameData for HiveGameState {
                         game_state.create_movement_decision(index)
                     };
                     Outcome::FollowUp(child_dec)
-                });
+                },
+            );
             Some(result)
         }
     }
