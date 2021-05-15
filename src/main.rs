@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use either::Either;
 use tgp::engine::{Engine, GameEngine, GameState};
-use tgp_board::{prelude::*, search::HashIndexMap};
+use tgp_board::{index_map::HashIndexMap, prelude::*};
 
 use display::print_annotated_board;
 use pieces::PieceType;

@@ -44,6 +44,7 @@ impl From<VecContext<(PieceType, u32), OpenIndex>> for HiveContext {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HiveGameState {
     current_player: Player,
     white_pieces: BTreeMap<PieceType, u32>,

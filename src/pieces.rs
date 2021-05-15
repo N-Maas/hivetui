@@ -1,5 +1,6 @@
 use tgp_board::{
     hypothetical::Hypothetical,
+    index_map::ArrayIndexMap,
     open_board::OpenIndex,
     prelude::*,
     search::FieldSearchResult,
@@ -70,7 +71,8 @@ impl PieceType {
 
     pub fn get_moves<'a>(&self, field: Field<'a, HiveBoard>) -> Vec<Field<'a, HiveBoard>> {
         assert!(!field.is_empty());
-        let mut hypothetical = Hypothetical::from_field(field);
+        let mut hypothetical =
+            Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
         hypothetical[field].pop();
         let new_field = hypothetical.get_field_unchecked(field.index());
         let mut search = new_field.search();
@@ -116,6 +118,7 @@ impl PieceType {
         search
             .into_iter()
             .map(|f| f.original_field(field.board()))
+            .filter(|&f| f != field)
             .collect()
     }
 
@@ -123,7 +126,8 @@ impl PieceType {
         assert!(!field.is_empty());
         match self {
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
-                let mut hypothetical = Hypothetical::from_field(field);
+                let mut hypothetical =
+                    Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
                 hypothetical[field].pop();
                 Self::feasible_steps(hypothetical.get_field_unchecked(field.index()))
                     .into_iter()
