@@ -397,7 +397,7 @@ mod test {
         match moves.context(&state) {
             HiveContext::TargetField(context) => {
                 assert!(context.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
-                assert!(context.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpRight)));
+                assert!(context.contains(&(OpenIndex::from((0, 0)) + HexaDirection::UpLeft)));
             }
             _ => {
                 assert!(false)
@@ -413,5 +413,156 @@ mod test {
         assert!(move_violates_ohr(
             state.board.get_field_unchecked(OpenIndex::from((0, 1)))
         ));
+    }
+
+    #[test]
+    fn ant_spider_self_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 1);
+        pieces.insert(PieceType::Spider, 1);
+        let mut state = HiveGameState::new(pieces);
+        state.place_piece(PieceType::Queen, OpenIndex::from((0, 0)));
+        state.place_piece(PieceType::Queen, OpenIndex::from((0, 1)));
+        state.place_piece(PieceType::Ant, OpenIndex::from((0, -1)));
+        state.current_player = Player::White;
+
+        let moves = state.create_movement_decision(OpenIndex::from((0, -1)));
+        assert_eq!(moves.option_count(), 7);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                assert!(!context.contains(&(OpenIndex::from((0, -1)))));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+
+        state.remove_piece(OpenIndex::from((0, -1)));
+        state.current_player = Player::White;
+        state.place_piece(PieceType::Spider, OpenIndex::from((0, -1)));
+        state.current_player = Player::White;
+        let moves = state.create_movement_decision(OpenIndex::from((0, -1)));
+        assert_eq!(moves.option_count(), 2);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                assert!(!context.contains(&(OpenIndex::from((0, -1)))));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+    }
+
+    // tests that a spider doesn't stand in the way of itself
+    #[test]
+    fn spider_hole_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Spider, 5);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let right = zero + HexaDirection::UpRight;
+        let left = zero + HexaDirection::UpLeft;
+        // place spider and queens
+        state.place_piece(PieceType::Spider, zero);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::DownLeft);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::DownRight);
+        // construct hole around spider
+        state.place_piece(PieceType::Spider, right + HexaDirection::DownRight);
+        state.place_piece(PieceType::Spider, right + HexaDirection::UpRight);
+        state.place_piece(PieceType::Spider, right + HexaDirection::Up);
+        state.place_piece(PieceType::Spider, left + HexaDirection::DownLeft);
+        state.place_piece(PieceType::Spider, left + HexaDirection::UpLeft);
+        state.place_piece(PieceType::Spider, left + HexaDirection::Up);
+        state.place_piece(
+            PieceType::Spider,
+            zero + HexaDirection::Up + HexaDirection::Up,
+        );
+
+        state.current_player = Player::White;
+        let moves = state.create_movement_decision(zero);
+        assert_eq!(moves.option_count(), 2);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                assert!(context.contains(&left));
+                assert!(context.contains(&right));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+    }
+
+    #[test]
+    fn beetle_up_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Beetle, 3);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = zero + HexaDirection::Up;
+        state.place_piece(PieceType::Queen, zero);
+        state.place_piece(PieceType::Queen, up);
+        state.place_piece(PieceType::Beetle, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Beetle, up + HexaDirection::Up);
+
+        let moves = state.create_movement_decision(zero + HexaDirection::Down);
+        assert_eq!(moves.option_count(), 3);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                assert!(context.contains(&zero));
+                assert!(context.contains(&(zero + HexaDirection::DownLeft)));
+                assert!(context.contains(&(zero + HexaDirection::DownRight)));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+        state.move_piece(zero + HexaDirection::Down, zero, true);
+        state.move_piece(up + HexaDirection::Up, up, true);
+        state.place_piece(PieceType::Beetle, zero + HexaDirection::DownRight);
+
+        state.current_player = Player::White;
+        let moves = state.create_movement_decision(zero);
+        assert_eq!(moves.option_count(), 6);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                for f in state.board.get_field_unchecked(zero).neighbors() {
+                    assert!(context.contains(&f.index()));
+                }
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+
+        // move the beetles to block one
+        state.move_piece(zero, zero + HexaDirection::UpRight, true);
+        state.move_piece(up, up + HexaDirection::UpRight, true);
+        state.move_piece(
+            zero + HexaDirection::UpRight,
+            zero + HexaDirection::UpRight + HexaDirection::UpRight,
+            true,
+        );
+        state.current_player = Player::White;
+        state.place_piece(
+            PieceType::Beetle,
+            zero + HexaDirection::DownRight + HexaDirection::UpRight,
+        );
+
+        let moves = state.create_movement_decision(up + HexaDirection::UpRight);
+        assert_eq!(moves.option_count(), 4);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                // the beetle can not move into the hole
+                assert!(!context.contains(&(zero + HexaDirection::UpRight)));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
     }
 }
