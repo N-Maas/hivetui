@@ -9,5 +9,6 @@ edition = "2018"
 [dependencies]
 tgp = { path = "../tgp/tgp" }
 tgp-board = { path = "../tgp/tgp-board" }
+tgp-ai = { path = "../tgp/tgp-ai" }
 text_io = "0.1.8"
 either = "1.6"
