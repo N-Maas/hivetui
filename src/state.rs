@@ -6,6 +6,7 @@ use tgp::{
 };
 use tgp_board::{
     hypothetical::Hypothetical,
+    index_map::ArrayIndexMap,
     open_board::{OpenBoard, OpenIndex},
     prelude::*,
     structures::{
@@ -310,7 +311,14 @@ impl GameData for HiveGameState {
             base_dec.add_option(field.index());
         }
         if base_dec.is_empty() {
-            let dec = PlainDecision::with_context(self.player_usize(), HiveContext::SkipPlayer);
+            let mut dec = PlainDecision::with_context(self.player_usize(), HiveContext::SkipPlayer);
+            dec.add_rev_effect(
+                |game_state: &mut HiveGameState| {
+                    game_state.current_player.switch();
+                    None
+                },
+                |game_state| game_state.current_player.switch(),
+            );
             Some(Box::new(dec))
         } else {
             let result = base_dec.spawn_by_outcome(
@@ -348,7 +356,8 @@ fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
 
     // determine the connectivity component of one of the occupied field - it must contain all pieces
     // unwrap: correct due to previous length check
-    let mut hypothetical = Hypothetical::from_field(field);
+    let mut hypothetical =
+        Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[field].pop();
     let mut component = hypothetical
         .get_field_unchecked(*occupied_fields.first().unwrap())
