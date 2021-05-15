@@ -122,17 +122,27 @@ impl PieceType {
             .collect()
     }
 
-    pub fn is_movable(&self, field: Field<HiveBoard>) -> bool {
+    pub fn is_movable<B: Board<Content = Vec<Piece>>>(&self, field: Field<B>) -> bool
+    where
+        B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+    {
         assert!(!field.is_empty());
         match self {
+            // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
-                let mut hypothetical =
-                    Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
-                hypothetical[field].pop();
-                Self::feasible_steps(hypothetical.get_field_unchecked(field.index()))
-                    .into_iter()
-                    .count()
-                    > 0
+                field.neighbors_by_direction().any(move |(d, n)| {
+                    let is_plain = n.content().len() == 0;
+                    is_plain && {
+                        let left_is_plain = field
+                            .next(d.prev_direction())
+                            .map_or(true, |f| f.content().len() == 0);
+                        let right_is_plain = field
+                            .next(d.next_direction())
+                            .map_or(true, |f| f.content().len() == 0);
+                        // move along the border of the hive
+                        left_is_plain != right_is_plain
+                    }
+                })
             }
             PieceType::Grasshopper | PieceType::Beetle => true,
         }

@@ -9,9 +9,10 @@ use pieces::PieceType;
 use state::{HiveContext, HiveGameState};
 use text_io::try_read;
 
-pub mod display;
-pub mod pieces;
-pub mod state;
+mod ai;
+mod display;
+mod pieces;
+mod state;
 
 fn main() {
     let mut pieces = BTreeMap::new();

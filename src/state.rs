@@ -1,4 +1,7 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display},
+};
 
 use tgp::{
     mapped_decision::MappedDecision, plain_decision::PlainDecision, vec_context::VecContext,
@@ -45,6 +48,23 @@ impl From<VecContext<(PieceType, u32), OpenIndex>> for HiveContext {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HiveResult {
+    Draw,
+    WhiteWin,
+    BlackWin,
+}
+
+impl Display for HiveResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Draw => write!(f, "The game ended with a draw!"),
+            Self::WhiteWin => write!(f, "The white player has won!"),
+            Self::BlackWin => write!(f, "The black player has won!"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HiveGameState {
     current_player: Player,
@@ -53,7 +73,7 @@ pub struct HiveGameState {
     board: HiveBoard,
     white_pieces_on_board: u8,
     black_pieces_on_board: u8,
-    result: Option<&'static str>,
+    result: Option<HiveResult>,
 }
 
 impl HiveGameState {
@@ -82,11 +102,15 @@ impl HiveGameState {
         }
     }
 
-    pub fn result(&self) -> Option<&'static str> {
+    pub fn result(&self) -> Option<HiveResult> {
         self.result
     }
 
-    fn player_usize(&self) -> usize {
+    pub fn player(&self) -> Player {
+        self.current_player
+    }
+
+    pub fn player_usize(&self) -> usize {
         match self.current_player {
             Player::White => 0,
             Player::Black => 1,
@@ -100,7 +124,7 @@ impl HiveGameState {
                 .content()
                 .last()
                 .map_or(false, |piece| piece.player == self.current_player);
-            moves_enabled && valid_field && self.can_move(*f)
+            moves_enabled && valid_field && self.can_move(*f, true)
         })
     }
 
@@ -120,7 +144,7 @@ impl HiveGameState {
         })
     }
 
-    fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
+    pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
         assert!(
             self.pieces().0[&p_type] > 0
                 && self.board.get_field(target).map_or(false, |f| f.is_empty())
@@ -140,7 +164,7 @@ impl HiveGameState {
         self.result = self.test_game_finished(target);
     }
 
-    fn remove_piece(&mut self, target: OpenIndex) {
+    pub fn remove_piece(&mut self, target: OpenIndex) {
         assert!(self
             .board
             .get_field(target)
@@ -170,14 +194,14 @@ impl HiveGameState {
         }
     }
 
-    fn test_game_finished(&self, target: OpenIndex) -> Option<&'static str> {
+    fn test_game_finished(&self, target: OpenIndex) -> Option<HiveResult> {
         let field = self.board.get_field_unchecked(target);
         let white_win = self.is_adjacent_to_surrounded_queeen(field, Player::Black);
         let black_win = self.is_adjacent_to_surrounded_queeen(field, Player::White);
         match (white_win, black_win) {
-            (true, true) => Some("The game ended with a draw!"),
-            (true, false) => Some("The white player has won!"),
-            (false, true) => Some("The black player has won!"),
+            (true, true) => Some(HiveResult::Draw),
+            (true, false) => Some(HiveResult::WhiteWin),
+            (false, true) => Some(HiveResult::BlackWin),
             _ => None,
         }
     }
@@ -197,10 +221,12 @@ impl HiveGameState {
         }
     }
 
-    fn can_move(&self, field: Field<HiveBoard>) -> bool {
+    pub fn can_move(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
         assert!(!field.is_empty());
         let Piece { p_type, player } = field.content().last().unwrap();
-        p_type.is_movable(field) && !move_violates_ohr(field) && *player == self.current_player
+        p_type.is_movable(field)
+            && !move_violates_ohr(field)
+            && (!check_player || *player == self.current_player)
     }
 
     fn pieces_mut(&mut self) -> &mut BTreeMap<PieceType, u32> {
@@ -272,7 +298,7 @@ impl HiveGameState {
 
     fn create_movement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
         let field = self.board.get_field_unchecked(index);
-        assert!(self.can_move(field));
+        assert!(self.can_move(field, true));
         // unwrap: correct because of assertion
         let Piece { p_type, .. } = field.content().last().unwrap();
         let mut dec = MappedDecision::with_inner(self.player_usize(), index);
