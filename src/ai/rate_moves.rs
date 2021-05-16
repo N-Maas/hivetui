@@ -492,7 +492,7 @@ mod test {
     use super::calculate_metadata;
 
     #[test]
-    fn meta_data_test() {
+    fn meta_data_test_base() {
         let mut pieces = BTreeMap::new();
         pieces.insert(PieceType::Queen, 1);
         pieces.insert(PieceType::Ant, 2);
@@ -512,6 +512,7 @@ mod test {
         let meta_data = calculate_metadata(&state);
         assert!(meta_data.queen_endangered);
         assert!(!meta_data.queen_should_move);
+        assert!(meta_data.defensive);
         assert_eq!(meta_data.queen_neighbors, [3, 1]);
         for f in state.board().iter_fields() {
             let movable = [
@@ -558,6 +559,75 @@ mod test {
                 zero + HexaDirection::Down + HexaDirection::DownRight,
                 Player::Black
             )
+        );
+    }
+
+    #[test]
+    fn meta_data_test_queen() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 2);
+        pieces.insert(PieceType::Spider, 1);
+        pieces.insert(PieceType::Grasshopper, 1);
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = OpenIndex::from((0, 1));
+        state.place_piece(PieceType::Ant, zero);
+        state.place_piece(PieceType::Queen, up);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Spider, up + HexaDirection::UpRight);
+
+        let meta_data = calculate_metadata(&state);
+        assert!(!meta_data.queen_endangered);
+        assert!(meta_data.queen_should_move);
+        assert!(!meta_data.defensive);
+        assert_eq!(meta_data.queen_neighbors, [1, 2]);
+        for f in state.board().iter_fields() {
+            let movable = [
+                up + HexaDirection::UpRight,
+                zero + HexaDirection::Down,
+            ]
+            .contains(&f.index());
+            assert_eq!(meta_data.can_move(f), movable);
+        }
+
+        state.place_piece(PieceType::Grasshopper, zero + HexaDirection::DownRight);
+        let meta_data = calculate_metadata(&state);
+        assert!(meta_data.queen_endangered);
+        assert!(!meta_data.queen_should_move);
+        assert!(!meta_data.defensive);
+        assert_eq!(meta_data.queen_neighbors, [2, 2]);
+        for f in state.board().iter_fields() {
+            let movable = [
+                up + HexaDirection::UpRight,
+                zero + HexaDirection::Down,
+                zero + HexaDirection::DownRight,
+            ]
+            .contains(&f.index());
+            assert_eq!(meta_data.can_move(f), movable);
+        }
+
+        state.place_piece(PieceType::Ant, up + HexaDirection::Up);
+        let meta_data = calculate_metadata(&state);
+        assert!(!meta_data.queen_endangered);
+        assert!(!meta_data.queen_should_move);
+        assert!(!meta_data.defensive);
+        assert_eq!(meta_data.queen_neighbors, [2, 3]);
+        assert_eq!(
+            meta_data.interest(up + HexaDirection::Up +  HexaDirection::UpRight),
+            MetaInterest::Uninteresting
+        );
+
+        state.remove_piece(up + HexaDirection::Up);
+        state.place_piece(PieceType::Grasshopper, up + HexaDirection::Up);
+        let meta_data = calculate_metadata(&state);
+        assert!(!meta_data.queen_endangered);
+        assert!(meta_data.queen_should_move);
+        assert!(!meta_data.defensive);
+        assert_eq!(meta_data.queen_neighbors, [2, 3]);
+        assert_eq!(
+            meta_data.interest(up + HexaDirection::Up +  HexaDirection::UpRight),
+            MetaInterest::Uninteresting
         );
     }
 
