@@ -1,5 +1,6 @@
 use std::collections::{hash_map::Entry, HashMap};
 
+use tgp::vec_context::VecContext;
 use tgp_ai::{rater::Rater, RatingType};
 use tgp_board::{
     hypothetical::Hypothetical,
@@ -10,7 +11,7 @@ use tgp_board::{
 };
 
 use crate::{
-    pieces::{grashopper_moves, Piece, PieceType, Player},
+    pieces::{grashopper_moves, spider_moves, Piece, PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
@@ -25,27 +26,27 @@ struct MetaData {
 }
 
 impl MetaData {
-    fn can_move(&self, index: impl Into<OpenIndex>) -> bool {
-        self.map.get(index.into()).unwrap().can_move
+    fn can_move(&self, field: impl Into<OpenIndex>) -> bool {
+        self.map.get(field.into()).unwrap().can_move
     }
 
-    fn interest(&self, index: impl Into<OpenIndex>) -> MetaInterest {
-        self.map.get(index.into()).unwrap().interest
+    fn interest(&self, field: impl Into<OpenIndex>) -> MetaInterest {
+        self.map.get(field.into()).unwrap().interest
     }
 
-    fn get_mut(&mut self, index: impl Into<OpenIndex>) -> &mut FieldMeta {
-        self.map.get_mut(index.into()).unwrap()
+    fn get_mut(&mut self, field: impl Into<OpenIndex>) -> &mut FieldMeta {
+        self.map.get_mut(field.into()).unwrap()
     }
 
-    fn is_blocking(&self, index: impl Into<OpenIndex>, player: Player) -> bool {
-        match self.interest(index) {
+    fn is_blocking(&self, field: impl Into<OpenIndex>, player: Player) -> bool {
+        match self.interest(field) {
             MetaInterest::Blocks(_, p) => p == player,
             _ => false,
         }
     }
 
-    fn is_adj_to_queen(&self, index: impl Into<OpenIndex>, player: Player) -> bool {
-        match self.interest(index) {
+    fn is_adj_to_queen(&self, field: impl Into<OpenIndex>, player: Player) -> bool {
+        match self.interest(field) {
             MetaInterest::AdjacentToQueen(_, p) => p == player,
             _ => false,
         }
@@ -122,6 +123,10 @@ fn dummy_piece() -> Piece {
 fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
     debug_assert!(target.is_empty());
     debug_assert!(!blocked.is_empty());
+    if blocked.content().len() > 1 {
+        return false;
+    }
+
     let mut hypothetical =
         Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[target].push(dummy_piece());
@@ -189,7 +194,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     // points of interest
     for field in board.iter_fields() {
         if !field.is_empty() {
-            let piece = field.content().last().unwrap();
+            let piece = field.content().first().unwrap();
             if piece.p_type == PieceType::Queen {
                 let mut num_neighbors = 0;
                 for n in field.neighbors() {
@@ -312,6 +317,91 @@ fn interest_to_type_with_mod(
     }
 }
 
+fn set_eq(
+    i: usize,
+    j: usize,
+    rater: &mut Rater,
+    eq_map: &mut HashMap<Equivalency, (usize, usize)>,
+    equivalency: Equivalency,
+    rating: RatingType,
+    is_better: bool,
+) {
+    // test whether an equivalent move exists already
+    match eq_map.entry(equivalency) {
+        Entry::Occupied(mut entry) => {
+            if is_better {
+                let (old_i, old_j) = entry.insert((i, j));
+                rater.set_equivalent_as_representative(i, j, old_i, old_j, rating);
+            } else {
+                let &(old_i, old_j) = entry.get();
+                rater.set_equivalent_to(i, j, old_i, old_j);
+            }
+        }
+        Entry::Vacant(entry) => {
+            entry.insert((i, j));
+            rater.rate(i, j, rating);
+        }
+    }
+}
+
+fn handle_move_ratings(
+    data: &HiveGameState,
+    meta_data: &MetaData,
+    context: &VecContext<OpenIndex, OpenIndex>,
+    eq_map: &mut HashMap<Equivalency, (usize, usize)>,
+    rater: &mut Rater,
+    i: usize,
+) {
+    let from = data.board().get_field_unchecked(*context.inner());
+    let f_interest = meta_data.interest(from);
+    let &piece = from.content().last().unwrap();
+    debug_assert!(piece.player == data.player());
+    for (j, target) in context.iter().enumerate() {
+        let to = data.board().get_field_unchecked(*target);
+        let t_interest = meta_data.interest(to);
+        debug_assert!(to.is_empty());
+
+        if piece.p_type == PieceType::Queen {
+            // moving the queen only makes sense when it is endangered
+            if meta_data.queen_endangered {
+                rater.rate(i, j, 15);
+            } else if meta_data.queen_should_move {
+                rater.rate(i, j, 10);
+            } else {
+                rater.rate(i, j, 0);
+            }
+        } else if piece.p_type == PieceType::Ant {
+            // to avoid combinatorial explosion, it is really important to use equivalency classes for ants
+            let mut is_better = false;
+            let (equivalency, m) = interest_to_type(&meta_data.map, data.player(), t_interest);
+            let equivalency = match equivalency {
+                PositionType::NeutralOrBad => {
+                    if m > 0 {
+                        is_better = true;
+                    }
+                    Equivalency::AntToNeutral(from.index())
+                }
+                PositionType::Blocking => {
+                    debug_assert!(m == 0);
+                    is_better = no_common_neighbor(to, t_interest.target_index());
+                    Equivalency::AntToBlocking(from.index(), t_interest.target_index())
+                }
+                PositionType::AtQueen => {
+                    debug_assert!(m == 0);
+                    is_better = no_common_neighbor(to, t_interest.target_index());
+                    Equivalency::AntToQueen(from.index())
+                }
+            };
+            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, m);
+            set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
+        } else {
+            // TODO: Beetle special case (and equivalency)
+            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
+            rater.rate(i, j, rating);
+        }
+    }
+}
+
 fn rate_usual_move(
     meta: &MetaData,
     piece: Piece,
@@ -363,6 +453,74 @@ fn rate_usual_move(
     rating + total_modifier
 }
 
+fn handle_placement_ratings(
+    data: &HiveGameState,
+    meta_data: &MetaData,
+    context: &VecContext<(PieceType, u32), OpenIndex>,
+    eq_map: &mut HashMap<Equivalency, (usize, usize)>,
+    rater: &mut Rater,
+    i: usize,
+) {
+    let player = data.player();
+    let target = data.board().get_field_unchecked(*context.inner());
+    for (j, (piece_t, _)) in context.iter().enumerate() {
+        if meta_data.is_adj_to_queen(target, player.switched()) {
+            // placing a piece directly at the enemy queen is quite perfect..
+            rater.rate(i, j, 18);
+        } else {
+            // .. otherwise, a few case distinctions are necessary
+            let meta = meta_data.interest(target);
+            assert!(interest_to_type(&meta_data.map, player, meta).0 == PositionType::NeutralOrBad);
+            match piece_t {
+                PieceType::Queen => {
+                    let is_better = meta == MetaInterest::Uninteresting;
+                    set_eq(i, j, rater, eq_map, Equivalency::PlaceQueen, 10, is_better);
+                }
+                PieceType::Ant => {
+                    let is_better = meta == MetaInterest::Uninteresting;
+                    set_eq(i, j, rater, eq_map, Equivalency::PlaceAnt, 10, is_better);
+                }
+                PieceType::Spider | PieceType::Grasshopper => {
+                    // for spiders and grasshoppers, it highly depends on whether they can reach something useful
+                    let reachable_fields: Vec<_> = if *piece_t == PieceType::Spider {
+                        let tree = spider_moves(target);
+                        tree.iter_paths().map(|p| p.endpoint()).collect()
+                    } else {
+                        grashopper_moves(target).collect()
+                    };
+                    let rating = reachable_fields
+                        .into_iter()
+                        .map(|f| {
+                            let interest = meta_data.interest(f);
+                            match interest_to_type(&meta_data.map, player, interest).0 {
+                                PositionType::NeutralOrBad => 1,
+                                PositionType::Blocking => 5,
+                                PositionType::AtQueen => match interest {
+                                    MetaInterest::Blocks(queen, _) => {
+                                        if meta_data.can_move(queen) {
+                                            // the queen can just move away
+                                            5
+                                        } else {
+                                            9
+                                        }
+                                    }
+                                    _ => unreachable!(),
+                                },
+                            }
+                        })
+                        .max()
+                        .unwrap();
+                    rater.rate(i, j, rating);
+                }
+                PieceType::Beetle => {
+                    // TODO
+                    rater.rate(i, j, 5);
+                }
+            }
+        }
+    }
+}
+
 /// Calculates a rating for all moves. Before that, some metadata for the field is calculated.
 pub fn rate_moves(
     rater: &mut Rater,
@@ -378,10 +536,11 @@ pub fn rate_moves(
         assert_eq!(rater.num_decisions(), 1);
         match &curr_context[0] {
             HiveContext::Piece(p_types) => {
-                for (i, (t, _)) in p_types.iter().enumerate() {
-                    match t {
-                        PieceType::Spider => rater.rate(0, i, 100),
-                        _ => rater.rate(0, i, 0),
+                for (i, &(t, _)) in p_types.iter().enumerate() {
+                    if t == PieceType::Spider {
+                        rater.rate(0, i, 100);
+                    } else {
+                        rater.rate(0, i, 0);
                     }
                 }
             }
@@ -391,7 +550,6 @@ pub fn rate_moves(
     }
 
     // calculate the metadata
-    let board = data.board();
     let meta_data = calculate_metadata(data);
     if old_context.is_empty() {
         dbg!(&meta_data);
@@ -401,78 +559,14 @@ pub fn rate_moves(
     let mut eq_map = HashMap::<Equivalency, (usize, usize)>::new();
     for (i, c) in curr_context.iter().enumerate() {
         match c {
-            HiveContext::SkipPlayer => rater.rate(0, 0, 0),
             HiveContext::BaseField(_) => unreachable!(),
+            HiveContext::SkipPlayer => rater.rate(0, 0, 0),
             HiveContext::TargetField(context) => {
-                let from = board.get_field_unchecked(*context.inner());
-                let f_interest = meta_data.interest(from);
-                let &piece = from.content().last().unwrap();
-                debug_assert!(piece.player == data.player());
-                for (j, target) in context.iter().enumerate() {
-                    let to = board.get_field_unchecked(*target);
-                    let t_interest = meta_data.interest(to);
-                    debug_assert!(to.is_empty());
-
-                    if piece.p_type == PieceType::Queen {
-                        // moving the queen only makes sense when it is endangered
-                        if meta_data.queen_endangered {
-                            rater.rate(i, j, 15);
-                        } else if meta_data.queen_should_move {
-                            rater.rate(i, j, 10);
-                        } else {
-                            rater.rate(i, j, 0);
-                        }
-                    } else if piece.p_type == PieceType::Ant {
-                        // to avoid combinatorial explosion, it is really important to use equivalency classes for ants
-                        let mut is_better = false;
-                        let (equivalency, m) =
-                            interest_to_type(&meta_data.map, data.player(), t_interest);
-                        let equivalency = match equivalency {
-                            PositionType::NeutralOrBad => {
-                                if m > 0 {
-                                    is_better = true;
-                                }
-                                Equivalency::AntToNeutral(from.index())
-                            }
-                            PositionType::Blocking => {
-                                debug_assert!(m == 0);
-                                is_better = no_common_neighbor(to, t_interest.target_index());
-                                Equivalency::AntToBlocking(from.index(), t_interest.target_index())
-                            }
-                            PositionType::AtQueen => {
-                                debug_assert!(m == 0);
-                                is_better = no_common_neighbor(to, t_interest.target_index());
-                                Equivalency::AntToQueen(from.index())
-                            }
-                        };
-                        let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, m);
-
-                        // test whether an equivalent move exists already
-                        match eq_map.entry(equivalency) {
-                            Entry::Occupied(mut entry) => {
-                                if is_better {
-                                    let (old_i, old_j) = entry.insert((i, j));
-                                    rater.set_equivalent_as_representative(
-                                        i, j, old_i, old_j, rating,
-                                    );
-                                } else {
-                                    let &(old_i, old_j) = entry.get();
-                                    rater.set_equivalent_to(i, j, old_i, old_j);
-                                }
-                            }
-                            Entry::Vacant(entry) => {
-                                entry.insert((i, j));
-                                rater.rate(i, j, rating);
-                            }
-                        }
-                    } else {
-                        // TODO: Beetle special case (and equivalency)
-                        let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
-                        rater.rate(i, j, rating);
-                    }
-                }
+                handle_move_ratings(data, &meta_data, context, &mut eq_map, rater, i);
             }
-            HiveContext::Piece(context) => {}
+            HiveContext::Piece(context) => {
+                handle_placement_ratings(data, &meta_data, context, &mut eq_map, rater, i);
+            }
         }
     }
 }
@@ -583,11 +677,8 @@ mod test {
         assert!(!meta_data.defensive);
         assert_eq!(meta_data.queen_neighbors, [1, 2]);
         for f in state.board().iter_fields() {
-            let movable = [
-                up + HexaDirection::UpRight,
-                zero + HexaDirection::Down,
-            ]
-            .contains(&f.index());
+            let movable =
+                [up + HexaDirection::UpRight, zero + HexaDirection::Down].contains(&f.index());
             assert_eq!(meta_data.can_move(f), movable);
         }
 
@@ -614,7 +705,7 @@ mod test {
         assert!(!meta_data.defensive);
         assert_eq!(meta_data.queen_neighbors, [2, 3]);
         assert_eq!(
-            meta_data.interest(up + HexaDirection::Up +  HexaDirection::UpRight),
+            meta_data.interest(up + HexaDirection::Up + HexaDirection::UpRight),
             MetaInterest::Uninteresting
         );
 
@@ -626,7 +717,7 @@ mod test {
         assert!(!meta_data.defensive);
         assert_eq!(meta_data.queen_neighbors, [2, 3]);
         assert_eq!(
-            meta_data.interest(up + HexaDirection::Up +  HexaDirection::UpRight),
+            meta_data.interest(up + HexaDirection::Up + HexaDirection::UpRight),
             MetaInterest::Uninteresting
         );
     }
