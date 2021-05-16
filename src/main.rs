@@ -9,6 +9,8 @@ use pieces::PieceType;
 use state::{HiveContext, HiveGameState};
 use text_io::try_read;
 
+use crate::{ai::HiveAI, display::print_move_ratings};
+
 mod ai;
 mod display;
 mod pieces;
@@ -51,7 +53,7 @@ fn main() {
                         if print {
                             print_annotated_board(&decision.data(), &map, false);
                             if is_top_level {
-                                println!("([u]ndo, [r]edo)");
+                                println!("([u]ndo, [r]edo, [a]i)");
                             }
                         } else {
                             print = true;
@@ -90,6 +92,9 @@ fn main() {
                             .expect("Error, invalid state.")
                             .retract();
                     }
+                    Input::AI => {
+                        print_move_ratings(engine.data(), &HiveAI {});
+                    }
                 }
             }
             GameState::Finished(_) => {
@@ -108,6 +113,7 @@ enum Input {
     Undo,
     Redo,
     Cancel,
+    AI,
 }
 
 fn get_input(is_top_level: bool) -> Input {
@@ -127,6 +133,8 @@ fn get_input(is_top_level: bool) -> Input {
                                 return Input::Undo;
                             } else if val.starts_with('r') {
                                 return Input::Redo;
+                            } else if val.starts_with('a') {
+                                return Input::AI;
                             } else {
                                 println!("Please enter a number.");
                             }
