@@ -180,7 +180,7 @@ impl HiveGameState {
         }
     }
 
-    fn move_piece(&mut self, from: OpenIndex, to: OpenIndex, test_for_finished: bool) {
+    pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex, test_for_finished: bool) {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
         let piece = self.board[from]
             .pop()

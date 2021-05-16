@@ -298,7 +298,6 @@ fn interest_to_type_with_mod(
                 if let MetaInterest::AdjacentToQueen(_, p) = target_meta {
                     // blocking a piece already adjacent to our queen is not really worthwile
                     if p == player {
-                        dbg!("AdjacentToQueen doesn't block.");
                         *mod_out += queen_unblock_mod;
                         return PositionType::NeutralOrBad;
                     }
@@ -496,7 +495,7 @@ fn handle_placement_ratings(
                                 PositionType::NeutralOrBad => 1,
                                 PositionType::Blocking => 5,
                                 PositionType::AtQueen => match interest {
-                                    MetaInterest::Blocks(queen, _) => {
+                                    MetaInterest::AdjacentToQueen(queen, _) => {
                                         if meta_data.can_move(queen) {
                                             // the queen can just move away
                                             5
@@ -526,10 +525,9 @@ pub fn rate_moves(
     rater: &mut Rater,
     curr_context: &[HiveContext],
     data: &HiveGameState,
-    old_context: &[(HiveContext, usize)],
-    player: usize,
+    // TODO
+    _old_context: &[(HiveContext, usize)],
 ) {
-    assert!(data.player_usize() == player);
     // Special case: We always use the spider as first piece.
     if data.pieces().1 == 0 {
         println!("Start.");
@@ -551,11 +549,12 @@ pub fn rate_moves(
 
     // calculate the metadata
     let meta_data = calculate_metadata(data);
-    if old_context.is_empty() {
-        dbg!(&meta_data);
-    }
+    // if old_context.is_empty() {
+    //     dbg!(&meta_data);
+    // }
 
     // calculate the ratings
+    // TODO: improve placement eq-classes (better and worse blocking..)? possibly extend to spider/grasshopper
     let mut eq_map = HashMap::<Equivalency, (usize, usize)>::new();
     for (i, c) in curr_context.iter().enumerate() {
         match c {
@@ -575,12 +574,18 @@ pub fn rate_moves(
 mod test {
     use std::collections::BTreeMap;
 
-    use tgp_board::{open_board::OpenIndex, structures::directions::HexaDirection, Board};
+    use tgp_board::{
+        open_board::OpenIndex, structures::directions::HexaDirection, Board, BoardToMap,
+    };
 
     use crate::{
-        ai::rate_moves::{blocks, would_block, MetaInterest},
+        ai::{
+            rate_moves::{blocks, would_block, MetaInterest},
+            HiveAI,
+        },
+        display::{print_annotated_board, print_move_ratings},
         pieces::{PieceType, Player},
-        state::HiveGameState,
+        state::{HiveContext, HiveGameState},
     };
 
     use super::calculate_metadata;
@@ -796,5 +801,49 @@ mod test {
                 .get_field_unchecked(zero + HexaDirection::DownLeft),
             state.board().get_field_unchecked(zero)
         ));
+    }
+
+    #[test]
+    fn rating_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 3);
+        pieces.insert(PieceType::Spider, 1);
+        pieces.insert(PieceType::Grasshopper, 1);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = OpenIndex::from((0, 1));
+        state.place_piece(PieceType::Ant, zero);
+        state.place_piece(PieceType::Ant, up);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Queen, up + HexaDirection::Up);
+        state.place_piece(PieceType::Ant, zero + HexaDirection::DownLeft);
+        state.place_piece(PieceType::Ant, zero + HexaDirection::DownRight);
+        state.place_piece(
+            PieceType::Spider,
+            zero + HexaDirection::DownRight + HexaDirection::DownRight,
+        );
+        state.place_piece(PieceType::Ant, up + HexaDirection::UpRight);
+
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        let rating = print_move_ratings(&state, &HiveAI {});
+        // Move  <Q> from (0 , -1) to (1 , -1) =>   15
+        // Move  <Q> from (0 , -1) to (-1, -2) =>   15
+        // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
+        // Move  <A> from (-1, -1) to (0 , 3 ) =>   12
+        // Move  <S> from (2 , 0 ) to (2 , 2 ) =>   12
+        // Place <A>  at  (-2, -2)             =>   10
+        // Place <G>  at  (0 , -2)             =>    5
+        // Move  <A> from (-1, -1) to (-1, 0 ) =>    2
+        // Place <G>  at  (-2, -2)             =>    1
+        assert_eq!(
+            rating
+                .into_iter()
+                .map(|(r, _, _)| r)
+                .take(9)
+                .collect::<Vec<_>>(),
+            vec![15, 15, 14, 12, 12, 10, 5, 2, 1]
+        );
     }
 }

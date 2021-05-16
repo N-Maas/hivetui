@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 use tgp_board::{
     hypothetical::Hypothetical,
     index_map::ArrayIndexMap,
@@ -185,15 +187,16 @@ where
         })
 }
 
-impl ToString for PieceType {
-    fn to_string(&self) -> String {
-        match self {
-            PieceType::Queen => "Q".to_string(),
-            PieceType::Ant => "A".to_string(),
-            PieceType::Spider => "S".to_string(),
-            PieceType::Grasshopper => "G".to_string(),
-            PieceType::Beetle => "B".to_string(),
-        }
+impl Display for PieceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = match self {
+            PieceType::Queen => "Q",
+            PieceType::Ant => "A",
+            PieceType::Spider => "S",
+            PieceType::Grasshopper => "G",
+            PieceType::Beetle => "B",
+        };
+        write!(f, "{}", string)
     }
 }
 

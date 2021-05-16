@@ -27,9 +27,8 @@ impl RateAndMap<HiveGameState> for HiveAI {
         curr_context: &[HiveContext],
         data: &HiveGameState,
         old_context: &[(HiveContext, usize)],
-        player: usize,
     ) {
-        rate_moves::rate_moves(rater, curr_context, data, old_context, player);
+        rate_moves::rate_moves(rater, curr_context, data, old_context);
     }
 
     fn rate_game_state(

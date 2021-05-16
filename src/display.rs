@@ -1,13 +1,52 @@
 use std::fmt::Display;
 
 use crate::{
+    ai::HiveAI,
     pieces::{Piece, Player},
-    state::{HiveBoard, HiveGameState},
+    state::{HiveBoard, HiveContext, HiveGameState},
 };
 
+use tgp::engine::{Engine, GameEngine};
+use tgp_ai::{rater::Rater, RatingType};
 use tgp_board::open_board::OpenIndex;
 use tgp_board::{prelude::*, structures::directions::HexaDirection};
 type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
+
+pub fn print_move_ratings(
+    state: &HiveGameState,
+    ai: &HiveAI,
+) -> Vec<(RatingType, usize, HiveContext)> {
+    let mut engine = Engine::new(2, state.clone());
+    let rating = Rater::create_rating(&mut engine, ai);
+    let board = engine.data().board();
+    for (r, index, context) in &rating {
+        let context = context.clone();
+        match context {
+            HiveContext::TargetField(context) => {
+                let from = board.get_field_unchecked(*context.inner());
+                let p_type = from.content().last().unwrap().p_type;
+                println!(
+                    "Move  <{}> from {:<2} to {:<2} => {:>4}",
+                    p_type,
+                    *context.inner(),
+                    context[*index],
+                    r
+                );
+            }
+            HiveContext::Piece(context) => {
+                let (p_type, _) = context[*index];
+                println!(
+                    "Place <{}>  at  {:<2}             => {:>4}",
+                    p_type,
+                    *context.inner(),
+                    r
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+    rating
+}
 
 // TODO: cut empty space
 pub fn print_annotated_board<T: Display>(
