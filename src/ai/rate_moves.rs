@@ -107,6 +107,7 @@ enum PositionType {
 enum Equivalency {
     AntToNeutral(OpenIndex),
     AntToBlocking(OpenIndex, OpenIndex),
+    AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
     PlaceAnt,
     PlaceQueen,
@@ -397,7 +398,13 @@ fn handle_move_ratings(
                 PositionType::Blocking => {
                     debug_assert!(m == 0);
                     is_better = no_common_neighbor(to, t_interest.target_index());
-                    Equivalency::AntToBlocking(from.index(), t_interest.target_index())
+                    if interest_to_type(&meta_data.map, data.player(), f_interest).0
+                        == PositionType::NeutralOrBad
+                    {
+                        Equivalency::AntToBlocking(from.index(), t_interest.target_index())
+                    } else {
+                        Equivalency::AntBlockingLow(t_interest.target_index())
+                    }
                 }
                 PositionType::AtQueen => {
                     debug_assert!(m == 0);
@@ -464,7 +471,7 @@ fn rate_usual_move(
             } else if piece.p_type == PieceType::Ant {
                 2
             } else {
-                6
+                4
             }
         }
         (PositionType::AtQueen, PositionType::AtQueen) => 1,
