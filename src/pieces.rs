@@ -4,7 +4,7 @@ use tgp_board::{
     open_board::OpenIndex,
     prelude::*,
     search::FieldSearchResult,
-    search::SearchMode,
+    search::{SearchMode, SearchingTree},
     structures::{
         directions::{DirectionEnumerable, HexaDirection},
         DirectionStructure,
@@ -19,11 +19,27 @@ pub enum Player {
     Black,
 }
 
+impl From<Player> for usize {
+    fn from(p: Player) -> Self {
+        match p {
+            Player::White => 0,
+            Player::Black => 1,
+        }
+    }
+}
+
 impl Player {
     pub fn switch(&mut self) {
         use Player::*;
-
         *self = match self {
+            White => Black,
+            Black => White,
+        };
+    }
+
+    pub fn switched(&self) -> Self {
+        use Player::*;
+        match self {
             White => Black,
             Black => White,
         }
@@ -92,14 +108,7 @@ impl PieceType {
                 search = tree.into_endpoint_set();
             }
             PieceType::Grasshopper => {
-                search = new_field
-                    .neighbors_by_direction()
-                    .filter(|(_, f)| !f.is_empty())
-                    .map(|(d, f)| {
-                        f.iter_line(d)
-                            .find(|target_field| target_field.is_empty())
-                            .expect("Found no empty field for Grasshopper movement.")
-                    })
+                search = grashopper_moves(new_field)
                     .collect::<Option<_>>()
                     .expect("Grasshopper has no adjacent piece.");
             }
@@ -131,14 +140,13 @@ impl PieceType {
             // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
                 field.neighbors_by_direction().any(move |(d, n)| {
-                    let is_plain = n.content().len() == 0;
-                    is_plain && {
+                    n.content().is_empty() && {
                         let left_is_plain = field
                             .next(d.prev_direction())
-                            .map_or(true, |f| f.content().len() == 0);
+                            .map_or(true, |f| f.content().is_empty());
                         let right_is_plain = field
                             .next(d.next_direction())
-                            .map_or(true, |f| f.content().len() == 0);
+                            .map_or(true, |f| f.content().is_empty());
                         // move along the border of the hive
                         left_is_plain != right_is_plain
                     }
@@ -147,6 +155,34 @@ impl PieceType {
             PieceType::Grasshopper | PieceType::Beetle => true,
         }
     }
+}
+
+/// Attention: the spider piece must be removed from the board beforehand!
+pub fn spider_moves<B>(field: Field<B>) -> SearchingTree<'_, B::Map, B>
+where
+    B: Board<Index = OpenIndex, Content = Vec<Piece>> + BoardToMap<()>,
+    B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+{
+    let mut tree = field.search_tree();
+    for _ in 0..3 {
+        tree.extend(PieceType::feasible_steps, SearchMode::NoCycles);
+    }
+    tree
+}
+
+pub fn grashopper_moves<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
+where
+    B: Board<Content = Vec<Piece>> + BoardToMap<()>,
+    B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+{
+    field
+        .neighbors_by_direction()
+        .filter(|(_, f)| !f.is_empty())
+        .map(|(d, f)| {
+            f.iter_line(d)
+                .find(|target_field| target_field.is_empty())
+                .expect("Found no empty field for Grasshopper movement.")
+        })
 }
 
 impl ToString for PieceType {
