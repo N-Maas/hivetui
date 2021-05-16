@@ -22,6 +22,7 @@ struct MetaData {
     queen_endangered: bool,
     queen_should_move: bool,
     defensive: bool,
+    want_to_block: bool,
     queen_neighbors: [u32; 2],
 }
 
@@ -178,9 +179,10 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
         queen_endangered: false,
         queen_should_move: false,
         defensive: false,
+        want_to_block: false,
         queen_neighbors: [0; 2],
     };
-    let mut queen_can_move = false;
+    let mut free_enemy_ant = false;
 
     // initialize, movability
     for field in board.iter_fields() {
@@ -194,32 +196,30 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     // points of interest
     for field in board.iter_fields() {
         if !field.is_empty() {
-            let piece = field.content().first().unwrap();
-            if piece.p_type == PieceType::Queen {
+            let queen = field.content().first().unwrap();
+            if queen.p_type == PieceType::Queen {
                 let mut num_neighbors = 0;
                 for n in field.neighbors() {
                     let n_meta = meta_data.get_mut(n);
-                    n_meta.upgrade(MetaInterest::AdjacentToQueen(field.index(), piece.player));
+                    n_meta.upgrade(MetaInterest::AdjacentToQueen(field.index(), queen.player));
                     if !n.is_empty() {
                         num_neighbors += 1;
                     }
 
                     let player = data.player();
-                    if piece.player == player
+                    if queen.player == player
                         && n.content().last().map_or(false, |p| p.player != player)
                     {
                         meta_data.queen_endangered = true;
-                    } else if piece.player == player && meta_data.can_move(field) {
-                        queen_can_move = true;
                     }
                 }
-                meta_data.queen_neighbors[usize::from(piece.player)] = num_neighbors;
+                meta_data.queen_neighbors[usize::from(queen.player)] = num_neighbors;
             } else if meta_data.can_move(field) {
                 for n in field.neighbors() {
                     if n.is_empty() {
                         if would_block(n, field) {
                             let n_meta = meta_data.get_mut(n);
-                            n_meta.upgrade(MetaInterest::Blocks(field.index(), piece.player));
+                            n_meta.upgrade(MetaInterest::Blocks(field.index(), queen.player));
                         }
                     } else {
                         if !meta_data.can_move(n) && blocks(field, n) {
@@ -230,6 +230,16 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                             ));
                         }
                     }
+                }
+
+                // test whether this is a free ant that the enemy has available
+                let piece = field.content().last().unwrap();
+                if piece.p_type == PieceType::Ant
+                    && piece.player != data.player()
+                    && !(meta_data.is_adj_to_queen(field, data.player())
+                        || meta_data.is_blocking(field, data.player()))
+                {
+                    free_enemy_ant = true;
                 }
             }
         }
@@ -243,25 +253,28 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     }
 
     // movable queen special case: search for spider or grasshopper (or beetle?) that might endanger queen
-    if queen_can_move {
-        'outer: for field in board.iter_fields() {
-            if let Some(piece) = field.content().last() {
-                if piece.player != data.player() {
-                    let moves = match piece.p_type {
-                        // TODO: add beetle?
-                        PieceType::Spider => PieceType::Spider.get_moves(field),
-                        PieceType::Grasshopper => grashopper_moves(field).collect(),
-                        _ => Vec::new(),
-                    };
-                    for f in moves {
-                        if meta_data.is_adj_to_queen(f, data.player()) {
-                            meta_data.queen_should_move = true;
-                            break 'outer;
-                        }
+    'outer: for field in board.iter_fields() {
+        if let Some(piece) = field.content().last() {
+            if piece.player != data.player() && meta_data.can_move(field) {
+                let moves = match piece.p_type {
+                    // TODO: add beetle?
+                    PieceType::Spider => PieceType::Spider.get_moves(field),
+                    PieceType::Grasshopper => grashopper_moves(field).collect(),
+                    _ => Vec::new(),
+                };
+                for f in moves {
+                    if meta_data.is_adj_to_queen(f, data.player()) {
+                        meta_data.queen_should_move = true;
+                        break 'outer;
                     }
                 }
             }
         }
+    }
+
+    let equal_neighbors = meta_data.queen_neighbors[0] == meta_data.queen_neighbors[1];
+    if meta_data.defensive || (equal_neighbors && (meta_data.queen_should_move || free_enemy_ant)) {
+        meta_data.want_to_block = true;
     }
     meta_data
 }
@@ -426,22 +439,28 @@ fn rate_usual_move(
         }
         (PositionType::Blocking, PositionType::NeutralOrBad) => -6,
         (PositionType::Blocking, PositionType::Blocking) => {
-            if piece.p_type == PieceType::Ant {
+            if meta.want_to_block {
+                8
+            } else if piece.p_type == PieceType::Ant {
                 2
             } else {
                 6
             }
         }
         (PositionType::Blocking, PositionType::AtQueen) => {
-            if piece.p_type == PieceType::Ant {
-                6
+            if meta.defensive {
+                3
+            } else if piece.p_type == PieceType::Ant {
+                1 + 2 * meta.queen_neighbors[usize::from(piece.player.switched())] as i32
             } else {
                 10
             }
         }
         (PositionType::AtQueen, PositionType::NeutralOrBad) => -6,
         (PositionType::AtQueen, PositionType::Blocking) => {
-            if piece.p_type == PieceType::Ant {
+            if meta.want_to_block {
+                9
+            } else if piece.p_type == PieceType::Ant {
                 2
             } else {
                 6
@@ -473,11 +492,11 @@ fn handle_placement_ratings(
             match piece_t {
                 PieceType::Queen => {
                     let is_better = meta == MetaInterest::Uninteresting;
-                    set_eq(i, j, rater, eq_map, Equivalency::PlaceQueen, 10, is_better);
+                    set_eq(i, j, rater, eq_map, Equivalency::PlaceQueen, 11, is_better);
                 }
                 PieceType::Ant => {
                     let is_better = meta == MetaInterest::Uninteresting;
-                    set_eq(i, j, rater, eq_map, Equivalency::PlaceAnt, 10, is_better);
+                    set_eq(i, j, rater, eq_map, Equivalency::PlaceAnt, 11, is_better);
                 }
                 PieceType::Spider | PieceType::Grasshopper => {
                     // for spiders and grasshoppers, it highly depends on whether they can reach something useful
@@ -498,9 +517,11 @@ fn handle_placement_ratings(
                                     MetaInterest::AdjacentToQueen(queen, _) => {
                                         if meta_data.can_move(queen) {
                                             // the queen can just move away
+                                            3
+                                        } else if meta_data.defensive {
                                             5
                                         } else {
-                                            9
+                                            8
                                         }
                                     }
                                     _ => unreachable!(),
@@ -530,7 +551,6 @@ pub fn rate_moves(
 ) {
     // Special case: We always use the spider as first piece.
     if data.pieces().1 == 0 {
-        println!("Start.");
         assert_eq!(rater.num_decisions(), 1);
         match &curr_context[0] {
             HiveContext::Piece(p_types) => {
@@ -585,7 +605,7 @@ mod test {
         },
         display::{print_annotated_board, print_move_ratings},
         pieces::{PieceType, Player},
-        state::{HiveContext, HiveGameState},
+        state::HiveGameState,
     };
 
     use super::calculate_metadata;
@@ -680,6 +700,7 @@ mod test {
         assert!(!meta_data.queen_endangered);
         assert!(meta_data.queen_should_move);
         assert!(!meta_data.defensive);
+        assert!(!meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [1, 2]);
         for f in state.board().iter_fields() {
             let movable =
@@ -690,8 +711,8 @@ mod test {
         state.place_piece(PieceType::Grasshopper, zero + HexaDirection::DownRight);
         let meta_data = calculate_metadata(&state);
         assert!(meta_data.queen_endangered);
-        assert!(!meta_data.queen_should_move);
         assert!(!meta_data.defensive);
+        assert!(meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [2, 2]);
         for f in state.board().iter_fields() {
             let movable = [
@@ -708,6 +729,7 @@ mod test {
         assert!(!meta_data.queen_endangered);
         assert!(!meta_data.queen_should_move);
         assert!(!meta_data.defensive);
+        assert!(!meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [2, 3]);
         assert_eq!(
             meta_data.interest(up + HexaDirection::Up + HexaDirection::UpRight),
@@ -720,6 +742,7 @@ mod test {
         assert!(!meta_data.queen_endangered);
         assert!(meta_data.queen_should_move);
         assert!(!meta_data.defensive);
+        assert!(!meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [2, 3]);
         assert_eq!(
             meta_data.interest(up + HexaDirection::Up + HexaDirection::UpRight),
@@ -833,8 +856,8 @@ mod test {
         // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
         // Move  <A> from (-1, -1) to (0 , 3 ) =>   12
         // Move  <S> from (2 , 0 ) to (2 , 2 ) =>   12
-        // Place <A>  at  (-2, -2)             =>   10
-        // Place <G>  at  (0 , -2)             =>    5
+        // Place <A>  at  (-2, -2)             =>   11
+        // Place <G>  at  (0 , -2)             =>    3
         // Move  <A> from (-1, -1) to (-1, 0 ) =>    2
         // Place <G>  at  (-2, -2)             =>    1
         assert_eq!(
@@ -843,7 +866,7 @@ mod test {
                 .map(|(r, _, _)| r)
                 .take(9)
                 .collect::<Vec<_>>(),
-            vec![15, 15, 14, 12, 12, 10, 5, 2, 1]
+            vec![15, 15, 14, 12, 12, 11, 3, 2, 1]
         );
     }
 }
