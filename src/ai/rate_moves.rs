@@ -36,9 +36,23 @@ impl MetaData {
     fn get_mut(&mut self, index: impl Into<OpenIndex>) -> &mut FieldMeta {
         self.map.get_mut(index.into()).unwrap()
     }
+
+    fn is_blocking(&self, index: impl Into<OpenIndex>, player: Player) -> bool {
+        match self.interest(index) {
+            MetaInterest::Blocks(_, p) => p == player,
+            _ => false,
+        }
+    }
+
+    fn is_adj_to_queen(&self, index: impl Into<OpenIndex>, player: Player) -> bool {
+        match self.interest(index) {
+            MetaInterest::AdjacentToQueen(_, p) => p == player,
+            _ => false,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MetaInterest {
     Uninteresting,
     Blocks(OpenIndex, Player),
@@ -61,7 +75,7 @@ impl Default for MetaInterest {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct FieldMeta {
     pub can_move: bool,
     pub interest: MetaInterest,
@@ -80,7 +94,7 @@ impl FieldMeta {
 }
 
 // ------ types used by the rating -----
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PositionType {
     NeutralOrBad,
     Blocking,
@@ -235,11 +249,9 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                         _ => Vec::new(),
                     };
                     for f in moves {
-                        if let MetaInterest::AdjacentToQueen(_, player) = meta_data.interest(f) {
-                            if player == data.player() {
-                                meta_data.queen_should_move = true;
-                                break 'outer;
-                            }
+                        if meta_data.is_adj_to_queen(f, data.player()) {
+                            meta_data.queen_should_move = true;
+                            break 'outer;
                         }
                     }
                 }
@@ -249,7 +261,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     meta_data
 }
 
-// ----- function for rating -----
+// ----- functions for rating -----
 fn interest_to_type(
     meta: &HashIndexMap<OpenIndex, FieldMeta>,
     player: Player,
@@ -351,6 +363,7 @@ fn rate_usual_move(
     rating + total_modifier
 }
 
+/// Calculates a rating for all moves. Before that, some metadata for the field is calculated.
 pub fn rate_moves(
     rater: &mut Rater,
     curr_context: &[HiveContext],
@@ -359,7 +372,7 @@ pub fn rate_moves(
     player: usize,
 ) {
     assert!(data.player_usize() == player);
-    // Special case: As first piece, we always use the spider.
+    // Special case: We always use the spider as first piece.
     if data.pieces().1 == 0 {
         println!("Start.");
         assert_eq!(rater.num_decisions(), 1);
@@ -377,15 +390,15 @@ pub fn rate_moves(
         return;
     }
 
+    // calculate the metadata
     let board = data.board();
     let meta_data = calculate_metadata(data);
     if old_context.is_empty() {
         dbg!(&meta_data);
     }
 
-    let mut eq_map = HashMap::<Equivalency, (usize, usize)>::new();
-
     // calculate the ratings
+    let mut eq_map = HashMap::<Equivalency, (usize, usize)>::new();
     for (i, c) in curr_context.iter().enumerate() {
         match c {
             HiveContext::SkipPlayer => rater.rate(0, 0, 0),
@@ -401,6 +414,7 @@ pub fn rate_moves(
                     debug_assert!(to.is_empty());
 
                     if piece.p_type == PieceType::Queen {
+                        // moving the queen only makes sense when it is endangered
                         if meta_data.queen_endangered {
                             rater.rate(i, j, 15);
                         } else if meta_data.queen_should_move {
@@ -409,6 +423,7 @@ pub fn rate_moves(
                             rater.rate(i, j, 0);
                         }
                     } else if piece.p_type == PieceType::Ant {
+                        // to avoid combinatorial explosion, it is really important to use equivalency classes for ants
                         let mut is_better = false;
                         let (equivalency, m) =
                             interest_to_type(&meta_data.map, data.player(), t_interest);
@@ -431,6 +446,8 @@ pub fn rate_moves(
                             }
                         };
                         let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, m);
+
+                        // test whether an equivalent move exists already
                         match eq_map.entry(equivalency) {
                             Entry::Occupied(mut entry) => {
                                 if is_better {
@@ -467,10 +484,82 @@ mod test {
     use tgp_board::{open_board::OpenIndex, structures::directions::HexaDirection, Board};
 
     use crate::{
-        ai::rate_moves::{blocks, would_block},
-        pieces::PieceType,
+        ai::rate_moves::{blocks, would_block, MetaInterest},
+        pieces::{PieceType, Player},
         state::HiveGameState,
     };
+
+    use super::calculate_metadata;
+
+    #[test]
+    fn meta_data_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 2);
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = OpenIndex::from((0, 1));
+        state.place_piece(PieceType::Ant, zero);
+        state.place_piece(PieceType::Ant, up);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Queen, up + HexaDirection::Up);
+        state.place_piece(PieceType::Ant, zero + HexaDirection::DownLeft);
+        state.place_piece(
+            PieceType::Ant,
+            zero + HexaDirection::Down + HexaDirection::DownRight,
+        );
+
+        let meta_data = calculate_metadata(&state);
+        assert!(meta_data.queen_endangered);
+        assert!(!meta_data.queen_should_move);
+        assert_eq!(meta_data.queen_neighbors, [3, 1]);
+        for f in state.board().iter_fields() {
+            let movable = [
+                up + HexaDirection::Up,
+                zero + HexaDirection::DownLeft,
+                zero + HexaDirection::Down + HexaDirection::DownRight,
+            ]
+            .contains(&f.index());
+            assert_eq!(meta_data.can_move(f), movable);
+        }
+        for f in state
+            .board()
+            .get_field_unchecked(zero + HexaDirection::Down)
+            .neighbors()
+        {
+            assert!(meta_data.is_adj_to_queen(f, Player::White));
+        }
+        for f in state
+            .board()
+            .get_field_unchecked(up + HexaDirection::Up)
+            .neighbors()
+        {
+            assert!(meta_data.is_adj_to_queen(f, Player::Black));
+        }
+        assert_eq!(
+            meta_data.interest(zero + HexaDirection::UpLeft),
+            MetaInterest::Uninteresting
+        );
+        assert_eq!(
+            meta_data.interest(zero + HexaDirection::UpRight),
+            MetaInterest::Uninteresting
+        );
+        assert_eq!(
+            meta_data.interest(zero + HexaDirection::Down),
+            MetaInterest::Uninteresting
+        );
+        assert_eq!(
+            meta_data.interest(zero + HexaDirection::DownLeft + HexaDirection::UpLeft),
+            MetaInterest::Blocks(zero + HexaDirection::DownLeft, Player::White)
+        );
+        assert_eq!(
+            meta_data.interest(zero + HexaDirection::DownRight + HexaDirection::DownRight),
+            MetaInterest::Blocks(
+                zero + HexaDirection::Down + HexaDirection::DownRight,
+                Player::Black
+            )
+        );
+    }
 
     #[test]
     fn blocking_test() {
