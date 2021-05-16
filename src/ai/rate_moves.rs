@@ -93,11 +93,17 @@ struct FieldMeta {
 }
 
 impl FieldMeta {
-    fn upgrade(&mut self, new: MetaInterest) {
+    fn upgrade(&mut self, new: MetaInterest, player: Player) {
         match (self.interest, new) {
             (MetaInterest::Uninteresting, _) => self.interest = new,
             (MetaInterest::Blocks(_, _), MetaInterest::AdjacentToQueen(_, _)) => {
                 self.interest = new
+            }
+            (MetaInterest::AdjacentToQueen(_, p), MetaInterest::AdjacentToQueen(_, _)) => {
+                // enemy queen has priority
+                if p == player {
+                    self.interest = new
+                }
             }
             _ => {}
         };
@@ -115,13 +121,14 @@ enum PositionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Equivalency {
     AntToNeutral(OpenIndex),
+    // TODO: ant works badly for circles
     AntToBlocking(OpenIndex, OpenIndex),
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
     PlaceAnt,
     PlaceQueen,
+    PlaceBeetle(u32),
     PlaceAtEnemyQueen(bool),
-    // TODO: Beetle?
 }
 
 // ------ utility functions -----
@@ -216,11 +223,17 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
             let queen = field.content().first().unwrap();
             if queen.p_type == PieceType::Queen {
                 let meta = meta_data.get_mut(field);
-                meta.upgrade(MetaInterest::AdjacentToQueen(field.index(), queen.player));
+                meta.upgrade(
+                    MetaInterest::AdjacentToQueen(field.index(), queen.player),
+                    data.player(),
+                );
                 let mut num_neighbors = 0;
                 for n in field.neighbors() {
                     let n_meta = meta_data.get_mut(n);
-                    n_meta.upgrade(MetaInterest::AdjacentToQueen(field.index(), queen.player));
+                    n_meta.upgrade(
+                        MetaInterest::AdjacentToQueen(field.index(), queen.player),
+                        data.player(),
+                    );
                     if !n.is_empty() {
                         num_neighbors += 1;
                     }
@@ -239,14 +252,17 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                     if n.is_empty() {
                         if would_block(n, field) {
                             let n_meta = meta_data.get_mut(n);
-                            n_meta.upgrade(MetaInterest::Blocks(field.index(), queen.player));
+                            n_meta.upgrade(
+                                MetaInterest::Blocks(field.index(), queen.player),
+                                data.player(),
+                            );
                         }
                     } else if !meta_data.can_move(n) && blocks(field, n) {
                         let meta = meta_data.get_mut(field);
-                        meta.upgrade(MetaInterest::Blocks(
-                            n.index(),
-                            n.content().last().unwrap().player,
-                        ));
+                        meta.upgrade(
+                            MetaInterest::Blocks(n.index(), n.content().last().unwrap().player),
+                            data.player(),
+                        );
                     }
                 }
             }
@@ -460,6 +476,8 @@ fn handle_move_ratings(
             let goes_on_top = !to.is_empty();
             let t_interest = if goes_on_top {
                 if queen_pos.map_or(false, |pos| distance(to.index(), pos) <= 1) {
+                    // in this case, the bonus would stack too much
+                    bonus -= 3;
                     MetaInterest::AdjacentToQueen(to.index(), data.player().switched())
                 } else if meta_data.can_move(to) || blocks(from, to) {
                     MetaInterest::Blocks(to.index(), to.content().last().unwrap().player)
@@ -470,7 +488,7 @@ fn handle_move_ratings(
                 t_interest
             };
             if goes_on_top && !is_on_top {
-                bonus += 5;
+                bonus += 4;
             } else if Some(from.index()) == queen_pos && is_on_top && !goes_on_top {
                 // edge case: beetle is on queen and goes down
                 rater.rate(
@@ -541,7 +559,7 @@ fn rate_usual_move(
                 4
             }
         }
-        (PositionType::AtQueen, PositionType::AtQueen) => 1,
+        (PositionType::AtQueen, PositionType::AtQueen) => 3,
     };
     rating + total_modifier
 }
@@ -629,8 +647,31 @@ fn handle_placement_ratings(
                     rater.rate(i, j, rating);
                 }
                 PieceType::Beetle => {
-                    // TODO
-                    rater.rate(i, j, 5);
+                    let is_better = meta == MetaInterest::Uninteresting;
+                    let enemy_queen_pos = meta_data.q_pos(data.player().switched());
+                    let our_queen_pos = meta_data.q_pos(data.player());
+                    if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 3) {
+                        let dist = distance(target.index(), enemy_queen_pos.unwrap());
+                        let rating = match dist {
+                            2 => 10,
+                            3 => 6,
+                            _ => unreachable!(),
+                        };
+                        set_eq(
+                            i,
+                            j,
+                            rater,
+                            eq_map,
+                            Equivalency::PlaceBeetle(dist),
+                            rating,
+                            is_better,
+                        );
+                    } else if our_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 2)
+                    {
+                        rater.rate(i, j, 3);
+                    } else {
+                        rater.rate(i, j, 1);
+                    }
                 }
             }
         }
@@ -1017,14 +1058,14 @@ mod test {
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
         let rating = print_move_ratings(&state, &HiveAI {});
-        // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   16
+        // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   12
         // Place <A>  at  (-2, -2)             =>   11
         let results = rating
             .into_iter()
             .map(|(r, _, _)| r)
             .take(3)
             .collect::<Vec<_>>();
-        assert_eq!(&results[0..2], &[16, 11]);
+        assert_eq!(&results[0..2], &[12, 11]);
         assert!(results[2] < 8);
 
         state.move_piece(

@@ -72,7 +72,11 @@ fn main() {
                 }
                 match get_input(is_top_level) {
                     Input::Choose(index) => {
-                        decision.select_option(index);
+                        if index < decision.option_count() {
+                            decision.select_option(index);
+                        } else {
+                            println!("Invalid number, please try again!");
+                        }
                     }
                     Input::Undo => {
                         if !decision.undo_last_decision() {
