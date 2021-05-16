@@ -24,9 +24,18 @@ struct MetaData {
     defensive: bool,
     want_to_block: bool,
     queen_neighbors: [u32; 2],
+    queen_pos: [Option<OpenIndex>; 2],
 }
 
 impl MetaData {
+    fn q_neighbors(&self, player: Player) -> u32 {
+        self.queen_neighbors[usize::from(player)]
+    }
+
+    fn q_pos(&self, player: Player) -> Option<OpenIndex> {
+        self.queen_pos[usize::from(player)]
+    }
+
     fn can_move(&self, field: impl Into<OpenIndex>) -> bool {
         self.map.get(field.into()).unwrap().can_move
     }
@@ -111,6 +120,7 @@ enum Equivalency {
     AntToQueen(OpenIndex),
     PlaceAnt,
     PlaceQueen,
+    PlaceAtEnemyQueen(bool),
     // TODO: Beetle?
 }
 
@@ -120,6 +130,11 @@ fn dummy_piece() -> Piece {
         player: Player::White,
         p_type: PieceType::Spider,
     }
+}
+
+fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
+    ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
+        as u32
 }
 
 fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
@@ -182,6 +197,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
         defensive: false,
         want_to_block: false,
         queen_neighbors: [0; 2],
+        queen_pos: [None; 2],
     };
     let mut free_enemy_ant = false;
 
@@ -199,6 +215,8 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
         if !field.is_empty() {
             let queen = field.content().first().unwrap();
             if queen.p_type == PieceType::Queen {
+                let meta = meta_data.get_mut(field);
+                meta.upgrade(MetaInterest::AdjacentToQueen(field.index(), queen.player));
                 let mut num_neighbors = 0;
                 for n in field.neighbors() {
                     let n_meta = meta_data.get_mut(n);
@@ -215,6 +233,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                     }
                 }
                 meta_data.queen_neighbors[usize::from(queen.player)] = num_neighbors;
+                meta_data.queen_pos[usize::from(queen.player)] = Some(field.index());
             } else if meta_data.can_move(field) {
                 for n in field.neighbors() {
                     if n.is_empty() {
@@ -235,9 +254,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     }
 
     let player = data.player();
-    if meta_data.queen_neighbors[usize::from(player)]
-        > meta_data.queen_neighbors[usize::from(player.switched())]
-    {
+    if meta_data.q_neighbors(player) > meta_data.q_neighbors(player.switched()) {
         meta_data.defensive = true;
     }
 
@@ -263,7 +280,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                 if piece.p_type == PieceType::Ant
                     && !(meta_data.is_adj_to_queen(field, data.player())
                         || (meta_data.is_blocking(field, data.player())
-                            && meta_data.queen_neighbors[usize::from(data.player())] <= 3))
+                            && meta_data.q_neighbors(data.player()) <= 3))
                 {
                     free_enemy_ant = true;
                 }
@@ -373,13 +390,11 @@ fn handle_move_ratings(
 
         if piece.p_type == PieceType::Queen {
             // moving the queen only makes sense when it is endangered
-            if meta_data.queen_endangered
-                && meta_data.queen_neighbors[usize::from(data.player())] > 1
-            {
+            if meta_data.queen_endangered && meta_data.q_neighbors(data.player()) > 1 {
                 rater.rate(i, j, 15);
             } else if meta_data.queen_should_move {
                 rater.rate(i, j, 10);
-            } else if meta_data.queen_neighbors[usize::from(data.player().switched())] == 5 {
+            } else if meta_data.q_neighbors(data.player().switched()) == 5 {
                 rater.rate(i, j, 6);
             } else {
                 rater.rate(i, j, 0);
@@ -414,8 +429,60 @@ fn handle_move_ratings(
             };
             let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
             set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
+        } else if piece.p_type == PieceType::Beetle {
+            let mut bonus = 0;
+            let queen_pos = meta_data.q_pos(data.player().switched());
+            if let Some(pos) = queen_pos {
+                let curr_dist = distance(from.index(), pos);
+                let new_dist = distance(to.index(), pos);
+                // note: distance == 1 is handled implicitely by the usual movement rating
+                if new_dist < curr_dist && new_dist == 2 {
+                    bonus = 9;
+                } else if new_dist < curr_dist && (new_dist == 0 || new_dist == 3) {
+                    bonus = 5;
+                } else if new_dist < curr_dist {
+                    bonus = 1;
+                }
+            }
+            // goin' up or down?
+            let is_on_top = from.content().len() > 1;
+            let f_interest = if is_on_top {
+                if Some(from.index()) == queen_pos {
+                    MetaInterest::AdjacentToQueen(from.index(), data.player().switched())
+                } else if blocks(from, from) {
+                    MetaInterest::Blocks(from.index(), from.content().last().unwrap().player)
+                } else {
+                    MetaInterest::Uninteresting
+                }
+            } else {
+                f_interest
+            };
+            let goes_on_top = !to.is_empty();
+            let t_interest = if goes_on_top {
+                if queen_pos.map_or(false, |pos| distance(to.index(), pos) <= 1) {
+                    MetaInterest::AdjacentToQueen(to.index(), data.player().switched())
+                } else if meta_data.can_move(to) || blocks(from, to) {
+                    MetaInterest::Blocks(to.index(), to.content().last().unwrap().player)
+                } else {
+                    MetaInterest::Uninteresting
+                }
+            } else {
+                t_interest
+            };
+            if goes_on_top && !is_on_top {
+                bonus += 5;
+            } else if Some(from.index()) == queen_pos && is_on_top && !goes_on_top {
+                // edge case: beetle is on queen and goes down
+                rater.rate(
+                    i,
+                    j,
+                    5 + 2 * meta_data.q_neighbors(data.player().switched()) as RatingType,
+                );
+                continue;
+            }
+            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, bonus);
+            rater.rate(i, j, rating);
         } else {
-            // TODO: Beetle special case (and equivalency)
             let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
             rater.rate(i, j, rating);
         }
@@ -459,7 +526,7 @@ fn rate_usual_move(
             if meta.defensive {
                 3
             } else if piece.p_type == PieceType::Ant {
-                1 + 2 * meta.queen_neighbors[usize::from(piece.player.switched())] as i32
+                1 + 2 * meta.q_neighbors(piece.player.switched()) as i32
             } else {
                 10
             }
@@ -492,7 +559,28 @@ fn handle_placement_ratings(
     for (j, (piece_t, _)) in context.iter().enumerate() {
         if meta_data.is_adj_to_queen(target, player.switched()) {
             // placing a piece directly at the enemy queen is quite perfect..
-            rater.rate(i, j, 18);
+            let is_ant = *piece_t == PieceType::Ant;
+            if meta_data.defensive {
+                set_eq(
+                    i,
+                    j,
+                    rater,
+                    eq_map,
+                    Equivalency::PlaceAtEnemyQueen(is_ant),
+                    12,
+                    false,
+                );
+            } else {
+                set_eq(
+                    i,
+                    j,
+                    rater,
+                    eq_map,
+                    Equivalency::PlaceAtEnemyQueen(is_ant),
+                    18,
+                    false,
+                );
+            }
         } else {
             // .. otherwise, a few case distinctions are necessary
             let meta = meta_data.interest(target);
@@ -608,7 +696,7 @@ mod test {
 
     use crate::{
         ai::{
-            rate_moves::{blocks, would_block, MetaInterest},
+            rate_moves::{blocks, distance, would_block, MetaInterest},
             HiveAI,
         },
         display::{print_annotated_board, print_move_ratings},
@@ -617,6 +705,19 @@ mod test {
     };
 
     use super::calculate_metadata;
+
+    #[test]
+    fn distance_test() {
+        let zero = OpenIndex::from((0, 0));
+        let up = zero + HexaDirection::Up;
+        let upright = zero + HexaDirection::UpRight;
+        let downright = zero + HexaDirection::DownRight;
+        let upupright = zero + HexaDirection::Up + HexaDirection::UpRight;
+        assert_eq!(distance(zero, up), 1);
+        assert_eq!(distance(zero, upright), 1);
+        assert_eq!(distance(zero, downright), 1);
+        assert_eq!(distance(zero, upupright), 2);
+    }
 
     #[test]
     fn meta_data_test_base() {
@@ -876,5 +977,76 @@ mod test {
                 .collect::<Vec<_>>(),
             vec![15, 15, 14, 12, 12, 11, 3, 2, 1]
         );
+    }
+
+    #[test]
+    fn rating_test_beetles() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 2);
+        pieces.insert(PieceType::Spider, 2);
+        pieces.insert(PieceType::Beetle, 2);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = OpenIndex::from((0, 1));
+        state.place_piece(PieceType::Ant, zero);
+        state.place_piece(PieceType::Ant, up);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Queen, up + HexaDirection::UpRight);
+        state.place_piece(PieceType::Spider, zero + HexaDirection::DownLeft);
+        state.place_piece(PieceType::Spider, up + HexaDirection::Up);
+        state.place_piece(
+            PieceType::Beetle,
+            up + HexaDirection::Up + HexaDirection::UpLeft,
+        );
+        state.place_piece(
+            PieceType::Beetle,
+            zero + HexaDirection::Down + HexaDirection::Down,
+        );
+        state.move_piece(
+            zero + HexaDirection::DownLeft,
+            zero + HexaDirection::DownLeft,
+            false,
+        );
+        state.move_piece(
+            zero + HexaDirection::Down + HexaDirection::Down,
+            zero + HexaDirection::Down,
+            false,
+        );
+
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        let rating = print_move_ratings(&state, &HiveAI {});
+        // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   16
+        // Place <A>  at  (-2, -2)             =>   11
+        let results = rating
+            .into_iter()
+            .map(|(r, _, _)| r)
+            .take(3)
+            .collect::<Vec<_>>();
+        assert_eq!(&results[0..2], &[16, 11]);
+        assert!(results[2] < 8);
+
+        state.move_piece(
+            up + HexaDirection::UpRight,
+            up + HexaDirection::UpRight,
+            false,
+        );
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        let rating = print_move_ratings(&state, &HiveAI {});
+        // Place <A>  at  (0 , -2)             =>   18
+        // Place <S>  at  (0 , -2)             =>   18
+        // Place <A>  at  (1 , 3 )             =>   11
+        // Move  <B> from (0 , -1) to (1 , 0 ) =>    9
+        // Move  <B> from (0 , -1) to (1 , -1) =>    9
+        // Move  <B> from (0 , -1) to (0 , -2) =>    9
+        // Move  <B> from (0 , -1) to (-1, -2) =>    9
+        let results = rating
+            .into_iter()
+            .map(|(r, _, _)| r)
+            .take(8)
+            .collect::<Vec<_>>();
+        assert_eq!(&results[0..7], &[18, 18, 11, 9, 9, 9, 9]);
+        assert!(results[7] < 8);
     }
 }
