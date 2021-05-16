@@ -42,7 +42,8 @@ pub fn print_move_ratings(
                     r
                 );
             }
-            _ => unreachable!(),
+            HiveContext::SkipPlayer => print!("Skip turn!"),
+            HiveContext::BaseField(_) => unreachable!(),
         }
     }
     rating

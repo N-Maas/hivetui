@@ -221,25 +221,13 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                             let n_meta = meta_data.get_mut(n);
                             n_meta.upgrade(MetaInterest::Blocks(field.index(), queen.player));
                         }
-                    } else {
-                        if !meta_data.can_move(n) && blocks(field, n) {
-                            let meta = meta_data.get_mut(field);
-                            meta.upgrade(MetaInterest::Blocks(
-                                n.index(),
-                                n.content().last().unwrap().player,
-                            ));
-                        }
+                    } else if !meta_data.can_move(n) && blocks(field, n) {
+                        let meta = meta_data.get_mut(field);
+                        meta.upgrade(MetaInterest::Blocks(
+                            n.index(),
+                            n.content().last().unwrap().player,
+                        ));
                     }
-                }
-
-                // test whether this is a free ant that the enemy has available
-                let piece = field.content().last().unwrap();
-                if piece.p_type == PieceType::Ant
-                    && piece.player != data.player()
-                    && !(meta_data.is_adj_to_queen(field, data.player())
-                        || meta_data.is_blocking(field, data.player()))
-                {
-                    free_enemy_ant = true;
                 }
             }
         }
@@ -267,6 +255,16 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                         meta_data.queen_should_move = true;
                         break 'outer;
                     }
+                }
+
+                // test whether this is a free ant that the enemy has available to attack the queen
+                // (it is free unless it is too occupied blocking another piece)
+                if piece.p_type == PieceType::Ant
+                    && !(meta_data.is_adj_to_queen(field, data.player())
+                        || (meta_data.is_blocking(field, data.player())
+                            && meta_data.queen_neighbors[usize::from(data.player())] <= 3))
+                {
+                    free_enemy_ant = true;
                 }
             }
         }
@@ -371,14 +369,17 @@ fn handle_move_ratings(
     for (j, target) in context.iter().enumerate() {
         let to = data.board().get_field_unchecked(*target);
         let t_interest = meta_data.interest(to);
-        debug_assert!(to.is_empty());
 
         if piece.p_type == PieceType::Queen {
             // moving the queen only makes sense when it is endangered
-            if meta_data.queen_endangered {
+            if meta_data.queen_endangered
+                && meta_data.queen_neighbors[usize::from(data.player())] > 1
+            {
                 rater.rate(i, j, 15);
             } else if meta_data.queen_should_move {
                 rater.rate(i, j, 10);
+            } else if meta_data.queen_neighbors[usize::from(data.player().switched())] == 5 {
+                rater.rate(i, j, 6);
             } else {
                 rater.rate(i, j, 0);
             }
@@ -404,7 +405,7 @@ fn handle_move_ratings(
                     Equivalency::AntToQueen(from.index())
                 }
             };
-            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, m);
+            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
             set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
         } else {
             // TODO: Beetle special case (and equivalency)
@@ -442,7 +443,7 @@ fn rate_usual_move(
             if meta.want_to_block {
                 8
             } else if piece.p_type == PieceType::Ant {
-                2
+                4
             } else {
                 6
             }
