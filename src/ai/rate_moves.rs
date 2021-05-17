@@ -158,9 +158,8 @@ fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
     if !h_field.content().last().unwrap().p_type.is_movable(h_field) {
         true
     } else {
-        // Alternatively, the OHR might not hold
-        // This is not always correct (and doesn't need to be, for the AI)
-        no_common_neighbor(target, blocked.index())
+        // blocking via OHR happens exactly if there is no other neighbor
+        target.neighbors().all(|f| f == blocked || f.is_empty())
     }
 }
 
@@ -260,7 +259,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                     } else if !meta_data.can_move(n) && blocks(field, n) {
                         let meta = meta_data.get_mut(field);
                         meta.upgrade(
-                            MetaInterest::Blocks(n.index(), n.content().last().unwrap().player),
+                            MetaInterest::Blocks(n.index(), n.content().first().unwrap().player),
                             data.player(),
                         );
                     }
@@ -477,7 +476,9 @@ fn handle_move_ratings(
             let t_interest = if goes_on_top {
                 if queen_pos.map_or(false, |pos| distance(to.index(), pos) <= 1) {
                     // in this case, the bonus would stack too much
-                    bonus -= 3;
+                    if is_on_top || queen_pos.unwrap() != to.index() {
+                        bonus -= 3;
+                    }
                     MetaInterest::AdjacentToQueen(to.index(), data.player().switched())
                 } else if meta_data.can_move(to) || blocks(from, to) {
                     MetaInterest::Blocks(to.index(), to.content().last().unwrap().player)
@@ -544,7 +545,7 @@ fn rate_usual_move(
             if meta.defensive {
                 3
             } else if piece.p_type == PieceType::Ant {
-                1 + 2 * meta.q_neighbors(piece.player.switched()) as i32
+                3 + 2 * meta.q_neighbors(piece.player.switched()) as i32
             } else {
                 10
             }
@@ -629,7 +630,8 @@ fn handle_placement_ratings(
                                 PositionType::Blocking => 5,
                                 PositionType::AtQueen => match interest {
                                     MetaInterest::AdjacentToQueen(queen, _) => {
-                                        if meta_data.can_move(queen) {
+                                        let queen = data.board().get_field_unchecked(queen);
+                                        if meta_data.can_move(queen) && queen.content().len() == 1 {
                                             // the queen can just move away
                                             3
                                         } else if meta_data.defensive {
@@ -706,9 +708,6 @@ pub fn rate_moves(
 
     // calculate the metadata
     let meta_data = calculate_metadata(data);
-    // if old_context.is_empty() {
-    //     dbg!(&meta_data);
-    // }
 
     // calculate the ratings
     // TODO: improve placement eq-classes (better and worse blocking..)? possibly extend to spider/grasshopper
@@ -812,10 +811,6 @@ mod test {
         );
         assert_eq!(
             meta_data.interest(zero + HexaDirection::UpRight),
-            MetaInterest::Uninteresting
-        );
-        assert_eq!(
-            meta_data.interest(zero + HexaDirection::Down),
             MetaInterest::Uninteresting
         );
         assert_eq!(
@@ -1082,12 +1077,14 @@ mod test {
         // Move  <B> from (0 , -1) to (1 , -1) =>    9
         // Move  <B> from (0 , -1) to (0 , -2) =>    9
         // Move  <B> from (0 , -1) to (-1, -2) =>    9
+        // Place <S>  at  (2 , 2 )             =>    8
+        // Place <S>  at  (2 , 3 )             =>    8
         let results = rating
             .into_iter()
             .map(|(r, _, _)| r)
-            .take(8)
+            .take(10)
             .collect::<Vec<_>>();
-        assert_eq!(&results[0..7], &[18, 18, 11, 9, 9, 9, 9]);
-        assert!(results[7] < 8);
+        assert_eq!(&results[0..9], &[18, 18, 11, 9, 9, 9, 9, 8, 8]);
+        assert!(results[9] < 8);
     }
 }
