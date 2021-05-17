@@ -515,6 +515,7 @@ fn rate_usual_move(
     to: MetaInterest,
     modifier: RatingType,
 ) -> RatingType {
+    // TODO: endgame (spiders and grasshoppers need to find their way, including previous move)
     let mut total_modifier = modifier;
     let from_type =
         interest_to_type_with_mod(&meta.map, piece.player, from, 2, 0, &mut total_modifier);
@@ -522,7 +523,13 @@ fn rate_usual_move(
         interest_to_type_with_mod(&meta.map, piece.player, to, -5, 4, &mut total_modifier);
 
     let rating = match (from_type, to_type) {
-        (PositionType::NeutralOrBad, PositionType::NeutralOrBad) => 0,
+        (PositionType::NeutralOrBad, PositionType::NeutralOrBad) => {
+            if matches!(piece.p_type, PieceType::Grasshopper | PieceType::Spider) {
+                3
+            } else {
+                0
+            }
+        }
         (PositionType::NeutralOrBad, PositionType::Blocking) => 12,
         (PositionType::NeutralOrBad, PositionType::AtQueen) => {
             if meta.defensive {
@@ -560,7 +567,7 @@ fn rate_usual_move(
                 4
             }
         }
-        (PositionType::AtQueen, PositionType::AtQueen) => 3,
+        (PositionType::AtQueen, PositionType::AtQueen) => 2,
     };
     rating + total_modifier
 }
@@ -573,6 +580,8 @@ fn handle_placement_ratings(
     rater: &mut Rater,
     i: usize,
 ) {
+    use Equivalency::*;
+
     let player = data.player();
     let target = data.board().get_field_unchecked(*context.inner());
     for (j, (piece_t, _)) in context.iter().enumerate() {
@@ -580,25 +589,9 @@ fn handle_placement_ratings(
             // placing a piece directly at the enemy queen is quite perfect..
             let is_ant = *piece_t == PieceType::Ant;
             if meta_data.defensive {
-                set_eq(
-                    i,
-                    j,
-                    rater,
-                    eq_map,
-                    Equivalency::PlaceAtEnemyQueen(is_ant),
-                    12,
-                    false,
-                );
+                set_eq(i, j, rater, eq_map, PlaceAtEnemyQueen(is_ant), 12, false);
             } else {
-                set_eq(
-                    i,
-                    j,
-                    rater,
-                    eq_map,
-                    Equivalency::PlaceAtEnemyQueen(is_ant),
-                    18,
-                    false,
-                );
+                set_eq(i, j, rater, eq_map, PlaceAtEnemyQueen(is_ant), 18, false);
             }
         } else {
             // .. otherwise, a few case distinctions are necessary
@@ -607,11 +600,11 @@ fn handle_placement_ratings(
             match piece_t {
                 PieceType::Queen => {
                     let is_better = meta == MetaInterest::Uninteresting;
-                    set_eq(i, j, rater, eq_map, Equivalency::PlaceQueen, 11, is_better);
+                    set_eq(i, j, rater, eq_map, PlaceQueen, 11, is_better);
                 }
                 PieceType::Ant => {
                     let is_better = meta == MetaInterest::Uninteresting;
-                    set_eq(i, j, rater, eq_map, Equivalency::PlaceAnt, 11, is_better);
+                    set_eq(i, j, rater, eq_map, PlaceAnt, 11, is_better);
                 }
                 PieceType::Spider | PieceType::Grasshopper => {
                     // for spiders and grasshoppers, it highly depends on whether they can reach something useful
@@ -637,7 +630,7 @@ fn handle_placement_ratings(
                                         } else if meta_data.defensive {
                                             5
                                         } else {
-                                            8
+                                            9
                                         }
                                     }
                                     _ => unreachable!(),
@@ -659,15 +652,7 @@ fn handle_placement_ratings(
                             3 => 6,
                             _ => unreachable!(),
                         };
-                        set_eq(
-                            i,
-                            j,
-                            rater,
-                            eq_map,
-                            Equivalency::PlaceBeetle(dist),
-                            rating,
-                            is_better,
-                        );
+                        set_eq(i, j, rater, eq_map, PlaceBeetle(dist), rating, is_better);
                     } else if our_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 2)
                     {
                         rater.rate(i, j, 3);
@@ -1077,14 +1062,14 @@ mod test {
         // Move  <B> from (0 , -1) to (1 , -1) =>    9
         // Move  <B> from (0 , -1) to (0 , -2) =>    9
         // Move  <B> from (0 , -1) to (-1, -2) =>    9
-        // Place <S>  at  (2 , 2 )             =>    8
-        // Place <S>  at  (2 , 3 )             =>    8
+        // Place <S>  at  (2 , 2 )             =>    9
+        // Place <S>  at  (2 , 3 )             =>    9
         let results = rating
             .into_iter()
             .map(|(r, _, _)| r)
             .take(10)
             .collect::<Vec<_>>();
-        assert_eq!(&results[0..9], &[18, 18, 11, 9, 9, 9, 9, 8, 8]);
+        assert_eq!(&results[0..9], &[18, 18, 11, 9, 9, 9, 9, 9, 9]);
         assert!(results[9] < 8);
     }
 }
