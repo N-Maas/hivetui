@@ -11,6 +11,7 @@ use tgp_board::{
 };
 
 use crate::{
+    ai::distance,
     pieces::{grashopper_moves, spider_moves, Piece, PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState},
 };
@@ -137,11 +138,6 @@ fn dummy_piece() -> Piece {
         player: Player::White,
         p_type: PieceType::Spider,
     }
-}
-
-fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
-    ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
-        as u32
 }
 
 fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {

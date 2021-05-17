@@ -30,6 +30,16 @@ impl From<Player> for usize {
     }
 }
 
+impl From<usize> for Player {
+    fn from(val: usize) -> Self {
+        match val {
+            0 => Player::White,
+            1 => Player::Black,
+            _ => panic!("Invalid player"),
+        }
+    }
+}
+
 impl Player {
     pub fn switch(&mut self) {
         use Player::*;

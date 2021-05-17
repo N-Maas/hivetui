@@ -2,10 +2,17 @@ use tgp_ai::{
     rater::{DecisionType, Rater},
     RateAndMap, RatingType,
 };
+use tgp_board::open_board::OpenIndex;
 
 use crate::state::{HiveContext, HiveGameState};
 
+mod rate_game_state;
 mod rate_moves;
+
+pub fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
+    ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
+        as u32
+}
 
 pub struct HiveAI {
     // TODO: weights etc.
@@ -34,9 +41,9 @@ impl RateAndMap<HiveGameState> for HiveAI {
     fn rate_game_state(
         &self,
         data: &HiveGameState,
-        old_context: &[(HiveContext, usize)],
+        _old_context: &[(HiveContext, usize)],
         player: usize,
     ) -> RatingType {
-        todo!()
+        rate_game_state::rate_game_state(data, player)
     }
 }

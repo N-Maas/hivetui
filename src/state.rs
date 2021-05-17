@@ -102,6 +102,13 @@ impl HiveGameState {
         }
     }
 
+    pub fn remaining_pieces(&self, player: Player, p_type: PieceType) -> u32 {
+        match player {
+            Player::White => *self.white_pieces.get(&p_type).unwrap_or(&0),
+            Player::Black => *self.black_pieces.get(&p_type).unwrap_or(&0),
+        }
+    }
+
     pub fn result(&self) -> Option<HiveResult> {
         self.result
     }
