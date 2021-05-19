@@ -38,6 +38,10 @@ impl HiveContent {
         self.pieces.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.pieces.is_empty()
+    }
+
     pub fn top(&self) -> Option<&Piece> {
         self.pieces.last()
     }
@@ -197,7 +201,7 @@ impl HiveGameState {
     }
 
     pub fn place_piece(&mut self, p_type: PieceType, target: OpenIndex) {
-        assert!(
+        debug_assert!(
             self.pieces().0[&p_type] > 0
                 && self.board.get_field(target).map_or(false, |f| f.is_empty())
         );
@@ -207,17 +211,42 @@ impl HiveGameState {
             player: self.current_player,
             p_type,
         });
+
         self.add_new_neighbors(target);
+
         match self.current_player {
             Player::White => self.white_pieces_on_board += 1,
             Player::Black => self.black_pieces_on_board += 1,
         }
         self.current_player.switch();
         self.result = self.test_game_finished(target);
+
+        if self.black_pieces_on_board == 0 {
+            // edge case for first piece
+            self.board[target].is_movable = true;
+        } else {
+            let field = self.board.get_field(target).unwrap();
+            self.board[target].is_movable = p_type.is_movable(field);
+            let needs_update = self.check_movable_to(target);
+            if needs_update {
+                self.check_movability_for_all();
+            }
+        }
+
+        for f in self.board.iter_fields() {
+            if !f.is_empty() && self.black_pieces_on_board > 0 {
+                assert_eq!(
+                    f.content().is_movable,
+                    self.can_move(f, false),
+                    "field: {:?}",
+                    f
+                );
+            }
+        }
     }
 
     pub fn remove_piece(&mut self, target: OpenIndex) {
-        assert!(self
+        debug_assert!(self
             .board
             .get_field(target)
             .map_or(false, |f| !f.is_empty()));
@@ -230,17 +259,122 @@ impl HiveGameState {
             Player::White => self.white_pieces_on_board -= 1,
             Player::Black => self.black_pieces_on_board -= 1,
         }
+
+        let needs_update = self.check_movable_from(target, piece);
+        if needs_update {
+            self.check_movability_for_all();
+        }
+
+        for f in self.board.iter_fields() {
+            if !f.is_empty() {
+                assert_eq!(
+                    f.content().is_movable,
+                    self.can_move(f, false),
+                    "field: {:?}",
+                    f
+                );
+            }
+        }
     }
 
     pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex, test_for_finished: bool) {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
         let piece = self.board[from].pop();
         self.board[to].push(piece);
+        self.board[to].is_movable = true;
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
         self.current_player.switch();
         if test_for_finished {
             self.result = self.test_game_finished(to);
+        }
+
+        let needs_update = self.check_movable_from(from, piece) || self.check_movable_to(to);
+        if needs_update {
+            self.check_movability_for_all();
+        }
+
+        for f in self.board.iter_fields() {
+            if !f.is_empty() {
+                assert_eq!(
+                    f.content().is_movable,
+                    self.can_move(f, false),
+                    "field: {:?}",
+                    f
+                );
+            }
+        }
+    }
+
+    fn check_movable_from(&mut self, from: OpenIndex, piece: Piece) -> bool {
+        let content = &mut self.board[from];
+        if content.is_empty() {
+            content.is_movable = false;
+        } else {
+            self.board[from].is_movable = self.can_move(self.board.get_field(from).unwrap(), false);
+        }
+
+        let field = self.board.get_field(from).unwrap();
+        let neighbors = field
+            .neighbors_by_direction()
+            .filter(|(_, f)| !f.is_empty())
+            .map(|(d, f)| (d, f.index()))
+            .collect::<Vec<_>>();
+        let in_a_row = neighbors.iter().all(|(d, _)| {
+            !field.next(d.next_direction()).unwrap().is_empty()
+                || !field.next(d.prev_direction()).unwrap().is_empty()
+        });
+
+        if in_a_row {
+            for (_, i) in neighbors {
+                let field = self.board.get_field(i).unwrap();
+                self.board[i].is_movable = self.can_move(field, false);
+            }
+            false
+        } else {
+            true
+        }
+    }
+
+    /// does not test the moved/placed piece itself
+    fn check_movable_to(&mut self, to: OpenIndex) -> bool {
+        if self.white_pieces_on_board + self.black_pieces_on_board <= 2 {
+            return false;
+        }
+
+        let field = self.board.get_field(to).unwrap();
+        let neighbors = field
+            .neighbors_by_direction()
+            .filter(|(_, f)| !f.is_empty())
+            .map(|(d, f)| (d, f.index()))
+            .collect::<Vec<_>>();
+        let in_a_row = neighbors.iter().all(|(d, _)| {
+            !field.next(d.next_direction()).unwrap().is_empty()
+                || !field.next(d.prev_direction()).unwrap().is_empty()
+        });
+
+        if in_a_row {
+            for &(_, i) in neighbors.iter() {
+                let field = self.board.get_field(i).unwrap();
+                if neighbors.len() <= 2 && self.board[i].is_movable {
+                    let p_type = self.board[i].top().unwrap().p_type;
+                    self.board[i].is_movable = p_type.is_movable(field);
+                } else {
+                    self.board[i].is_movable = self.can_move(field, false);
+                }
+            }
+            false
+        } else {
+            true
+        }
+    }
+
+    fn check_movability_for_all(&mut self) {
+        for index in self.board.all_indices() {
+            let field = self.board.get_field(index).unwrap();
+            if !field.is_empty() {
+                self.board[index].is_movable = self.can_move(field, false);
+            }
         }
     }
 
@@ -415,6 +549,10 @@ impl GameData for HiveGameState {
 
 fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
     assert!(!field.is_empty());
+    if field.content().len() > 1 {
+        return false;
+    }
+
     // scan surrounding fields whether it might be possible that the OHR (one hive rule) might be violated
     // additionally, collect some non-empty neighbors of potentially different components
     let mut prev_empty = false;
