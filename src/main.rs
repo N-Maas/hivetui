@@ -1,8 +1,11 @@
-use std::{collections::BTreeMap, thread::sleep, time::Duration};
+use std::{collections::BTreeMap, thread::sleep, time::{Duration, Instant}};
 
 use either::Either;
 use tgp::engine::{Engine, EventListener, GameEngine, GameState, PendingDecision};
-use tgp_board::{index_map::HashIndexMap, prelude::*};
+use tgp_board::{
+    index_map::HashIndexMap, open_board::OpenIndex, prelude::*,
+    structures::directions::HexaDirection,
+};
 
 use display::print_annotated_board;
 use pieces::PieceType;
@@ -27,6 +30,66 @@ fn main() {
     pieces.insert(PieceType::Beetle, 2);
     pieces.insert(PieceType::Spider, 2);
 
+    let mut state = HiveGameState::new(pieces);
+    let zero = OpenIndex::from((0, 0));
+    let up = OpenIndex::from((0, 1));
+    state.place_piece(PieceType::Spider, zero);
+    state.place_piece(PieceType::Spider, up);
+    state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+    state.place_piece(PieceType::Queen, up + HexaDirection::UpRight);
+    state.place_piece(PieceType::Ant, zero + HexaDirection::DownLeft);
+    state.place_piece(PieceType::Ant, up + HexaDirection::Up);
+    state.move_piece(
+        zero + HexaDirection::DownLeft,
+        up + HexaDirection::UpRight + HexaDirection::UpRight,
+        false,
+    );
+    state.place_piece(
+        PieceType::Grasshopper,
+        up + HexaDirection::Up + HexaDirection::Up,
+    );
+    state.place_piece(
+        PieceType::Beetle,
+        up + HexaDirection::UpRight + HexaDirection::UpRight + HexaDirection::Up,
+    );
+    state.place_piece(
+        PieceType::Ant,
+        up + HexaDirection::Up + HexaDirection::UpLeft,
+    );
+    state.place_piece(PieceType::Ant, zero + HexaDirection::DownLeft);
+    state.move_piece(
+        up + HexaDirection::Up + HexaDirection::UpLeft,
+        up + HexaDirection::UpRight + HexaDirection::UpRight + HexaDirection::DownRight,
+        false,
+    );
+    print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
+
+    let ai = HiveAI::new(Difficulty::Medium);
+
+    let engine = Engine::new(2, state);
+    // warmup
+    for _ in 0..10 {
+        ai.run_all_ratings(&engine);
+    }
+    let mut time_total = 0;
+    let n = 10;
+    for _ in 0..n {
+        let time = Instant::now();
+        ai.run_all_ratings(&engine);
+        time_total += time.elapsed().as_millis();
+    }
+    println!("Average: {} milliseconds", time_total / n);
+
+    old_main();
+}
+
+fn old_main() {
+    let mut pieces = BTreeMap::new();
+    pieces.insert(PieceType::Queen, 1);
+    pieces.insert(PieceType::Ant, 3);
+    pieces.insert(PieceType::Grasshopper, 3);
+    pieces.insert(PieceType::Beetle, 2);
+    pieces.insert(PieceType::Spider, 2);
     println!("Choose level for AI: [0] [1] [2]");
     let level = loop {
         let input: Result<String, _> = try_read!();
