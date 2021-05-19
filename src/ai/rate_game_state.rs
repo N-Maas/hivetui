@@ -67,7 +67,7 @@ fn rate_queen_situation(
     let mut num_friendly_movable = 0;
     if let Some(index) = meta.q_pos(player) {
         let pos = data.board().get_field_unchecked(index);
-        can_move = pos.content().len() == 1 && data.can_move(pos, false);
+        can_move = pos.content().len() == 1 && data.is_movable(pos, false);
         for field in pos.neighbors() {
             if let Some(piece) = field.content().top() {
                 num_neighbors += 1;

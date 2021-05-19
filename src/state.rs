@@ -180,7 +180,7 @@ impl HiveGameState {
                 .content()
                 .top()
                 .map_or(false, |piece| piece.player == self.current_player);
-            moves_enabled && valid_field && self.can_move(*f, true)
+            moves_enabled && valid_field && self.is_movable(*f, true)
         })
     }
 
@@ -232,17 +232,6 @@ impl HiveGameState {
                 self.check_movability_for_all();
             }
         }
-
-        for f in self.board.iter_fields() {
-            if !f.is_empty() && self.black_pieces_on_board > 0 {
-                assert_eq!(
-                    f.content().is_movable,
-                    self.can_move(f, false),
-                    "field: {:?}",
-                    f
-                );
-            }
-        }
     }
 
     pub fn remove_piece(&mut self, target: OpenIndex) {
@@ -260,20 +249,9 @@ impl HiveGameState {
             Player::Black => self.black_pieces_on_board -= 1,
         }
 
-        let needs_update = self.check_movable_from(target, piece);
+        let needs_update = self.check_movable_from(target);
         if needs_update {
             self.check_movability_for_all();
-        }
-
-        for f in self.board.iter_fields() {
-            if !f.is_empty() {
-                assert_eq!(
-                    f.content().is_movable,
-                    self.can_move(f, false),
-                    "field: {:?}",
-                    f
-                );
-            }
         }
     }
 
@@ -289,29 +267,19 @@ impl HiveGameState {
             self.result = self.test_game_finished(to);
         }
 
-        let needs_update = self.check_movable_from(from, piece) || self.check_movable_to(to);
+        let needs_update = self.check_movable_from(from) || self.check_movable_to(to);
         if needs_update {
             self.check_movability_for_all();
         }
-
-        for f in self.board.iter_fields() {
-            if !f.is_empty() {
-                assert_eq!(
-                    f.content().is_movable,
-                    self.can_move(f, false),
-                    "field: {:?}",
-                    f
-                );
-            }
-        }
     }
 
-    fn check_movable_from(&mut self, from: OpenIndex, piece: Piece) -> bool {
+    fn check_movable_from(&mut self, from: OpenIndex) -> bool {
         let content = &mut self.board[from];
         if content.is_empty() {
             content.is_movable = false;
         } else {
-            self.board[from].is_movable = self.can_move(self.board.get_field(from).unwrap(), false);
+            self.board[from].is_movable =
+                self.check_piece_is_movable(self.board.get_field(from).unwrap());
         }
 
         let field = self.board.get_field(from).unwrap();
@@ -328,7 +296,7 @@ impl HiveGameState {
         if in_a_row {
             for (_, i) in neighbors {
                 let field = self.board.get_field(i).unwrap();
-                self.board[i].is_movable = self.can_move(field, false);
+                self.board[i].is_movable = self.check_piece_is_movable(field);
             }
             false
         } else {
@@ -360,7 +328,7 @@ impl HiveGameState {
                     let p_type = self.board[i].top().unwrap().p_type;
                     self.board[i].is_movable = p_type.is_movable(field);
                 } else {
-                    self.board[i].is_movable = self.can_move(field, false);
+                    self.board[i].is_movable = self.check_piece_is_movable(field);
                 }
             }
             false
@@ -373,7 +341,7 @@ impl HiveGameState {
         for index in self.board.all_indices() {
             let field = self.board.get_field(index).unwrap();
             if !field.is_empty() {
-                self.board[index].is_movable = self.can_move(field, false);
+                self.board[index].is_movable = self.check_piece_is_movable(field);
             }
         }
     }
@@ -405,12 +373,16 @@ impl HiveGameState {
         }
     }
 
-    pub fn can_move(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
+    pub fn is_movable(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
+        assert!(!field.is_empty());
+        field.content().is_movable
+            && (!check_player || field.content().top().unwrap().player == self.current_player)
+    }
+
+    fn check_piece_is_movable(&self, field: Field<HiveBoard>) -> bool {
         assert!(!field.is_empty());
         let Piece { p_type, player } = field.content().top().unwrap();
-        p_type.is_movable(field)
-            && !move_violates_ohr(field)
-            && (!check_player || *player == self.current_player)
+        p_type.is_movable(field) && !move_violates_ohr(field)
     }
 
     fn pieces_mut(&mut self) -> &mut BTreeMap<PieceType, u32> {
@@ -482,7 +454,7 @@ impl HiveGameState {
 
     fn create_movement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
         let field = self.board.get_field_unchecked(index);
-        assert!(self.can_move(field, true));
+        assert!(self.is_movable(field, true));
         // unwrap: correct because of assertion
         let Piece { p_type, .. } = field.content().top().unwrap();
         let mut dec = MappedDecision::with_inner(self.player_usize(), index);

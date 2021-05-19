@@ -207,7 +207,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     for field in board.iter_fields() {
         let mut meta = FieldMeta::default();
         if !field.is_empty() {
-            meta.can_move = data.can_move(field, false);
+            meta.can_move = data.is_movable(field, false);
         }
         meta_data.map.insert(field.index(), meta);
     }
@@ -909,7 +909,7 @@ mod test {
         ));
 
         state.place_piece(PieceType::Ant, zero + HexaDirection::UpRight);
-        assert!(state.can_move(state.board().get_field_unchecked(zero), false));
+        assert!(state.is_movable(state.board().get_field_unchecked(zero), false));
         assert!(!would_block(
             state
                 .board()
@@ -923,7 +923,7 @@ mod test {
                 .get_field_unchecked(zero + HexaDirection::DownRight),
             state.board().get_field_unchecked(zero)
         ));
-        assert!(state.can_move(state.board().get_field_unchecked(zero), false));
+        assert!(state.is_movable(state.board().get_field_unchecked(zero), false));
         assert!(!would_block(
             state
                 .board()
@@ -931,7 +931,7 @@ mod test {
             state.board().get_field_unchecked(zero)
         ));
         state.place_piece(PieceType::Ant, zero + HexaDirection::Down);
-        assert!(state.can_move(state.board().get_field_unchecked(zero), false));
+        assert!(state.is_movable(state.board().get_field_unchecked(zero), false));
         assert!(would_block(
             state
                 .board()
