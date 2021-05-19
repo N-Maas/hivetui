@@ -37,10 +37,6 @@ impl MetaData {
         self.queen_pos[usize::from(player)]
     }
 
-    fn can_move(&self, field: impl Into<OpenIndex>) -> bool {
-        self.map.get(field.into()).unwrap().can_move
-    }
-
     fn interest(&self, field: impl Into<OpenIndex>) -> MetaInterest {
         self.map.get(field.into()).unwrap().interest
     }
@@ -89,7 +85,6 @@ impl Default for MetaInterest {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct FieldMeta {
-    pub can_move: bool,
     pub interest: MetaInterest,
 }
 
@@ -205,11 +200,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 
     // initialize, movability
     for field in board.iter_fields() {
-        let mut meta = FieldMeta::default();
-        if !field.is_empty() {
-            meta.can_move = data.is_movable(field, false);
-        }
-        meta_data.map.insert(field.index(), meta);
+        meta_data.map.insert(field.index(), FieldMeta::default());
     }
 
     // points of interest
@@ -242,7 +233,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                 }
                 meta_data.queen_neighbors[usize::from(queen.player)] = num_neighbors;
                 meta_data.queen_pos[usize::from(queen.player)] = Some(field.index());
-            } else if meta_data.can_move(field) {
+            } else if data.is_movable(field, false) {
                 for n in field.neighbors() {
                     if n.is_empty() {
                         if would_block(n, field) {
@@ -252,7 +243,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                                 data.player(),
                             );
                         }
-                    } else if !meta_data.can_move(n) && blocks(field, n) {
+                    } else if !data.is_movable(n, false) && blocks(field, n) {
                         let meta = meta_data.get_mut(field);
                         meta.upgrade(
                             MetaInterest::Blocks(n.index(), n.content().bottom().unwrap().player),
@@ -272,7 +263,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     // movable queen special case: search for spider or grasshopper (or beetle?) that might endanger queen
     'outer: for field in board.iter_fields() {
         if let Some(piece) = field.content().top() {
-            if piece.player != data.player() && meta_data.can_move(field) {
+            if piece.player != data.player() && data.is_movable(field, false) {
                 let moves = match piece.p_type {
                     // TODO: add beetle?
                     PieceType::Spider => PieceType::Spider.get_moves(field),
@@ -476,7 +467,7 @@ fn handle_move_ratings(
                         bonus -= 3;
                     }
                     MetaInterest::AdjacentToQueen(to.index(), data.player().switched())
-                } else if meta_data.can_move(to) || blocks(from, to) {
+                } else if data.is_movable(to, false) || blocks(from, to) {
                     MetaInterest::Blocks(to.index(), to.content().top().unwrap().player)
                 } else {
                     MetaInterest::Uninteresting
@@ -621,7 +612,7 @@ fn handle_placement_ratings(
                                 PositionType::AtQueen => match interest {
                                     MetaInterest::AdjacentToQueen(queen, _) => {
                                         let queen = data.board().get_field_unchecked(queen);
-                                        if meta_data.can_move(queen) && queen.content().len() == 1 {
+                                        if data.is_movable(queen, false) && queen.content().len() == 1 {
                                             // the queen can just move away
                                             3
                                         } else if meta_data.defensive {
@@ -765,15 +756,6 @@ mod test {
         assert!(!meta_data.queen_should_move);
         assert!(meta_data.defensive);
         assert_eq!(meta_data.queen_neighbors, [3, 1]);
-        for f in state.board().iter_fields() {
-            let movable = [
-                up + HexaDirection::Up,
-                zero + HexaDirection::DownLeft,
-                zero + HexaDirection::Down + HexaDirection::DownRight,
-            ]
-            .contains(&f.index());
-            assert_eq!(meta_data.can_move(f), movable);
-        }
         for f in state
             .board()
             .get_field_unchecked(zero + HexaDirection::Down)
@@ -830,11 +812,6 @@ mod test {
         assert!(!meta_data.defensive);
         assert!(!meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [1, 2]);
-        for f in state.board().iter_fields() {
-            let movable =
-                [up + HexaDirection::UpRight, zero + HexaDirection::Down].contains(&f.index());
-            assert_eq!(meta_data.can_move(f), movable);
-        }
 
         state.place_piece(PieceType::Grasshopper, zero + HexaDirection::DownRight);
         let meta_data = calculate_metadata(&state);
@@ -842,15 +819,6 @@ mod test {
         assert!(!meta_data.defensive);
         assert!(meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [2, 2]);
-        for f in state.board().iter_fields() {
-            let movable = [
-                up + HexaDirection::UpRight,
-                zero + HexaDirection::Down,
-                zero + HexaDirection::DownRight,
-            ]
-            .contains(&f.index());
-            assert_eq!(meta_data.can_move(f), movable);
-        }
 
         state.place_piece(PieceType::Ant, up + HexaDirection::Up);
         let meta_data = calculate_metadata(&state);
