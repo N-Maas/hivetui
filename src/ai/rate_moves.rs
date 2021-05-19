@@ -613,6 +613,7 @@ fn handle_placement_ratings(
                     let rating = reachable_fields
                         .into_iter()
                         .map(|f| {
+                            // TODO: defensive placement
                             let interest = meta_data.interest(f);
                             match interest_to_type(&meta_data.map, player, interest).0 {
                                 PositionType::NeutralOrBad => 1,
@@ -651,6 +652,7 @@ fn handle_placement_ratings(
                         set_eq(i, j, rater, eq_map, PlaceBeetle(dist), rating, is_better);
                     } else if our_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 2)
                     {
+                        // TODO: defensive placement (counter beetle)
                         rater.rate(i, j, 3);
                     } else {
                         rater.rate(i, j, 1);

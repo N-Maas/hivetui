@@ -29,6 +29,7 @@ impl MetaData {
     }
 }
 
+// TODO: is queen ant-reachable?
 fn calculate_metadata(data: &HiveGameState) -> MetaData {
     let mut meta_data = MetaData {
         queen_pos: [None; 2],
