@@ -13,7 +13,7 @@ use tgp_board::{
     },
 };
 
-use crate::state::HiveBoard;
+use crate::state::{HiveBoard, HiveContent};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub enum Player {
@@ -71,7 +71,7 @@ pub enum PieceType {
 impl PieceType {
     fn feasible_steps<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
     where
-        B: Board<Index = OpenIndex, Content = Vec<Piece>>,
+        B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
     {
         field
@@ -143,7 +143,7 @@ impl PieceType {
             .collect()
     }
 
-    pub fn is_movable<B: Board<Content = Vec<Piece>>>(&self, field: Field<B>) -> bool
+    pub fn is_movable<B: Board<Content = HiveContent>>(&self, field: Field<B>) -> bool
     where
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
     {
@@ -152,13 +152,13 @@ impl PieceType {
             // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
                 field.neighbors_by_direction().any(move |(d, n)| {
-                    n.content().is_empty() && {
+                    n.is_empty() && {
                         let left_is_plain = field
                             .next(d.prev_direction())
-                            .map_or(true, |f| f.content().is_empty());
+                            .map_or(true, |f| f.is_empty());
                         let right_is_plain = field
                             .next(d.next_direction())
-                            .map_or(true, |f| f.content().is_empty());
+                            .map_or(true, |f| f.is_empty());
                         // move along the border of the hive
                         left_is_plain != right_is_plain
                     }
@@ -172,7 +172,7 @@ impl PieceType {
 /// Attention: the spider piece must be removed from the board beforehand!
 pub fn spider_moves<B>(field: Field<B>) -> SearchingTree<'_, B::Map, B>
 where
-    B: Board<Index = OpenIndex, Content = Vec<Piece>> + BoardToMap<()>,
+    B: Board<Index = OpenIndex, Content = HiveContent> + BoardToMap<()>,
     B::Structure: DirectionStructure<B, Direction = HexaDirection>,
 {
     let mut tree = field.search_tree();
@@ -184,7 +184,7 @@ where
 
 pub fn grashopper_moves<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
 where
-    B: Board<Content = Vec<Piece>> + BoardToMap<()>,
+    B: Board<Content = HiveContent> + BoardToMap<()>,
     B::Structure: DirectionStructure<B, Direction = HexaDirection>,
 {
     field

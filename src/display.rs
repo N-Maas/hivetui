@@ -24,7 +24,7 @@ pub fn print_move_ratings(
         match context {
             HiveContext::TargetField(context) => {
                 let from = board.get_field_unchecked(*context.inner());
-                let p_type = from.content().last().unwrap().p_type;
+                let p_type = from.content().top().unwrap().p_type;
                 println!(
                     "Move  <{}> from {:<2} to {:<2} => {:>4}",
                     p_type,
@@ -117,14 +117,14 @@ fn draw_field<T: Display>(
                 }
             }
 
-            match field.content().first() {
+            match field.content().bottom() {
                 Some(&Piece { player, p_type }) => {
                     let fill = fill_char(player, print_empty);
                     if field.content().len() > 1 {
                         let Piece {
                             player: player_top,
                             p_type: p_top,
-                        } = field.content()[1];
+                        } = field.content().pieces()[1];
                         let fill_top = fill_char(player_top, print_empty);
                         lines[1].push_str(&format!(
                             "{} {} {}",

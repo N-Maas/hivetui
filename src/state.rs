@@ -20,7 +20,52 @@ use tgp_board::{
 
 use crate::pieces::{Piece, PieceType, Player};
 
-pub type HiveBoard = OpenBoard<Vec<Piece>, OffsetStructure<OpenIndex, HexaDirection>>;
+#[derive(Debug, Default, Clone)]
+pub struct HiveContent {
+    pub is_movable: bool,
+    pieces: Vec<Piece>,
+}
+
+impl HiveContent {
+    pub fn new() -> Self {
+        Self {
+            pieces: Vec::new(),
+            is_movable: false,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.pieces.len()
+    }
+
+    pub fn top(&self) -> Option<&Piece> {
+        self.pieces.last()
+    }
+
+    pub fn bottom(&self) -> Option<&Piece> {
+        self.pieces.first()
+    }
+
+    pub fn push(&mut self, piece: Piece) {
+        self.pieces.push(piece);
+    }
+
+    pub fn pop(&mut self) -> Piece {
+        self.pieces.pop().expect("Piece was not present!")
+    }
+
+    pub fn pieces(&self) -> &[Piece] {
+        &self.pieces
+    }
+}
+
+impl Emptyable for HiveContent {
+    fn call_field_is_empty(&self) -> bool {
+        self.pieces.is_empty()
+    }
+}
+
+pub type HiveBoard = OpenBoard<HiveContent, OffsetStructure<OpenIndex, HexaDirection>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HiveContext {
@@ -79,7 +124,7 @@ pub struct HiveGameState {
 impl HiveGameState {
     pub fn new(pieces: BTreeMap<PieceType, u32>) -> Self {
         let mut board = HiveBoard::new(OffsetStructure::new());
-        board.extend_and_insert(OpenIndex::from((0, 0)), Vec::new());
+        board.extend_and_insert(OpenIndex::from((0, 0)), HiveContent::new());
         Self {
             current_player: Player::White,
             white_pieces: pieces.clone(),
@@ -129,7 +174,7 @@ impl HiveGameState {
         self.board.iter_fields().filter(move |f| {
             let valid_field = f
                 .content()
-                .last()
+                .top()
                 .map_or(false, |piece| piece.player == self.current_player);
             moves_enabled && valid_field && self.can_move(*f, true)
         })
@@ -144,7 +189,7 @@ impl HiveGameState {
                 f.is_empty()
                     && !f.neighbors().any(|n| {
                         n.content()
-                            .last()
+                            .top()
                             .map_or(false, |piece| piece.player != self.current_player)
                     })
             }
@@ -177,7 +222,7 @@ impl HiveGameState {
             .get_field(target)
             .map_or(false, |f| !f.is_empty()));
         self.current_player.switch();
-        let piece = self.board[target].pop().unwrap();
+        let piece = self.board[target].pop();
         let pieces = self.pieces_mut();
         pieces.entry(piece.p_type).and_modify(|count| *count += 1);
         self.remove_old_neighbors(target);
@@ -189,9 +234,7 @@ impl HiveGameState {
 
     pub fn move_piece(&mut self, from: OpenIndex, to: OpenIndex, test_for_finished: bool) {
         assert!(self.board.get_field(from).map_or(false, |f| !f.is_empty()));
-        let piece = self.board[from]
-            .pop()
-            .unwrap_or_else(|| panic!("Piece was not present at: {:?}", from));
+        let piece = self.board[from].pop();
         self.board[to].push(piece);
         self.remove_old_neighbors(from);
         self.add_new_neighbors(to);
@@ -215,7 +258,7 @@ impl HiveGameState {
 
     fn is_adjacent_to_surrounded_queeen(&self, field: Field<HiveBoard>, player: Player) -> bool {
         let queen = field.neighbors().find(|f| {
-            f.content().first()
+            f.content().bottom()
                 == Some(&Piece {
                     player,
                     p_type: PieceType::Queen,
@@ -230,7 +273,7 @@ impl HiveGameState {
 
     pub fn can_move(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
         assert!(!field.is_empty());
-        let Piece { p_type, player } = field.content().last().unwrap();
+        let Piece { p_type, player } = field.content().top().unwrap();
         p_type.is_movable(field)
             && !move_violates_ohr(field)
             && (!check_player || *player == self.current_player)
@@ -250,7 +293,7 @@ impl HiveGameState {
                 .get_field(target)
                 .unwrap_or_else(|| panic!("Invalid index: {:?}", target));
             if !field.has_next(d) {
-                self.board.extend_and_insert(target + d, Vec::new());
+                self.board.extend_and_insert(target + d, HiveContent::new());
             }
         }
     }
@@ -307,7 +350,7 @@ impl HiveGameState {
         let field = self.board.get_field_unchecked(index);
         assert!(self.can_move(field, true));
         // unwrap: correct because of assertion
-        let Piece { p_type, .. } = field.content().last().unwrap();
+        let Piece { p_type, .. } = field.content().top().unwrap();
         let mut dec = MappedDecision::with_inner(self.player_usize(), index);
 
         for field in p_type.get_moves(field).into_iter() {

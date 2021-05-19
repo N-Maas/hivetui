@@ -151,7 +151,7 @@ fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
         Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[target].push(dummy_piece());
     let h_field = hypothetical.get_field_unchecked(blocked.index());
-    if !h_field.content().last().unwrap().p_type.is_movable(h_field) {
+    if !h_field.content().top().unwrap().p_type.is_movable(h_field) {
         true
     } else {
         // blocking via OHR happens exactly if there is no other neighbor
@@ -172,7 +172,7 @@ fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
         Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[target].pop();
     let h_field = hypothetical.get_field_unchecked(blocked.index());
-    if h_field.content().last().unwrap().p_type.is_movable(h_field) {
+    if h_field.content().top().unwrap().p_type.is_movable(h_field) {
         // Now we need to verify the OHR holds when moving the blocked piece.
         // This is not always correct (and doesn't need to be, for the AI)
         let neighbor_count = h_field.neighbors().filter(|f| !f.is_empty()).count();
@@ -215,7 +215,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
     // points of interest
     for field in board.iter_fields() {
         if !field.is_empty() {
-            let queen = field.content().first().unwrap();
+            let queen = field.content().bottom().unwrap();
             if queen.p_type == PieceType::Queen {
                 let meta = meta_data.get_mut(field);
                 meta.upgrade(
@@ -235,7 +235,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 
                     let player = data.player();
                     if queen.player == player
-                        && n.content().last().map_or(false, |p| p.player != player)
+                        && n.content().top().map_or(false, |p| p.player != player)
                     {
                         meta_data.queen_endangered = true;
                     }
@@ -255,7 +255,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                     } else if !meta_data.can_move(n) && blocks(field, n) {
                         let meta = meta_data.get_mut(field);
                         meta.upgrade(
-                            MetaInterest::Blocks(n.index(), n.content().first().unwrap().player),
+                            MetaInterest::Blocks(n.index(), n.content().bottom().unwrap().player),
                             data.player(),
                         );
                     }
@@ -271,7 +271,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 
     // movable queen special case: search for spider or grasshopper (or beetle?) that might endanger queen
     'outer: for field in board.iter_fields() {
-        if let Some(piece) = field.content().last() {
+        if let Some(piece) = field.content().top() {
             if piece.player != data.player() && meta_data.can_move(field) {
                 let moves = match piece.p_type {
                     // TODO: add beetle?
@@ -393,7 +393,7 @@ fn handle_move_ratings(
 ) {
     let from = data.board().get_field_unchecked(*context.inner());
     let f_interest = meta_data.interest(from);
-    let &piece = from.content().last().unwrap();
+    let &piece = from.content().top().unwrap();
     debug_assert!(piece.player == data.player());
     for (j, target) in context.iter().enumerate() {
         let to = data.board().get_field_unchecked(*target);
@@ -461,7 +461,7 @@ fn handle_move_ratings(
                 if Some(from.index()) == queen_pos {
                     MetaInterest::AdjacentToQueen(from.index(), data.player().switched())
                 } else if blocks(from, from) {
-                    MetaInterest::Blocks(from.index(), from.content().last().unwrap().player)
+                    MetaInterest::Blocks(from.index(), from.content().top().unwrap().player)
                 } else {
                     MetaInterest::Uninteresting
                 }
@@ -477,7 +477,7 @@ fn handle_move_ratings(
                     }
                     MetaInterest::AdjacentToQueen(to.index(), data.player().switched())
                 } else if meta_data.can_move(to) || blocks(from, to) {
-                    MetaInterest::Blocks(to.index(), to.content().last().unwrap().player)
+                    MetaInterest::Blocks(to.index(), to.content().top().unwrap().player)
                 } else {
                     MetaInterest::Uninteresting
                 }

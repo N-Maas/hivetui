@@ -38,7 +38,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 
     for field in data.board().iter_fields() {
         if !field.is_empty() {
-            let queen = field.content().first().unwrap();
+            let queen = field.content().bottom().unwrap();
             if queen.p_type == PieceType::Queen {
                 meta_data.queen_pos[usize::from(queen.player)] = Some(field.index());
             }
@@ -69,7 +69,7 @@ fn rate_queen_situation(
         let pos = data.board().get_field_unchecked(index);
         can_move = pos.content().len() == 1 && data.can_move(pos, false);
         for field in pos.neighbors() {
-            if let Some(piece) = field.content().last() {
+            if let Some(piece) = field.content().top() {
                 num_neighbors += 1;
                 if field.content().len() == 1 && piece.player == player {
                     num_friendly_movable += 1;
