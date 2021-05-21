@@ -109,7 +109,6 @@ impl PieceType {
                 search.replace(Self::feasible_steps);
             }
             PieceType::Ant => {
-                search.replace(Self::feasible_steps);
                 search.extend_repeated(Self::feasible_steps);
             }
             PieceType::Spider => {
@@ -143,7 +142,10 @@ impl PieceType {
             .collect()
     }
 
-    pub fn is_movable<B: Board<Content = HiveContent>>(&self, field: Field<B>) -> bool
+    pub fn is_movable<B: Board<Index = OpenIndex, Content = HiveContent>>(
+        &self,
+        field: Field<B>,
+    ) -> bool
     where
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
     {
@@ -151,22 +153,34 @@ impl PieceType {
         match self {
             // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
-                field.neighbors_by_direction().any(move |(d, n)| {
-                    n.is_empty() && {
-                        let left_is_plain = field
-                            .next(d.prev_direction())
-                            .map_or(true, |f| f.is_empty());
-                        let right_is_plain = field
-                            .next(d.next_direction())
-                            .map_or(true, |f| f.is_empty());
-                        // move along the border of the hive
-                        left_is_plain != right_is_plain
-                    }
-                })
+                feasible_steps_plain(field).count() > 0
             }
             PieceType::Grasshopper | PieceType::Beetle => true,
         }
     }
+}
+
+pub fn feasible_steps_plain<B: Board<Index = OpenIndex, Content = HiveContent>>(
+    field: Field<B>,
+) -> impl Iterator<Item = Field<B>>
+where
+    B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+{
+    field
+        .neighbors_by_direction()
+        .filter(move |(d, n)| {
+            n.is_empty() && {
+                let left_is_plain = field
+                    .next(d.prev_direction())
+                    .map_or(true, |f| f.is_empty());
+                let right_is_plain = field
+                    .next(d.next_direction())
+                    .map_or(true, |f| f.is_empty());
+                // move along the border of the hive
+                left_is_plain != right_is_plain
+            }
+        })
+        .map(|(_, f)| f)
 }
 
 /// Attention: the spider piece must be removed from the board beforehand!

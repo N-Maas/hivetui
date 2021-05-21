@@ -2,16 +2,43 @@ use tgp_ai::{
     rater::{DecisionType, Rater},
     RateAndMap, RatingType,
 };
-use tgp_board::open_board::OpenIndex;
+use tgp_board::{
+    hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
+    structures::directions::DirectionEnumerable,
+};
 
-use crate::state::{HiveContext, HiveGameState};
+use crate::state::{HiveBoard, HiveContext, HiveGameState};
 
 mod rate_game_state;
 mod rate_moves;
 
-pub fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
+fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
     ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
         as u32
+}
+
+fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
+    debug_assert!(!target.is_empty());
+    debug_assert!(!blocked.is_empty());
+    let mut hypothetical =
+        Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
+    hypothetical[target].pop();
+    let h_field = hypothetical.get_field_unchecked(blocked.index());
+    if h_field.content().top().unwrap().p_type.is_movable(h_field) {
+        // Now we need to verify the OHR holds when moving the blocked piece.
+        // This is not always correct (and doesn't need to be, for the AI)
+        let neighbor_count = h_field.neighbors().filter(|f| !f.is_empty()).count();
+        neighbor_count <= 1
+            || (neighbor_count <= 4
+                // 4 or less neighbors and all neighbors are in a row => movable
+                && h_field.neighbors_by_direction().all(|(d, f)| {
+                    f.is_empty()
+                        || !h_field.next(d.next_direction()).unwrap().is_empty()
+                        || !h_field.next(d.prev_direction()).unwrap().is_empty()
+                }))
+    } else {
+        false
+    }
 }
 
 pub struct HiveAI {

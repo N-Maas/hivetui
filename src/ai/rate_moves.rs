@@ -16,6 +16,8 @@ use crate::{
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
+use super::blocks;
+
 // ------ metadata types -----
 #[derive(Debug, Clone)]
 struct MetaData {
@@ -158,30 +160,6 @@ fn no_common_neighbor(a: Field<HiveBoard>, b: OpenIndex) -> bool {
     let a_to_b = HexaDirection::from_offset(b - a.index()).unwrap();
     a.next(a_to_b.next_direction()).unwrap().is_empty()
         && a.next(a_to_b.prev_direction()).unwrap().is_empty()
-}
-
-fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
-    debug_assert!(!target.is_empty());
-    debug_assert!(!blocked.is_empty());
-    let mut hypothetical =
-        Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
-    hypothetical[target].pop();
-    let h_field = hypothetical.get_field_unchecked(blocked.index());
-    if h_field.content().top().unwrap().p_type.is_movable(h_field) {
-        // Now we need to verify the OHR holds when moving the blocked piece.
-        // This is not always correct (and doesn't need to be, for the AI)
-        let neighbor_count = h_field.neighbors().filter(|f| !f.is_empty()).count();
-        neighbor_count <= 1
-            || (neighbor_count <= 4
-                // 4 or less neighbors and all neighbors are in a row => movable
-                && h_field.neighbors_by_direction().all(|(d, f)| {
-                    f.is_empty()
-                        || !h_field.next(d.next_direction()).unwrap().is_empty()
-                        || !h_field.next(d.prev_direction()).unwrap().is_empty()
-                }))
-    } else {
-        false
-    }
 }
 
 // ----- calculate metadata -----
@@ -612,7 +590,9 @@ fn handle_placement_ratings(
                                 PositionType::AtQueen => match interest {
                                     MetaInterest::AdjacentToQueen(queen, _) => {
                                         let queen = data.board().get_field_unchecked(queen);
-                                        if data.is_movable(queen, false) && queen.content().len() == 1 {
+                                        if data.is_movable(queen, false)
+                                            && queen.content().len() == 1
+                                        {
                                             // the queen can just move away
                                             3
                                         } else if meta_data.defensive {
