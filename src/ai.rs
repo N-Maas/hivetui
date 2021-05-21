@@ -7,7 +7,10 @@ use tgp_board::{
     structures::directions::DirectionEnumerable,
 };
 
-use crate::state::{HiveBoard, HiveContext, HiveGameState};
+use crate::{
+    pieces::{Piece, PieceType, Player},
+    state::{HiveBoard, HiveContext, HiveGameState},
+};
 
 mod rate_game_state;
 mod rate_moves;
@@ -36,8 +39,33 @@ fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
                         || !h_field.next(d.next_direction()).unwrap().is_empty()
                         || !h_field.next(d.prev_direction()).unwrap().is_empty()
                 }))
+            || h_field.content().len() > 1
     } else {
         false
+    }
+}
+
+fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
+    const DUMMY_PIECE: Piece = Piece {
+        player: Player::White,
+        p_type: PieceType::Spider,
+    };
+
+    debug_assert!(target.is_empty());
+    debug_assert!(!blocked.is_empty());
+    if blocked.content().len() > 1 {
+        return false;
+    }
+
+    let mut hypothetical =
+        Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
+    hypothetical[target].push(DUMMY_PIECE);
+    let h_field = hypothetical.get_field_unchecked(blocked.index());
+    if !h_field.content().top().unwrap().p_type.is_movable(h_field) {
+        true
+    } else {
+        // blocking via OHR happens exactly if there is no other neighbor
+        target.neighbors().all(|f| f == blocked || f.is_empty())
     }
 }
 

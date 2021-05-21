@@ -12,11 +12,11 @@ use tgp_board::{
 
 use crate::{
     ai::distance,
-    pieces::{grashopper_moves, spider_moves, Piece, PieceType, Player},
+    pieces::{grasshopper_moves, spider_moves, Piece, PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
-use super::blocks;
+use super::{blocks, would_block};
 
 // ------ metadata types -----
 #[derive(Debug, Clone)]
@@ -130,32 +130,6 @@ enum Equivalency {
 }
 
 // ------ utility functions -----
-fn dummy_piece() -> Piece {
-    Piece {
-        player: Player::White,
-        p_type: PieceType::Spider,
-    }
-}
-
-fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
-    debug_assert!(target.is_empty());
-    debug_assert!(!blocked.is_empty());
-    if blocked.content().len() > 1 {
-        return false;
-    }
-
-    let mut hypothetical =
-        Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
-    hypothetical[target].push(dummy_piece());
-    let h_field = hypothetical.get_field_unchecked(blocked.index());
-    if !h_field.content().top().unwrap().p_type.is_movable(h_field) {
-        true
-    } else {
-        // blocking via OHR happens exactly if there is no other neighbor
-        target.neighbors().all(|f| f == blocked || f.is_empty())
-    }
-}
-
 fn no_common_neighbor(a: Field<HiveBoard>, b: OpenIndex) -> bool {
     let a_to_b = HexaDirection::from_offset(b - a.index()).unwrap();
     a.next(a_to_b.next_direction()).unwrap().is_empty()
@@ -245,7 +219,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                 let moves = match piece.p_type {
                     // TODO: add beetle?
                     PieceType::Spider => PieceType::Spider.get_moves(field),
-                    PieceType::Grasshopper => grashopper_moves(field).collect(),
+                    PieceType::Grasshopper => grasshopper_moves(field).collect(),
                     _ => Vec::new(),
                 };
                 for f in moves {
@@ -577,7 +551,7 @@ fn handle_placement_ratings(
                         let tree = spider_moves(target);
                         tree.iter_paths().map(|p| p.endpoint()).collect()
                     } else {
-                        grashopper_moves(target).collect()
+                        grasshopper_moves(target).collect()
                     };
                     let rating = reachable_fields
                         .into_iter()

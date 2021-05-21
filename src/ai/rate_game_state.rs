@@ -1,14 +1,14 @@
-use std::iter;
+use std::{cmp::Ordering, iter};
 
 use tgp_ai::RatingType;
 use tgp_board::{open_board::OpenIndex, prelude::*};
 
 use crate::{
-    pieces::{feasible_steps_plain, PieceType, Player},
-    state::{HiveGameState, HiveResult},
+    pieces::{feasible_steps_plain, grasshopper_moves, Piece, PieceType, Player},
+    state::{HiveBoard, HiveGameState, HiveResult},
 };
 
-use super::{blocks, distance};
+use super::{blocks, distance, would_block};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Flags {
@@ -24,6 +24,13 @@ struct MetaData {
     queen_pos: [Option<OpenIndex>; 2],
     queen_neighbors: [u32; 2],
     flags: [Flags; 2],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MovabilityType {
+    Movable,
+    Blocked(Player),
+    Unmovable,
 }
 
 impl MetaData {
@@ -140,6 +147,156 @@ fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     (ant_rating + spider_rating + grasshopper_rating + beetle_rating) as RatingType
 }
 
+fn rate_piece_movability(data: &HiveGameState, meta: &mut MetaData) -> (RatingType, RatingType) {
+    let mut rating = [0; 2];
+    for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
+        let &piece = field.content().top().unwrap();
+        if field.content().len() == 1 && data.is_movable(field, false) {
+            rating[usize::from(piece.player)] +=
+                single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
+        } else if field.content().len() == 1 && !data.is_movable(field, false) {
+            // is this blocked by only one adjacent piece?
+            let mut value =
+                single_piece_rating(data, meta, piece, field, MovabilityType::Unmovable);
+            for n in field.neighbors().filter(|f| !f.is_empty()) {
+                if data.is_movable(n, false) && blocks(n, field) {
+                    let movability = MovabilityType::Blocked(n.content().top().unwrap().player);
+                    value = RatingType::max(
+                        value,
+                        single_piece_rating(data, meta, piece, field, movability),
+                    );
+                }
+            }
+            rating[usize::from(piece.player)] += value;
+        } else if field.content().len() > 1 {
+            assert!(data.is_movable(field, false));
+            match field.content().pieces() {
+                [inner @ .., next, beetle] => {
+                    for &piece in inner {
+                        let movability = MovabilityType::Unmovable;
+                        rating[usize::from(piece.player)] +=
+                            single_piece_rating(data, meta, piece, field, movability);
+                    }
+                    let mov_type = if blocks(field, field) {
+                        MovabilityType::Blocked(beetle.player)
+                    } else {
+                        MovabilityType::Unmovable
+                    };
+                    rating[usize::from(next.player)] +=
+                        single_piece_rating(data, meta, piece, field, mov_type);
+                    rating[usize::from(beetle.player)] +=
+                        single_piece_rating(data, meta, *beetle, field, MovabilityType::Movable);
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+    (
+        rating[usize::from(data.player())],
+        rating[usize::from(data.player().switched())],
+    )
+}
+
+fn single_piece_rating(
+    data: &HiveGameState,
+    meta: &mut MetaData,
+    piece: Piece,
+    field: Field<HiveBoard>,
+    movability: MovabilityType,
+) -> RatingType {
+    let base_rating = match piece.p_type {
+        PieceType::Queen => 0,
+        PieceType::Ant => match movability {
+            MovabilityType::Movable | MovabilityType::Blocked(_) => {
+                if meta.flags(piece.player.switched()).queen_is_ant_reachable {
+                    24
+                } else {
+                    16
+                }
+            }
+            MovabilityType::Unmovable => 5,
+        },
+        PieceType::Spider | PieceType::Grasshopper => match movability {
+            MovabilityType::Movable => {
+                let moves = match piece.p_type {
+                    PieceType::Spider => PieceType::Spider.get_moves(field),
+                    PieceType::Grasshopper => grasshopper_moves(field).collect(),
+                    _ => unreachable!(),
+                };
+
+                let mut reaches_queen = false;
+                let mut can_block = false;
+                for f in moves {
+                    if meta.adjacent_to_queen(piece.player.switched(), f) {
+                        reaches_queen = true;
+                    } else {
+                        for n in f.neighbors() {
+                            if !n.is_empty() && data.is_movable(n, false) && would_block(f, n) {
+                                can_block = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if reaches_queen {
+                    meta.flags_mut(piece.player.switched()).queen_endangered = true;
+                    18
+                } else if can_block && piece.player == data.player() {
+                    15
+                } else {
+                    10
+                }
+            }
+            MovabilityType::Blocked(_) => 10,
+            MovabilityType::Unmovable => 2,
+        },
+        PieceType::Beetle => match movability {
+            // TODO!!! (sit on queen bonus e.g.)
+            MovabilityType::Movable => 16,
+            MovabilityType::Blocked(_) => 16,
+            // a beetle near the queen is still a danger
+            MovabilityType::Unmovable => 3,
+        },
+    };
+
+    match movability {
+        MovabilityType::Blocked(blocking_player) => {
+            if blocking_player == piece.player && blocking_player == data.player() {
+                base_rating * 3 / 4
+            } else {
+                base_rating / 2
+            }
+        }
+        _ => base_rating,
+    }
+}
+
+fn determine_less_endangered(data: &HiveGameState, meta: &MetaData) -> Option<Player> {
+    let player = data.player();
+    let mut my_neighbor_count = meta.q_neighbors(player);
+    if meta.flags(player).queen_has_beetle_on_top {
+        my_neighbor_count += 1;
+    }
+    let mut enemy_neighbor_count = meta.q_neighbors(player.switched());
+    if meta.flags(player.switched()).queen_has_beetle_on_top {
+        enemy_neighbor_count += 1;
+    }
+
+    match my_neighbor_count.cmp(&enemy_neighbor_count) {
+        Ordering::Less => Some(player),
+        Ordering::Equal => {
+            if meta.flags(player.switched()).queen_endangered {
+                Some(player)
+            } else if meta.flags(player).queen_endangered {
+                Some(player.switched())
+            } else {
+                None
+            }
+        }
+        Ordering::Greater => Some(player.switched()),
+    }
+}
+
 fn rate_queen_situation(
     data: &HiveGameState,
     meta: &MetaData,
@@ -168,7 +325,7 @@ fn rate_queen_situation(
     if can_move {
         (val * 3 / 5) + 5
     } else if is_less_endangered {
-        (val * 4 / 5) + 5
+        val * 4 / 5
     } else {
         val
     }
@@ -176,6 +333,7 @@ fn rate_queen_situation(
 
 pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
     let player = Player::from(player);
+    let enemy = player.switched();
     if let Some(result) = data.result() {
         return match (result, player) {
             (HiveResult::Draw, _) => 0,
@@ -186,14 +344,43 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
     }
 
     assert_eq!(data.player(), player);
-    let meta = calculate_metadata(data);
+    let mut meta = calculate_metadata(data);
 
     let my_remaining = rate_remaining_pieces(data, player);
-    let enemy_remaining = rate_remaining_pieces(data, player.switched());
-    // TODO
-    let my_queen = rate_queen_situation(data, &meta, player, false);
-    let enemy_queen = rate_queen_situation(data, &meta, player.switched(), false);
-    my_remaining - enemy_remaining + my_queen - enemy_queen
+    let enemy_remaining = rate_remaining_pieces(data, enemy);
+    let (my_movability, enemy_movability) = rate_piece_movability(data, &mut meta);
+    let less_endangered = determine_less_endangered(data, &meta);
+    let my_queen = rate_queen_situation(data, &meta, player, less_endangered == Some(player));
+    let enemy_queen = rate_queen_situation(data, &meta, enemy, less_endangered == Some(enemy));
+    my_remaining - enemy_remaining + my_movability - enemy_movability + my_queen - enemy_queen
+}
+
+pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<&[RatingType; 6]>) {
+    let player = Player::from(data.player());
+    let enemy = player.switched();
+
+    assert_eq!(data.player(), player);
+    let mut meta = calculate_metadata(data);
+
+    let my_remaining = rate_remaining_pieces(data, player);
+    let enemy_remaining = rate_remaining_pieces(data, enemy);
+    let (my_movability, enemy_movability) = rate_piece_movability(data, &mut meta);
+    let less_endangered = determine_less_endangered(data, &meta);
+    let my_queen = rate_queen_situation(data, &meta, player, less_endangered == Some(player));
+    let enemy_queen = rate_queen_situation(data, &meta, enemy, less_endangered == Some(enemy));
+    println!("           Current player -   Enemy player");
+    println!("Remaining  {:<15}-{:>15}", my_remaining, enemy_remaining);
+    println!("Movability {:<15}-{:>15}", my_movability, enemy_movability);
+    println!("Queen      {:<15}-{:>15}", my_queen, enemy_queen);
+
+    if let Some(expected) = expected {
+        assert_eq!(my_remaining, expected[0]);
+        assert_eq!(enemy_remaining, expected[1]);
+        assert_eq!(my_movability, expected[2]);
+        assert_eq!(enemy_movability, expected[3]);
+        assert_eq!(my_queen, expected[4]);
+        assert_eq!(enemy_queen, expected[5]);
+    }
 }
 
 #[cfg(test)]
@@ -202,14 +389,9 @@ mod test {
 
     use tgp_board::{open_board::OpenIndex, structures::directions::HexaDirection, BoardToMap};
 
-    use crate::{
-        ai::rate_game_state::Flags,
-        display::print_annotated_board,
-        pieces::{PieceType, Player},
-        state::HiveGameState,
-    };
+    use crate::{ai::rate_game_state::Flags, display::print_annotated_board, pieces::{PieceType, Player}, state::HiveGameState};
 
-    use super::calculate_metadata;
+    use super::*;
 
     #[test]
     fn meta_data_test() {

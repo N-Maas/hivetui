@@ -119,7 +119,7 @@ impl PieceType {
                 search = tree.into_endpoint_set();
             }
             PieceType::Grasshopper => {
-                search = grashopper_moves(new_field)
+                search = grasshopper_moves(new_field)
                     .collect::<Option<_>>()
                     .expect("Grasshopper has no adjacent piece.");
             }
@@ -196,7 +196,7 @@ where
     tree
 }
 
-pub fn grashopper_moves<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
+pub fn grasshopper_moves<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
 where
     B: Board<Content = HiveContent> + BoardToMap<()>,
     B::Structure: DirectionStructure<B, Direction = HexaDirection>,
