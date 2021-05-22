@@ -447,6 +447,8 @@ impl HiveGameState {
                 },
                 move |game_state: &mut HiveGameState| {
                     game_state.remove_piece(index);
+                    // undo end of game
+                    game_state.result = None;
                 },
             )
         })
@@ -470,6 +472,8 @@ impl HiveGameState {
                 },
                 move |game_state: &mut HiveGameState| {
                     game_state.move_piece(to, from, false);
+                    // undo end of game
+                    game_state.result = None;
                 },
             )
         })

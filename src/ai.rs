@@ -1,6 +1,6 @@
 use tgp_ai::{
     rater::{DecisionType, Rater},
-    RateAndMap, RatingType,
+    MinMaxAlgorithm, Params, RateAndMap, RatingType,
 };
 use tgp_board::{
     hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
@@ -12,9 +12,10 @@ use crate::{
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
-mod rate_game_state;
+pub mod rate_game_state;
 mod rate_moves;
 
+// for testing purposes
 pub use rate_game_state::print_and_compare_rating;
 
 fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
@@ -71,11 +72,19 @@ fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
     }
 }
 
-pub struct HiveAI {
+pub type HiveAI = MinMaxAlgorithm<HiveGameState, HiveRater>;
+
+pub fn create_ai() -> HiveAI {
+    let params = Params::new(2, 4, 6, 20, 7);
+
+    HiveAI::new(params, HiveRater {})
+}
+
+pub struct HiveRater {
     // TODO: weights etc.
 }
 
-impl RateAndMap<HiveGameState> for HiveAI {
+impl RateAndMap<HiveGameState> for HiveRater {
     fn apply_type_mapping(&self, context: &HiveContext) -> DecisionType {
         match context {
             HiveContext::BaseField(_) => DecisionType::HigherLevel,

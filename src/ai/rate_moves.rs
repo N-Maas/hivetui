@@ -664,7 +664,7 @@ mod test {
     use crate::{
         ai::{
             rate_moves::{blocks, distance, would_block, MetaInterest},
-            HiveAI,
+            HiveRater,
         },
         display::{print_annotated_board, print_move_ratings},
         pieces::{PieceType, Player},
@@ -899,7 +899,7 @@ mod test {
         state.place_piece(PieceType::Ant, up + HexaDirection::UpRight);
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
-        let rating = print_move_ratings(&state, &HiveAI {});
+        let rating = print_move_ratings(&state, &HiveRater {});
         // Move  <Q> from (0 , -1) to (1 , -1) =>   15
         // Move  <Q> from (0 , -1) to (-1, -2) =>   15
         // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
@@ -956,7 +956,7 @@ mod test {
         );
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
-        let rating = print_move_ratings(&state, &HiveAI {});
+        let rating = print_move_ratings(&state, &HiveRater {});
         // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   12
         // Place <A>  at  (-2, -2)             =>   11
         let results = rating
@@ -973,7 +973,7 @@ mod test {
             false,
         );
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
-        let rating = print_move_ratings(&state, &HiveAI {});
+        let rating = print_move_ratings(&state, &HiveRater {});
         // Place <A>  at  (0 , -2)             =>   18
         // Place <S>  at  (0 , -2)             =>   18
         // Place <A>  at  (1 , 3 )             =>   11

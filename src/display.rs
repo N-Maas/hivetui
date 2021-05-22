@@ -1,12 +1,12 @@
 use std::fmt::Display;
 
 use crate::{
-    ai::HiveAI,
+    ai::{HiveAI, HiveRater},
     pieces::{Piece, Player},
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
-use tgp::engine::{Engine, GameEngine};
+use tgp::engine::{Engine, GameEngine, GameState};
 use tgp_ai::{rater::Rater, RatingType};
 use tgp_board::open_board::OpenIndex;
 use tgp_board::{prelude::*, structures::directions::HexaDirection};
@@ -14,16 +14,49 @@ type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
 
 pub fn print_move_ratings(
     state: &HiveGameState,
-    ai: &HiveAI,
+    rater: &HiveRater,
 ) -> Vec<(RatingType, usize, HiveContext)> {
     let mut engine = Engine::new(2, state.clone());
-    let rating = Rater::create_rating(&mut engine, ai);
-    let board = engine.data().board();
-    for (r, index, context) in &rating {
+    let ratings = Rater::create_rating(&mut engine, rater);
+    print_ratings_for_moves(state, &ratings);
+    ratings
+}
+
+pub fn print_ai_ratings(state: &HiveGameState, ai: &HiveAI) {
+    let mut engine = Engine::new(2, state.clone());
+    let ratings = ai.run_all_ratings(&mut engine).unwrap();
+    let ratings = ratings
+        .into_iter()
+        .map(|(r, indizes)| match engine.pull() {
+            GameState::PendingDecision(dec) => {
+                if let HiveContext::BaseField(_) = dec.context() {
+                    dec.select_option(indizes[0]);
+                    match engine.pull() {
+                        GameState::PendingDecision(subdec) => {
+                            let result = (r, indizes[1], subdec.context().clone());
+                            subdec.into_follow_up_decision().unwrap().retract_all();
+                            result
+                        }
+                        _ => unreachable!(),
+                    }
+                } else if let HiveContext::SkipPlayer = dec.context() {
+                    (r, 0, HiveContext::SkipPlayer)
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+    print_ratings_for_moves(state, &ratings);
+}
+
+fn print_ratings_for_moves(state: &HiveGameState, ratings: &[(RatingType, usize, HiveContext)]) {
+    for (r, index, context) in ratings {
         let context = context.clone();
         match context {
             HiveContext::TargetField(context) => {
-                let from = board.get_field_unchecked(*context.inner());
+                let from = state.board().get_field_unchecked(*context.inner());
                 let p_type = from.content().top().unwrap().p_type;
                 println!(
                     "Move  <{}> from {:<2} to {:<2} => {:>4}",
@@ -46,7 +79,6 @@ pub fn print_move_ratings(
             HiveContext::BaseField(_) => unreachable!(),
         }
     }
-    rating
 }
 
 // TODO: cut empty space

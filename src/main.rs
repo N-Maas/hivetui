@@ -10,8 +10,8 @@ use state::{HiveContext, HiveGameState};
 use text_io::try_read;
 
 use crate::{
-    ai::{print_and_compare_rating, HiveAI},
-    display::print_move_ratings,
+    ai::{create_ai, print_and_compare_rating, HiveRater},
+    display::{print_ai_ratings, print_move_ratings},
 };
 
 mod ai;
@@ -29,6 +29,8 @@ fn main() {
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces));
     let mut map = HashIndexMap::new();
     let mut print = true;
+
+    let ai = create_ai();
 
     loop {
         map.clear();
@@ -56,7 +58,7 @@ fn main() {
                         if print {
                             print_annotated_board(&decision.data(), &map, false);
                             if is_top_level {
-                                println!("([u]ndo, [r]edo, [a]i)");
+                                println!("([u]ndo, [r]edo, [s]tate rating, [a]i, [b]etter ai)");
                             }
                         } else {
                             print = true;
@@ -99,9 +101,14 @@ fn main() {
                             .expect("Error, invalid state.")
                             .retract();
                     }
-                    Input::AI => {
+                    Input::StateRating => {
                         print_and_compare_rating(engine.data(), None);
-                        // print_move_ratings(engine.data(), &HiveAI {});
+                    }
+                    Input::MoveRating => {
+                        print_move_ratings(engine.data(), &HiveRater {});
+                    }
+                    Input::AI => {
+                        print_ai_ratings(engine.data(), &ai);
                     }
                 }
             }
@@ -121,6 +128,8 @@ enum Input {
     Undo,
     Redo,
     Cancel,
+    MoveRating,
+    StateRating,
     AI,
 }
 
@@ -141,7 +150,11 @@ fn get_input(is_top_level: bool) -> Input {
                                 return Input::Undo;
                             } else if val.starts_with('r') {
                                 return Input::Redo;
+                            } else if val.starts_with('s') {
+                                return Input::StateRating;
                             } else if val.starts_with('a') {
+                                return Input::MoveRating;
+                            } else if val.starts_with('b') {
                                 return Input::AI;
                             } else {
                                 println!("Please enter a number.");
