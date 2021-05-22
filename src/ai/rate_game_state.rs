@@ -148,40 +148,42 @@ fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     (ant_rating + spider_rating + grasshopper_rating + beetle_rating) as RatingType
 }
 
-fn rate_piece_movability(data: &HiveGameState, meta: &mut MetaData) -> (RatingType, RatingType) {
+fn rate_piece_movability(
+    data: &HiveGameState,
+    meta: &mut MetaData,
+) -> (RatingType, RatingType, RatingType, RatingType) {
     let mut rating = [0; 2];
+    let mut beetle_bonus = [0; 2];
     for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
         let &piece = field.content().top().unwrap();
         if field.content().len() == 1 && data.is_movable(field, false) {
-            rating[usize::from(piece.player)] += dbg!(single_piece_rating(
-                data,
-                meta,
-                piece,
-                field,
-                MovabilityType::Movable
-            ));
+            let (val, bonus) =
+                single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
+            rating[usize::from(piece.player)] += val;
+            beetle_bonus[usize::from(piece.player)] += bonus;
         } else if field.content().len() == 1 && !data.is_movable(field, false) {
             // is this blocked by only one adjacent piece?
             let mut value =
-                single_piece_rating(data, meta, piece, field, MovabilityType::Unmovable);
+                single_piece_rating(data, meta, piece, field, MovabilityType::Unmovable).0;
             for n in field.neighbors().filter(|f| !f.is_empty()) {
                 if data.is_movable(n, false) && blocks(n, field) {
                     let movability = MovabilityType::Blocked(n.content().top().unwrap().player);
                     value = RatingType::max(
                         value,
-                        single_piece_rating(data, meta, piece, field, movability),
+                        single_piece_rating(data, meta, piece, field, movability).0,
                     );
                 }
             }
-            rating[usize::from(piece.player)] += dbg!(value);
+            rating[usize::from(piece.player)] += value;
         } else if field.content().len() > 1 {
             assert!(data.is_movable(field, false));
             match field.content().pieces() {
                 [inner @ .., next, beetle] => {
+                    assert_eq!(beetle.p_type, PieceType::Beetle);
                     for &piece in inner {
                         let movability = MovabilityType::Unmovable;
                         rating[usize::from(piece.player)] +=
-                            single_piece_rating(data, meta, piece, field, movability);
+                            single_piece_rating(data, meta, piece, field, movability).0;
                     }
                     let mov_type = if blocks(field, field) {
                         MovabilityType::Blocked(beetle.player)
@@ -189,9 +191,11 @@ fn rate_piece_movability(data: &HiveGameState, meta: &mut MetaData) -> (RatingTy
                         MovabilityType::Unmovable
                     };
                     rating[usize::from(next.player)] +=
-                        single_piece_rating(data, meta, piece, field, mov_type);
-                    rating[usize::from(beetle.player)] +=
+                        single_piece_rating(data, meta, *next, field, mov_type).0;
+                    let (val, bonus) =
                         single_piece_rating(data, meta, *beetle, field, MovabilityType::Movable);
+                    rating[usize::from(beetle.player)] += val;
+                    beetle_bonus[usize::from(beetle.player)] += bonus;
                 }
                 _ => unreachable!(),
             }
@@ -200,6 +204,8 @@ fn rate_piece_movability(data: &HiveGameState, meta: &mut MetaData) -> (RatingTy
     (
         rating[usize::from(data.player())],
         rating[usize::from(data.player().switched())],
+        beetle_bonus[usize::from(data.player())],
+        beetle_bonus[usize::from(data.player().switched())],
     )
 }
 
@@ -209,15 +215,17 @@ fn single_piece_rating(
     piece: Piece,
     field: Field<HiveBoard>,
     mut movability: MovabilityType,
-) -> RatingType {
+) -> (RatingType, RatingType) {
     let at_queen = meta.adjacent_to_queen(piece.player.switched(), field);
-    if at_queen {
+    if at_queen && (field.content().len() == 1 || movability != MovabilityType::Movable) {
         movability = if movability == MovabilityType::Movable {
             MovabilityType::AtQueen
         } else {
             MovabilityType::Unmovable
         };
     }
+
+    let mut beetle_bonus = 0;
     let base_rating = match piece.p_type {
         PieceType::Queen => 0,
         PieceType::Ant => match movability {
@@ -272,25 +280,105 @@ fn single_piece_rating(
             MovabilityType::Unmovable => 2,
         },
         PieceType::Beetle => match movability {
-            // TODO!!! (sit on queen bonus e.g.)
-            MovabilityType::Movable => 16,
-            MovabilityType::Blocked(_) => 16,
+            MovabilityType::Movable => {
+                let enemy = piece.player.switched();
+                // offensive beetle
+                match meta.distance_to_queen(enemy, field) {
+                    dist @ 0 | dist @ 1 => {
+                        assert!(field.content().len() > 1);
+                        let queen_field =
+                            data.board().get_field_unchecked(meta.q_pos(enemy).unwrap());
+                        let num_placeable = queen_field
+                            .neighbors()
+                            .filter(|f| {
+                                f.is_empty()
+                                    && f.neighbors()
+                                        .filter(|n| {
+                                            n.content()
+                                                .bottom()
+                                                .map_or(false, |p| p.player == enemy)
+                                        })
+                                        .count()
+                                        == 1
+                            })
+                            .count() as RatingType;
+                        if dist == 0 {
+                            beetle_bonus = 17 + 15 * num_placeable;
+                        } else {
+                            beetle_bonus = 17 + 5 * num_placeable;
+                        }
+                    }
+                    2 => {
+                        beetle_bonus = 9;
+                    }
+                    dist => {
+                        beetle_bonus = RatingType::max(0, 7 - dist as RatingType);
+                    }
+                };
+                // defensive beetle
+                if beetle_bonus <= 10 {
+                    let mut best_blocking = field
+                        .neighbors()
+                        .filter_map(|f| {
+                            if !f.is_empty() && data.is_movable(f, false) {
+                                f.content().top()
+                            } else {
+                                None
+                            }
+                        })
+                        .filter_map(|p| {
+                            if p.player == enemy
+                                && p.p_type == PieceType::Beetle
+                                && meta.adjacent_to_queen(piece.player, field)
+                            {
+                                if meta.flags(piece.player).queen_has_beetle_on_top {
+                                    Some(25)
+                                } else {
+                                    Some(20)
+                                }
+                            } else if p.player == enemy {
+                                Some(15)
+                            } else {
+                                None
+                            }
+                        })
+                        .max()
+                        .unwrap_or(8);
+                    // the beetle can't be used yet
+                    if piece.player != data.player() {
+                        best_blocking -= 5;
+                    }
+                    if best_blocking >= 8 + beetle_bonus {
+                        beetle_bonus = 0;
+                        best_blocking
+                    } else {
+                        8
+                    }
+                } else {
+                    8
+                }
+            }
+            MovabilityType::Blocked(_) => 12,
             MovabilityType::AtQueen => 5,
             // a beetle near the queen is still a danger
             MovabilityType::Unmovable => 3,
         },
     };
 
-    match movability {
-        MovabilityType::Blocked(blocking_player) => {
-            if blocking_player == piece.player && blocking_player == data.player() {
-                base_rating * 3 / 4
-            } else {
-                base_rating / 2
+    (
+        match movability {
+            MovabilityType::Blocked(blocking_player) => {
+                if blocking_player == piece.player && blocking_player == data.player() {
+                    // TODO: even worsen this in case of free ant?
+                    base_rating * 3 / 4
+                } else {
+                    base_rating / 2
+                }
             }
-        }
-        _ => base_rating,
-    }
+            _ => base_rating,
+        },
+        beetle_bonus,
+    )
 }
 
 fn determine_less_endangered(data: &HiveGameState, meta: &MetaData) -> Option<Player> {
@@ -323,6 +411,7 @@ fn rate_queen_situation(
     data: &HiveGameState,
     meta: &MetaData,
     player: Player,
+    enemy_beetle_bonus: RatingType,
     is_less_endangered: bool,
 ) -> RatingType {
     const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 80, 115];
@@ -347,8 +436,16 @@ fn rate_queen_situation(
 
     let mut val = -QUEEN_VAL[num_neighbors];
     if val < 0 {
-        val += 15 * num_friendly_movable;
+        let friendly_factor = if player == data.player() {
+            22
+        } else if !meta.flags(player.switched()).has_free_ant {
+            19
+        } else {
+            15
+        };
+        val += friendly_factor * num_friendly_movable;
     }
+    val -= enemy_beetle_bonus;
 
     if can_move {
         (val * 3 / 5) + 5
@@ -376,10 +473,24 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
 
     let my_remaining = rate_remaining_pieces(data, player);
     let enemy_remaining = rate_remaining_pieces(data, enemy);
-    let (my_movability, enemy_movability) = rate_piece_movability(data, &mut meta);
+    let (my_movability, enemy_movability, my_beetle_bonus, enemy_beetle_bonus) =
+        rate_piece_movability(data, &mut meta);
+
     let less_endangered = determine_less_endangered(data, &meta);
-    let my_queen = rate_queen_situation(data, &meta, player, less_endangered == Some(player));
-    let enemy_queen = rate_queen_situation(data, &meta, enemy, less_endangered == Some(enemy));
+    let my_queen = rate_queen_situation(
+        data,
+        &meta,
+        player,
+        enemy_beetle_bonus,
+        less_endangered == Some(player),
+    );
+    let enemy_queen = rate_queen_situation(
+        data,
+        &meta,
+        enemy,
+        my_beetle_bonus,
+        less_endangered == Some(enemy),
+    );
     my_remaining - enemy_remaining + my_movability - enemy_movability + my_queen - enemy_queen
 }
 
@@ -392,10 +503,24 @@ pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingTy
 
     let my_remaining = rate_remaining_pieces(data, player);
     let enemy_remaining = rate_remaining_pieces(data, enemy);
-    let (my_movability, enemy_movability) = rate_piece_movability(data, &mut meta);
+    let (my_movability, enemy_movability, my_beetle_bonus, enemy_beetle_bonus) =
+        rate_piece_movability(data, &mut meta);
+
     let less_endangered = determine_less_endangered(data, &meta);
-    let my_queen = rate_queen_situation(data, &meta, player, less_endangered == Some(player));
-    let enemy_queen = rate_queen_situation(data, &meta, enemy, less_endangered == Some(enemy));
+    let my_queen = rate_queen_situation(
+        data,
+        &meta,
+        player,
+        enemy_beetle_bonus,
+        less_endangered == Some(player),
+    );
+    let enemy_queen = rate_queen_situation(
+        data,
+        &meta,
+        enemy,
+        my_beetle_bonus,
+        less_endangered == Some(enemy),
+    );
     println!("       Current player -   Enemy player");
     println!("Rem.   {:<15}-{:>15}", my_remaining, enemy_remaining);
     println!("Mov.   {:<15}-{:>15}", my_movability, enemy_movability);
@@ -524,5 +649,57 @@ mod test {
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
         print_and_compare_rating(&state, Some([20, 10, 36, 37, -10, -20]));
+    }
+
+    #[test]
+    fn rating_test_complex() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 2);
+        pieces.insert(PieceType::Spider, 2);
+        pieces.insert(PieceType::Grasshopper, 2);
+        pieces.insert(PieceType::Beetle, 2);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = OpenIndex::from((0, 1));
+        state.place_piece(PieceType::Grasshopper, zero);
+        state.place_piece(PieceType::Grasshopper, up);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Queen, up + HexaDirection::UpRight);
+        state.place_piece(PieceType::Ant, zero + HexaDirection::DownLeft);
+        state.place_piece(PieceType::Ant, up + HexaDirection::Up);
+        state.place_piece(
+            PieceType::Grasshopper,
+            up + HexaDirection::UpRight + HexaDirection::UpRight,
+        );
+        state.place_piece(
+            PieceType::Spider,
+            up + HexaDirection::Up + HexaDirection::UpLeft,
+        );
+        state.move_piece(zero, zero, false);
+        state.place_piece(
+            PieceType::Ant,
+            zero + HexaDirection::Down + HexaDirection::DownRight,
+        );
+        state.place_piece(PieceType::Beetle, zero + HexaDirection::DownRight);
+        state.place_piece(
+            PieceType::Beetle,
+            zero + HexaDirection::Down + HexaDirection::DownRight + HexaDirection::DownRight,
+        );
+        state.place_piece(
+            PieceType::Spider,
+            up + HexaDirection::UpRight + HexaDirection::UpRight + HexaDirection::DownRight,
+        );
+        state.move_piece(
+            zero + HexaDirection::Down + HexaDirection::DownRight + HexaDirection::DownRight,
+            zero + HexaDirection::Down + HexaDirection::DownRight,
+            false,
+        );
+
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        // beetle bonus for black: 22
+        // note that white queen is movable
+        print_and_compare_rating(&state, Some([20, 15, 66, 37, -29, -40]));
     }
 }
