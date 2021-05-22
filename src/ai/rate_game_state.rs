@@ -29,6 +29,7 @@ struct MetaData {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MovabilityType {
     Movable,
+    AtQueen,
     Blocked(Player),
     Unmovable,
 }
@@ -152,8 +153,13 @@ fn rate_piece_movability(data: &HiveGameState, meta: &mut MetaData) -> (RatingTy
     for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
         let &piece = field.content().top().unwrap();
         if field.content().len() == 1 && data.is_movable(field, false) {
-            rating[usize::from(piece.player)] +=
-                single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
+            rating[usize::from(piece.player)] += dbg!(single_piece_rating(
+                data,
+                meta,
+                piece,
+                field,
+                MovabilityType::Movable
+            ));
         } else if field.content().len() == 1 && !data.is_movable(field, false) {
             // is this blocked by only one adjacent piece?
             let mut value =
@@ -167,7 +173,7 @@ fn rate_piece_movability(data: &HiveGameState, meta: &mut MetaData) -> (RatingTy
                     );
                 }
             }
-            rating[usize::from(piece.player)] += value;
+            rating[usize::from(piece.player)] += dbg!(value);
         } else if field.content().len() > 1 {
             assert!(data.is_movable(field, false));
             match field.content().pieces() {
@@ -202,8 +208,16 @@ fn single_piece_rating(
     meta: &mut MetaData,
     piece: Piece,
     field: Field<HiveBoard>,
-    movability: MovabilityType,
+    mut movability: MovabilityType,
 ) -> RatingType {
+    let at_queen = meta.adjacent_to_queen(piece.player.switched(), field);
+    if at_queen {
+        movability = if movability == MovabilityType::Movable {
+            MovabilityType::AtQueen
+        } else {
+            MovabilityType::Unmovable
+        };
+    }
     let base_rating = match piece.p_type {
         PieceType::Queen => 0,
         PieceType::Ant => match movability {
@@ -214,6 +228,7 @@ fn single_piece_rating(
                     16
                 }
             }
+            MovabilityType::AtQueen => 8,
             MovabilityType::Unmovable => 5,
         },
         PieceType::Spider | PieceType::Grasshopper => match movability {
@@ -229,9 +244,14 @@ fn single_piece_rating(
                 for f in moves {
                     if meta.adjacent_to_queen(piece.player.switched(), f) {
                         reaches_queen = true;
-                    } else {
+                    } else if piece.player == data.player() {
                         for n in f.neighbors() {
-                            if !n.is_empty() && data.is_movable(n, false) && would_block(f, n) {
+                            if !n.is_empty()
+                                && data.is_movable(n, false)
+                                && n.content().top().unwrap().player != piece.player
+                                && !meta.adjacent_to_queen(piece.player, field)
+                                && would_block(f, n)
+                            {
                                 can_block = true;
                                 break;
                             }
@@ -248,12 +268,14 @@ fn single_piece_rating(
                 }
             }
             MovabilityType::Blocked(_) => 10,
+            MovabilityType::AtQueen => 5,
             MovabilityType::Unmovable => 2,
         },
         PieceType::Beetle => match movability {
             // TODO!!! (sit on queen bonus e.g.)
             MovabilityType::Movable => 16,
             MovabilityType::Blocked(_) => 16,
+            MovabilityType::AtQueen => 5,
             // a beetle near the queen is still a danger
             MovabilityType::Unmovable => 3,
         },
@@ -313,14 +335,20 @@ fn rate_queen_situation(
         for field in pos.neighbors() {
             if let Some(piece) = field.content().top() {
                 num_neighbors += 1;
-                if field.content().len() == 1 && piece.player == player {
+                if field.content().len() == 1
+                    && piece.player == player
+                    && data.is_movable(field, false)
+                {
                     num_friendly_movable += 1;
                 }
             }
         }
     }
 
-    let val = 15 * num_friendly_movable - QUEEN_VAL[num_neighbors];
+    let mut val = -QUEEN_VAL[num_neighbors];
+    if val < 0 {
+        val += 15 * num_friendly_movable;
+    }
 
     if can_move {
         (val * 3 / 5) + 5
@@ -355,7 +383,7 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
     my_remaining - enemy_remaining + my_movability - enemy_movability + my_queen - enemy_queen
 }
 
-pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<&[RatingType; 6]>) {
+pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingType; 6]>) {
     let player = Player::from(data.player());
     let enemy = player.switched();
 
@@ -368,10 +396,10 @@ pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<&[RatingT
     let less_endangered = determine_less_endangered(data, &meta);
     let my_queen = rate_queen_situation(data, &meta, player, less_endangered == Some(player));
     let enemy_queen = rate_queen_situation(data, &meta, enemy, less_endangered == Some(enemy));
-    println!("           Current player -   Enemy player");
-    println!("Remaining  {:<15}-{:>15}", my_remaining, enemy_remaining);
-    println!("Movability {:<15}-{:>15}", my_movability, enemy_movability);
-    println!("Queen      {:<15}-{:>15}", my_queen, enemy_queen);
+    println!("       Current player -   Enemy player");
+    println!("Rem.   {:<15}-{:>15}", my_remaining, enemy_remaining);
+    println!("Mov.   {:<15}-{:>15}", my_movability, enemy_movability);
+    println!("Queen  {:<15}-{:>15}", my_queen, enemy_queen);
 
     if let Some(expected) = expected {
         assert_eq!(my_remaining, expected[0]);
@@ -389,7 +417,12 @@ mod test {
 
     use tgp_board::{open_board::OpenIndex, structures::directions::HexaDirection, BoardToMap};
 
-    use crate::{ai::rate_game_state::Flags, display::print_annotated_board, pieces::{PieceType, Player}, state::HiveGameState};
+    use crate::{
+        ai::rate_game_state::Flags,
+        display::print_annotated_board,
+        pieces::{PieceType, Player},
+        state::HiveGameState,
+    };
 
     use super::*;
 
@@ -455,5 +488,41 @@ mod test {
                 has_blocking_ant: true,
             }
         );
+    }
+
+    #[test]
+    fn rating_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Ant, 3);
+        pieces.insert(PieceType::Spider, 1);
+        pieces.insert(PieceType::Grasshopper, 1);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = OpenIndex::from((0, 1));
+        state.place_piece(PieceType::Grasshopper, zero);
+        state.place_piece(PieceType::Grasshopper, up);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Queen, up + HexaDirection::Up);
+        state.place_piece(PieceType::Ant, zero + HexaDirection::DownLeft);
+        state.place_piece(PieceType::Ant, zero + HexaDirection::DownRight);
+        state.place_piece(
+            PieceType::Spider,
+            zero + HexaDirection::DownRight + HexaDirection::UpRight,
+        );
+        state.place_piece(
+            PieceType::Ant,
+            up + HexaDirection::UpRight + HexaDirection::Up,
+        );
+        state.move_piece(
+            zero + HexaDirection::DownLeft,
+            up + HexaDirection::UpRight + HexaDirection::UpRight,
+            false,
+        );
+        state.place_piece(PieceType::Spider, zero + HexaDirection::UpLeft);
+
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        print_and_compare_rating(&state, Some([20, 10, 36, 37, -10, -20]));
     }
 }

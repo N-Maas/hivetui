@@ -9,7 +9,10 @@ use pieces::PieceType;
 use state::{HiveContext, HiveGameState};
 use text_io::try_read;
 
-use crate::{ai::HiveAI, display::print_move_ratings};
+use crate::{
+    ai::{print_and_compare_rating, HiveAI},
+    display::print_move_ratings,
+};
 
 mod ai;
 mod display;
@@ -97,7 +100,8 @@ fn main() {
                             .retract();
                     }
                     Input::AI => {
-                        print_move_ratings(engine.data(), &HiveAI {});
+                        print_and_compare_rating(engine.data(), None);
+                        // print_move_ratings(engine.data(), &HiveAI {});
                     }
                 }
             }

@@ -3,8 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use tgp::vec_context::VecContext;
 use tgp_ai::{rater::Rater, RatingType};
 use tgp_board::{
-    hypothetical::Hypothetical,
-    index_map::{ArrayIndexMap, HashIndexMap},
+    index_map::HashIndexMap,
     open_board::OpenIndex,
     prelude::*,
     structures::directions::{DirectionEnumerable, DirectionOffset, HexaDirection},

@@ -15,6 +15,8 @@ use crate::{
 mod rate_game_state;
 mod rate_moves;
 
+pub use rate_game_state::print_and_compare_rating;
+
 fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
     ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
         as u32

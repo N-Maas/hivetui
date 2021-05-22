@@ -381,7 +381,7 @@ impl HiveGameState {
 
     fn check_piece_is_movable(&self, field: Field<HiveBoard>) -> bool {
         assert!(!field.is_empty());
-        let Piece { p_type, player } = field.content().top().unwrap();
+        let Piece { p_type, player: _ } = field.content().top().unwrap();
         p_type.is_movable(field) && !move_violates_ohr(field)
     }
 
