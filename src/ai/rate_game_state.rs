@@ -1,9 +1,12 @@
 use std::{cmp::Ordering, iter};
 
 use tgp_ai::RatingType;
-use tgp_board::{open_board::OpenIndex, prelude::*};
+use tgp_board::{
+    hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
+};
 
 use crate::{
+    ai::neighbors_in_a_row,
     pieces::{feasible_steps_plain, grasshopper_moves, Piece, PieceType, Player},
     state::{HiveBoard, HiveGameState, HiveResult},
 };
@@ -159,7 +162,11 @@ fn rate_piece_movability(
         if field.content().len() == 1 && data.is_movable(field, false) {
             let (val, bonus) =
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
-            rating[usize::from(piece.player)] += val;
+            rating[usize::from(piece.player)] += if is_only_half_movable(data, meta, piece, field) {
+                val * 3 / 4
+            } else {
+                val
+            };
             beetle_bonus[usize::from(piece.player)] += bonus;
         } else if field.content().len() == 1 && !data.is_movable(field, false) {
             // is this blocked by only one adjacent piece?
@@ -207,6 +214,45 @@ fn rate_piece_movability(
         beetle_bonus[usize::from(data.player())],
         beetle_bonus[usize::from(data.player().switched())],
     )
+}
+
+// Check whether moving this piece would block another own piece.
+fn is_only_half_movable(
+    data: &HiveGameState,
+    meta: &MetaData,
+    piece: Piece,
+    field: Field<HiveBoard>,
+) -> bool {
+    assert!(data.is_movable(field, false));
+    let at_queen = meta.adjacent_to_queen(piece.player, field)
+        || meta.adjacent_to_queen(piece.player.switched(), field);
+    if !at_queen {
+        for f in field.neighbors() {
+            if !f.is_empty()
+                && f.content().top().unwrap().player == piece.player
+                && f.content().len() == 1
+                && data.is_movable(f, false)
+            {
+                let mut hypothetical =
+                    Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
+                hypothetical[field].pop();
+                let h_f = hypothetical.get_field_unchecked(f.index());
+
+                // Now we need to check whether the OHR holds when moving the adjacent piece.
+                // This is not always correct (and doesn't need to be, for the AI)
+                let neighbor_count = h_f.neighbors().filter(|f| !f.is_empty()).count();
+                if !(neighbor_count <= 1
+                    || (neighbor_count <= 4
+                        // 4 or less neighbors and all neighbors are in a row => movable
+                        && neighbors_in_a_row(h_f))
+                    || h_f.content().len() > 1)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn single_piece_rating(
@@ -693,7 +739,7 @@ mod test {
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
         // beetle bonus for black: 22
-        // note that white queen is movable
-        print_and_compare_rating(&state, Some([20, 15, 66, 37, -32, -40]));
+        // note that white queen is movable, but the beetle is only half movable
+        print_and_compare_rating(&state, Some([20, 15, 61, 37, -32, -40]));
     }
 }
