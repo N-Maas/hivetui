@@ -1,3 +1,4 @@
+use tgp::engine::{Engine, EventListener, GameEngine, GameState};
 use tgp_ai::{
     rater::{DecisionType, Rater},
     MinMaxAlgorithm, Params, RateAndMap, RatingType,
@@ -84,12 +85,60 @@ fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
     }
 }
 
-pub type HiveAI = MinMaxAlgorithm<HiveGameState, HiveRater>;
+#[derive(Debug, PartialEq, Eq)]
+pub enum Difficulty {
+    Easy,
+    QuiteEasy,
+    Medium,
+}
 
-pub fn create_ai() -> HiveAI {
-    let params = Params::new(2, 4, 6, 20, 7);
+pub struct HiveAI {
+    alg: MinMaxAlgorithm<HiveGameState, HiveRater>,
+    use_direct_move: bool,
+}
 
-    HiveAI::new(params, HiveRater {})
+impl HiveAI {
+    pub fn new(level: Difficulty) -> Self {
+        let depth = if level == Difficulty::Medium { 2 } else { 1 };
+        let params = Params::new(depth, 4, 6, 20, 7);
+        let alg = MinMaxAlgorithm::<HiveGameState, HiveRater>::new(params, HiveRater {});
+        Self {
+            alg,
+            use_direct_move: level == Difficulty::Easy,
+        }
+    }
+
+    pub fn apply<L: EventListener<HiveGameState>>(&self, engine: &mut Engine<HiveGameState, L>) {
+        if self.use_direct_move {
+            let rating = Rater::create_rating(engine, &HiveRater {});
+            let (_, indizes) = rating
+                .into_iter()
+                .max_by(|(val1, _), (val2, _)| val1.cmp(val2))
+                .unwrap();
+            for &i in indizes.iter() {
+                match engine.pull() {
+                    GameState::PendingDecision(dec) => {
+                        dec.select_option(i);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        } else {
+            self.alg.apply(engine);
+        }
+    }
+
+    pub fn run_all_ratings<L: EventListener<HiveGameState>>(
+        &self,
+        engine: &Engine<HiveGameState, L>,
+    ) -> Vec<(RatingType, Box<[usize]>)> {
+        if self.use_direct_move {
+            let mut engine = Engine::new(2, engine.data().clone());
+            Rater::create_rating(&mut engine, &HiveRater {})
+        } else {
+            self.alg.run_all_ratings(engine).unwrap()
+        }
+    }
 }
 
 pub struct HiveRater {

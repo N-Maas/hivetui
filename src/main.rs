@@ -10,7 +10,7 @@ use state::{HiveContext, HiveGameState};
 use text_io::try_read;
 
 use crate::{
-    ai::{create_ai, print_and_compare_rating, HiveRater},
+    ai::{print_and_compare_rating, Difficulty, HiveAI, HiveRater},
     display::{print_ai_ratings, print_move_ratings},
 };
 
@@ -26,12 +26,38 @@ fn main() {
     pieces.insert(PieceType::Grasshopper, 3);
     pieces.insert(PieceType::Beetle, 2);
     pieces.insert(PieceType::Spider, 2);
+
+    println!("Choose level for AI: [0] [1] [2]");
+    let level = loop {
+        let input: Result<String, _> = try_read!();
+        match input {
+            Ok(val) => {
+                let to_num = val.parse::<usize>();
+                match to_num {
+                    Ok(index) => {
+                        if index < 3 {
+                            break index;
+                        }
+                    }
+                    Err(_) => {}
+                }
+            }
+            Err(_) => {}
+        }
+        println!("Please enter a number between 0 and 2.");
+    };
+    let level = match level {
+        0 => Difficulty::Easy,
+        1 => Difficulty::QuiteEasy,
+        2 => Difficulty::Medium,
+        _ => unreachable!(),
+    };
+    let ai = HiveAI::new(level);
+
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces));
     let mut map = HashIndexMap::new();
     let mut print = true;
     let mut undo = false;
-
-    let ai = create_ai();
 
     loop {
         map.clear();
