@@ -29,6 +29,7 @@ fn main() {
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces));
     let mut map = HashIndexMap::new();
     let mut print = true;
+    let mut undo = false;
 
     let ai = create_ai();
 
@@ -45,11 +46,16 @@ fn main() {
                     HiveContext::TargetField(context) => (Either::Left(context.iter()), false),
                     HiveContext::Piece(context) => (Either::Right(context), false),
                     HiveContext::SkipPlayer => {
-                        println!("Current player can not move, skip turn.");
-                        decision.select_option(0);
+                        if undo {
+                            decision.undo_last_decision();
+                        } else {
+                            println!("Current player can not move, skip turn.");
+                            decision.select_option(0);
+                        }
                         continue;
                     }
                 };
+                undo = false;
                 match to_iter {
                     Either::Left(iter) => {
                         for (i, &index) in iter.enumerate() {
@@ -58,7 +64,7 @@ fn main() {
                         if print {
                             print_annotated_board(&decision.data(), &map, false);
                             if is_top_level {
-                                println!("([u]ndo, [r]edo, [s]tate rating, [a]i, [b]etter ai)");
+                                println!("([u]ndo, [r]edo, [a]i)");
                             }
                         } else {
                             print = true;
@@ -87,6 +93,8 @@ fn main() {
                         if !decision.undo_last_decision() {
                             println!("There is nothing to undo currently.");
                             print = false;
+                        } else {
+                            undo = true;
                         }
                     }
                     Input::Redo => {
@@ -107,20 +115,34 @@ fn main() {
                     Input::MoveRating => {
                         print_move_ratings(engine.data(), &HiveRater {});
                     }
-                    Input::AI => {
+                    Input::ShowAIRating => {
                         print_ai_ratings(engine.data(), &ai);
                     }
+                    Input::AI => {
+                        ai.apply(&mut engine);
+                    }
+                    _ => {}
                 }
             }
-            GameState::Finished(_) => {
-                break;
+            GameState::Finished(mut f) => {
+                map.clear();
+                print_annotated_board(f.data(), &map, false);
+                println!("{}", f.data().result().unwrap());
+
+                println!("([u]ndo, [e]xit)");
+                match get_input(true) {
+                    Input::Undo => {
+                        f.undo_last_decision();
+                        undo = true;
+                    }
+                    Input::Exit => {
+                        break;
+                    }
+                    _ => {}
+                }
             }
         }
     }
-
-    map.clear();
-    print_annotated_board(&engine.data(), &map, false);
-    println!("{}", engine.data().result().unwrap());
 }
 
 enum Input {
@@ -131,6 +153,8 @@ enum Input {
     MoveRating,
     StateRating,
     AI,
+    ShowAIRating,
+    Exit,
 }
 
 fn get_input(is_top_level: bool) -> Input {
@@ -152,10 +176,14 @@ fn get_input(is_top_level: bool) -> Input {
                                 return Input::Redo;
                             } else if val.starts_with('s') {
                                 return Input::StateRating;
-                            } else if val.starts_with('a') {
+                            } else if val.starts_with('m') {
                                 return Input::MoveRating;
-                            } else if val.starts_with('b') {
+                            } else if val.starts_with('a') {
                                 return Input::AI;
+                            } else if val.starts_with('h') {
+                                return Input::ShowAIRating;
+                            } else if val.starts_with('e') {
+                                return Input::Exit;
                             } else {
                                 println!("Please enter a number.");
                             }
