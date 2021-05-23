@@ -173,7 +173,7 @@ impl HiveGameState {
         }
     }
 
-    pub fn total_num_pieces(&self, player: Player) -> u32 {
+    fn total_num_pieces(&self, player: Player) -> u32 {
         let pieces = match player {
             Player::White => &self.white_pieces,
             Player::Black => &self.black_pieces,
