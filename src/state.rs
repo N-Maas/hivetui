@@ -18,7 +18,10 @@ use tgp_board::{
     },
 };
 
-use crate::pieces::{Piece, PieceType, Player};
+use crate::{
+    display::print_annotated_board,
+    pieces::{Piece, PieceType, Player},
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct HiveContent {
@@ -283,18 +286,11 @@ impl HiveGameState {
         }
 
         let field = self.board.get_field(from).unwrap();
-        let neighbors = field
-            .neighbors_by_direction()
-            .filter(|(_, f)| !f.is_empty())
-            .map(|(d, f)| (d, f.index()))
-            .collect::<Vec<_>>();
-        let in_a_row = neighbors.iter().all(|(d, _)| {
-            !field.next(d.next_direction()).unwrap().is_empty()
-                || !field.next(d.prev_direction()).unwrap().is_empty()
-        });
+
+        let (neighbors, in_a_row) = self.neighbors_in_a_row(field);
 
         if in_a_row {
-            for (_, i) in neighbors {
+            for i in neighbors {
                 let field = self.board.get_field(i).unwrap();
                 self.board[i].is_movable = self.check_piece_is_movable(field);
             }
@@ -311,20 +307,13 @@ impl HiveGameState {
         }
 
         let field = self.board.get_field(to).unwrap();
-        let neighbors = field
-            .neighbors_by_direction()
-            .filter(|(_, f)| !f.is_empty())
-            .map(|(d, f)| (d, f.index()))
-            .collect::<Vec<_>>();
-        let in_a_row = neighbors.iter().all(|(d, _)| {
-            !field.next(d.next_direction()).unwrap().is_empty()
-                || !field.next(d.prev_direction()).unwrap().is_empty()
-        });
-
+        let (neighbors, in_a_row) = self.neighbors_in_a_row(field);
         if in_a_row {
-            for &(_, i) in neighbors.iter() {
+            for &i in neighbors.iter() {
                 let field = self.board.get_field(i).unwrap();
-                if neighbors.len() <= 2 && self.board[i].is_movable {
+                if neighbors.len() == 1 && self.board[i].len() == 1 {
+                    self.board[i].is_movable = false;
+                } else if neighbors.len() <= 2 && self.board[i].is_movable {
                     let p_type = self.board[i].top().unwrap().p_type;
                     self.board[i].is_movable = p_type.is_movable(field);
                 } else {
@@ -335,6 +324,24 @@ impl HiveGameState {
         } else {
             true
         }
+    }
+
+    fn neighbors_in_a_row(&self, field: Field<HiveBoard>) -> (Vec<OpenIndex>, bool) {
+        let mut prev_empty = false;
+        let mut num_components = 0;
+        let neighbor_cycle = field.neighbors().chain(field.neighbors().next());
+        for f in neighbor_cycle {
+            if prev_empty && !f.is_empty() {
+                num_components += 1;
+            }
+            prev_empty = f.is_empty();
+        }
+        let neighbors = field
+            .neighbors()
+            .filter(|f| !f.is_empty())
+            .map(|f| f.index())
+            .collect();
+        (neighbors, num_components <= 1)
     }
 
     fn check_movability_for_all(&mut self) {
