@@ -180,7 +180,11 @@ fn draw_field<T: Display>(
                             player: player_top,
                             p_type: p_top,
                         } = field.content().pieces()[1];
-                        let fill_top = fill_char(player_top, print_empty);
+                        let fill_top = if from_field == Some(index) {
+                            '~'
+                        } else {
+                            fill_char(player_top, print_empty)
+                        };
                         lines[1].push_str(&format!(
                             "{} {} {}",
                             fill_top,
