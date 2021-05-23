@@ -142,7 +142,17 @@ impl PieceType {
             .collect()
     }
 
-    pub fn is_movable<B: Board<Index = OpenIndex, Content = HiveContent>>(
+    pub fn is_movable(&self, field: Field<HiveBoard>) -> bool {
+        assert!(!field.is_empty());
+        match self {
+            // TODO: not completetly correct for spider
+            PieceType::Queen | PieceType::Ant => feasible_steps_plain(field).count() > 0,
+            PieceType::Grasshopper | PieceType::Beetle => true,
+            PieceType::Spider => self.get_moves(field).len() > 0,
+        }
+    }
+
+    pub fn is_movable_generic<B: Board<Index = OpenIndex, Content = HiveContent>>(
         &self,
         field: Field<B>,
     ) -> bool
@@ -153,14 +163,10 @@ impl PieceType {
         assert!(!field.is_empty());
         match self {
             // TODO: not completetly correct for spider
-            PieceType::Queen | PieceType::Ant => feasible_steps_plain(field).count() > 0,
-            PieceType::Grasshopper | PieceType::Beetle => true,
-            PieceType::Spider => {
-                let mut search = field.search();
-                search.extend(|f| feasible_steps_plain(f).collect());
-                search.extend(|f| feasible_steps_plain(f).collect());
-                search.size() > 2
+            PieceType::Queen | PieceType::Ant | PieceType::Spider => {
+                feasible_steps_plain(field).count() > 0
             }
+            PieceType::Grasshopper | PieceType::Beetle => true,
         }
     }
 }

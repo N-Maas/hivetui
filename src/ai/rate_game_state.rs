@@ -414,7 +414,7 @@ fn rate_queen_situation(
     enemy_beetle_bonus: RatingType,
     is_less_endangered: bool,
 ) -> RatingType {
-    const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 80, 115];
+    const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 80, 120];
     let mut can_move = false;
     let mut num_neighbors = 0;
     let mut num_friendly_movable = 0;
@@ -436,13 +436,7 @@ fn rate_queen_situation(
 
     let mut val = -QUEEN_VAL[num_neighbors];
     if val < 0 {
-        let friendly_factor = if player == data.player() {
-            22
-        } else if !meta.flags(player.switched()).has_free_ant {
-            19
-        } else {
-            15
-        };
+        let friendly_factor = if player == data.player() { 20 } else { 15 };
         val += friendly_factor * num_friendly_movable;
     }
     val -= enemy_beetle_bonus;
@@ -700,6 +694,6 @@ mod test {
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
         // beetle bonus for black: 22
         // note that white queen is movable
-        print_and_compare_rating(&state, Some([20, 15, 66, 37, -29, -40]));
+        print_and_compare_rating(&state, Some([20, 15, 66, 37, -32, -40]));
     }
 }

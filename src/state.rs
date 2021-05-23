@@ -176,6 +176,14 @@ impl HiveGameState {
         }
     }
 
+    fn total_num_pieces(&self, player: Player) -> u32 {
+        let pieces = match player {
+            Player::White => &self.white_pieces,
+            Player::Black => &self.black_pieces,
+        };
+        pieces.iter().map(|(_, &count)| count).sum()
+    }
+
     fn get_all_movables(&self) -> impl Iterator<Item = Field<HiveBoard>> {
         let moves_enabled = self.pieces().0[&PieceType::Queen] == 0;
         self.board.iter_fields().filter(move |f| {
@@ -382,7 +390,11 @@ impl HiveGameState {
 
     pub fn is_movable(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
         assert!(!field.is_empty());
-        field.content().is_movable
+        let piece_movable = match field.content().top().unwrap().p_type {
+            PieceType::Spider => PieceType::Spider.is_movable(field) && !move_violates_ohr(field),
+            _ => field.content().is_movable,
+        };
+        piece_movable
             && (!check_player || field.content().top().unwrap().player == self.current_player)
     }
 
@@ -446,6 +458,7 @@ impl HiveGameState {
                 }
             }
         }
+        assert!(dec.len() > 0, "{:?}", &dec);
         dec.spawn_by_rev_effect(|&index, &(p_type, _)| {
             (
                 move |game_state: &mut HiveGameState| {
@@ -471,6 +484,7 @@ impl HiveGameState {
         for field in p_type.get_moves(field).into_iter() {
             dec.add_option(field.index());
         }
+        assert!(dec.len() > 0, "{:?} - {:?}", &dec, p_type);
         dec.spawn_by_rev_effect(|&from, &to| {
             (
                 move |game_state: &mut HiveGameState| {
@@ -497,8 +511,10 @@ impl GameData for HiveGameState {
         }
 
         let mut base_dec = MappedDecision::new(self.player_usize());
-        for field in self.get_all_placement_targets() {
-            base_dec.add_option(field.index());
+        if self.total_num_pieces(self.player()) > 0 {
+            for field in self.get_all_placement_targets() {
+                base_dec.add_option(field.index());
+            }
         }
         for field in self.get_all_movables() {
             base_dec.add_option(field.index());
@@ -573,11 +589,15 @@ mod test {
         pieces.insert(PieceType::Queen, 1);
         pieces.insert(PieceType::Beetle, 1);
         let mut state = HiveGameState::new(pieces);
+        assert_eq!(state.total_num_pieces(Player::White), 2);
+        assert_eq!(state.total_num_pieces(Player::Black), 2);
         assert_eq!(
             state.get_all_placement_targets().next().unwrap().index(),
             OpenIndex::from((0, 0))
         );
         state.place_piece(PieceType::Queen, OpenIndex::from((0, 0)));
+        assert_eq!(state.total_num_pieces(Player::White), 1);
+        assert_eq!(state.total_num_pieces(Player::Black), 2);
         assert_eq!(state.board.size(), 7);
         assert_eq!(
             state.get_all_placement_targets().next().unwrap().index(),

@@ -30,7 +30,13 @@ fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
         Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[target].pop();
     let h_field = hypothetical.get_field_unchecked(blocked.index());
-    if h_field.content().top().unwrap().p_type.is_movable(h_field) {
+    if h_field
+        .content()
+        .top()
+        .unwrap()
+        .p_type
+        .is_movable_generic(h_field)
+    {
         // Now we need to verify the OHR holds when moving the blocked piece.
         // This is not always correct (and doesn't need to be, for the AI)
         let neighbor_count = h_field.neighbors().filter(|f| !f.is_empty()).count();
@@ -64,7 +70,13 @@ fn would_block(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
         Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[target].push(DUMMY_PIECE);
     let h_field = hypothetical.get_field_unchecked(blocked.index());
-    if !h_field.content().top().unwrap().p_type.is_movable(h_field) {
+    if !h_field
+        .content()
+        .top()
+        .unwrap()
+        .p_type
+        .is_movable_generic(h_field)
+    {
         true
     } else {
         // blocking via OHR happens exactly if there is no other neighbor
