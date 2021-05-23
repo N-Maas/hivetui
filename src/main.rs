@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, thread::sleep, time::{Duration, Instant}};
 
 use either::Either;
 use tgp::engine::{Engine, EventListener, GameEngine, GameState, PendingDecision};
+use tgp_ai::RateAndMap;
 use tgp_board::{
     index_map::HashIndexMap, open_board::OpenIndex, prelude::*,
     structures::directions::HexaDirection,
@@ -65,20 +66,21 @@ fn main() {
     print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
 
     let ai = HiveAI::new(Difficulty::Medium);
+    let rater = HiveRater {};
 
     let engine = Engine::new(2, state);
     // warmup
-    for _ in 0..10 {
-        ai.run_all_ratings(&engine);
+    for _ in 0..1000 {
+        rater.rate_game_state(engine.data(), &Vec::new(), 0);
     }
     let mut time_total = 0;
-    let n = 10;
+    let n = 10000;
     for _ in 0..n {
         let time = Instant::now();
-        ai.run_all_ratings(&engine);
-        time_total += time.elapsed().as_millis();
+        rater.rate_game_state(engine.data(), &Vec::new(), 0);
+        time_total += time.elapsed().as_micros();
     }
-    println!("Average: {} milliseconds", time_total / n);
+    println!("Average: {} microsecond", time_total / n);
 
     old_main();
 }
