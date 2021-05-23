@@ -148,14 +148,19 @@ impl PieceType {
     ) -> bool
     where
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+        B: BoardToMap<()>,
     {
         assert!(!field.is_empty());
         match self {
             // TODO: not completetly correct for spider
-            PieceType::Queen | PieceType::Ant | PieceType::Spider => {
-                feasible_steps_plain(field).count() > 0
-            }
+            PieceType::Queen | PieceType::Ant => feasible_steps_plain(field).count() > 0,
             PieceType::Grasshopper | PieceType::Beetle => true,
+            PieceType::Spider => {
+                let mut search = field.search();
+                search.extend(|f| feasible_steps_plain(f).collect());
+                search.extend(|f| feasible_steps_plain(f).collect());
+                search.size() > 2
+            }
         }
     }
 }

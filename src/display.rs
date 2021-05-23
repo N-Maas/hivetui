@@ -15,7 +15,7 @@ type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
 pub fn print_move_ratings(
     state: &HiveGameState,
     rater: &HiveRater,
-) -> Vec<(RatingType, usize, HiveContext)> {
+) -> Vec<(RatingType, Box<[usize]>)> {
     let mut engine = Engine::new(2, state.clone());
     let ratings = Rater::create_rating(&mut engine, rater);
     print_ratings_for_moves(state, &ratings);
@@ -25,6 +25,11 @@ pub fn print_move_ratings(
 pub fn print_ai_ratings(state: &HiveGameState, ai: &HiveAI) {
     let mut engine = Engine::new(2, state.clone());
     let ratings = ai.run_all_ratings(&mut engine).unwrap();
+    print_ratings_for_moves(state, &ratings);
+}
+
+fn print_ratings_for_moves(state: &HiveGameState, ratings: &[(RatingType, Box<[usize]>)]) {
+    let mut engine = Engine::new(2, state.clone());
     let ratings = ratings
         .into_iter()
         .map(|(r, indizes)| match engine.pull() {
@@ -48,10 +53,6 @@ pub fn print_ai_ratings(state: &HiveGameState, ai: &HiveAI) {
             _ => unreachable!(),
         })
         .collect::<Vec<_>>();
-    print_ratings_for_moves(state, &ratings);
-}
-
-fn print_ratings_for_moves(state: &HiveGameState, ratings: &[(RatingType, usize, HiveContext)]) {
     for (r, index, context) in ratings {
         let context = context.clone();
         match context {
@@ -62,12 +63,12 @@ fn print_ratings_for_moves(state: &HiveGameState, ratings: &[(RatingType, usize,
                     "Move  <{}> from {:<2} to {:<2} => {:>4}",
                     p_type,
                     *context.inner(),
-                    context[*index],
+                    context[index],
                     r
                 );
             }
             HiveContext::Piece(context) => {
-                let (p_type, _) = context[*index];
+                let (p_type, _) = context[index];
                 println!(
                     "Place <{}>  at  {:<2}             => {:>4}",
                     p_type,

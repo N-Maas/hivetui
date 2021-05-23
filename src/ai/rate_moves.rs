@@ -579,7 +579,8 @@ fn handle_placement_ratings(
                             }
                         })
                         .max()
-                        .unwrap();
+                        // unmovable placement is not that useful
+                        .unwrap_or(-3);
                     rater.rate(i, j, rating);
                 }
                 PieceType::Beetle => {
@@ -912,7 +913,7 @@ mod test {
         assert_eq!(
             rating
                 .into_iter()
-                .map(|(r, _, _)| r)
+                .map(|(r, _)| r)
                 .take(9)
                 .collect::<Vec<_>>(),
             vec![15, 15, 14, 12, 12, 11, 3, 2, 1]
@@ -961,7 +962,7 @@ mod test {
         // Place <A>  at  (-2, -2)             =>   11
         let results = rating
             .into_iter()
-            .map(|(r, _, _)| r)
+            .map(|(r, _)| r)
             .take(3)
             .collect::<Vec<_>>();
         assert_eq!(&results[0..2], &[12, 11]);
@@ -985,7 +986,7 @@ mod test {
         // Place <S>  at  (2 , 3 )             =>    9
         let results = rating
             .into_iter()
-            .map(|(r, _, _)| r)
+            .map(|(r, _)| r)
             .take(10)
             .collect::<Vec<_>>();
         assert_eq!(&results[0..9], &[18, 18, 11, 9, 9, 9, 9, 9, 9]);
