@@ -139,6 +139,22 @@ impl HiveAI {
             self.alg.run_all_ratings(engine).unwrap()
         }
     }
+
+    pub fn run<L: EventListener<HiveGameState>>(
+        &self,
+        engine: &Engine<HiveGameState, L>,
+    ) -> Box<[usize]> {
+        if self.use_direct_move {
+            let mut engine = Engine::new(2, engine.data().clone());
+            Rater::create_rating(&mut engine, &HiveRater {})
+                .into_iter()
+                .max_by(|(a, _), (b, _)| a.cmp(b))
+                .unwrap()
+                .1
+        } else {
+            self.alg.run(engine).unwrap().1
+        }
+    }
 }
 
 pub struct HiveRater {

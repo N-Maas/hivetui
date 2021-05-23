@@ -87,6 +87,8 @@ pub fn print_annotated_board<T: Display>(
     state: &HiveGameState,
     map: &HiveMap<T>,
     print_empty: bool,
+    from_field: Option<OpenIndex>,
+    to_field: Option<OpenIndex>,
 ) {
     let board = state.board();
     let num_lines = 4 * board.num_rows() + 2 * board.num_cols() + 1;
@@ -99,7 +101,7 @@ pub fn print_annotated_board<T: Display>(
             let index = OpenIndex::from((board.lower_x() + x, board.lower_y() + y));
             let line = (2 * x + 4 * (board.num_rows() as isize - y - 1)) as usize;
             if x == 0 {
-                draw_boarder(&mut lines[line..])
+                draw_border(&mut lines[line..])
             }
             if board.contains(index) {
                 min_line = usize::min(min_line, line);
@@ -113,6 +115,8 @@ pub fn print_annotated_board<T: Display>(
                 x == 0,
                 y + 1 == board.num_rows() as isize,
                 print_empty,
+                from_field,
+                to_field,
             );
         }
     }
@@ -121,7 +125,7 @@ pub fn print_annotated_board<T: Display>(
     }
 }
 
-fn draw_boarder(lines: &mut [String]) {
+fn draw_border(lines: &mut [String]) {
     lines[1].push(' ');
     lines[4].push(' ');
 }
@@ -134,8 +138,22 @@ fn draw_field<T: Display>(
     draw_left: bool,
     draw_top: bool,
     print_empty: bool,
+    from_field: Option<OpenIndex>,
+    to_field: Option<OpenIndex>,
 ) {
     assert!(lines.len() >= 5);
+    if to_field == Some(index) {
+        print_target_field(
+            board,
+            lines,
+            index,
+            draw_left,
+            print_empty,
+            from_field.is_none(),
+        );
+        return;
+    }
+
     match board.get_field(index) {
         Some(field) if (print_empty || !field.is_empty()) => {
             if draw_top {
@@ -152,7 +170,11 @@ fn draw_field<T: Display>(
 
             match field.content().bottom() {
                 Some(&Piece { player, p_type }) => {
-                    let fill = fill_char(player, print_empty);
+                    let fill = if from_field == Some(index) {
+                        '~'
+                    } else {
+                        fill_char(player, print_empty)
+                    };
                     if field.content().len() > 1 {
                         let Piece {
                             player: player_top,
@@ -254,6 +276,42 @@ fn print_empty_field<T: Display>(
         None => lines[3].push_str("       "),
     }
 
+    print_empty_remaining(board, lines, index, print_empty);
+}
+
+fn print_target_field(
+    board: &HiveBoard,
+    lines: &mut [String],
+    index: OpenIndex,
+    draw_left: bool,
+    print_empty: bool,
+    is_placing: bool,
+) {
+    if draw_left {
+        for l in &mut lines[1..=4] {
+            l.push(' ');
+        }
+    }
+
+    if is_placing {
+        lines[1].push_str(" \\ / ");
+        lines[2].push_str("   X   ");
+        lines[3].push_str("  / \\  ");
+    } else {
+        lines[1].push_str("     ");
+        lines[2].push_str(" __|__ ");
+        lines[3].push_str("   |   ");
+    }
+
+    print_empty_remaining(board, lines, index, print_empty);
+}
+
+fn print_empty_remaining(
+    board: &HiveBoard,
+    lines: &mut [String],
+    index: OpenIndex,
+    print_empty: bool,
+) {
     if board
         .get_field(index + HexaDirection::Down)
         .map_or(false, |f| print_empty || !f.is_empty())

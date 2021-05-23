@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, thread::sleep, time::Duration};
 
 use either::Either;
-use tgp::engine::{Engine, GameEngine, GameState};
+use tgp::engine::{Engine, EventListener, GameEngine, GameState, PendingDecision};
 use tgp_board::{index_map::HashIndexMap, prelude::*};
 
 use display::print_annotated_board;
@@ -88,7 +88,7 @@ fn main() {
                             map.insert(index, i);
                         }
                         if print {
-                            print_annotated_board(&decision.data(), &map, false);
+                            print_annotated_board(&decision.data(), &map, false, None, None);
                             if is_top_level {
                                 println!("([u]ndo, [r]edo, [a]i)");
                             }
@@ -145,14 +145,36 @@ fn main() {
                         print_ai_ratings(engine.data(), &ai);
                     }
                     Input::AI => {
-                        ai.apply(&mut engine);
+                        let path = ai.run(&engine);
+                        pull_decision(&mut engine).select_option(path[0]);
+                        let subdec = pull_decision(&mut engine);
+                        let (from_field, to_field) = match subdec.context() {
+                            HiveContext::TargetField(context) => {
+                                (Some(*context.inner()), context[path[1]])
+                            }
+                            HiveContext::Piece(context) => (None, *context.inner()),
+                            _ => unreachable!(),
+                        };
+                        map.clear();
+                        print_annotated_board(
+                            subdec.data(),
+                            &map,
+                            false,
+                            from_field,
+                            Some(to_field),
+                        );
+                        // keep height (minimize movement)
+                        println!();
+                        println!();
+                        subdec.select_option(path[1]);
+                        sleep(Duration::from_secs(2));
                     }
                     _ => {}
                 }
             }
             GameState::Finished(mut f) => {
                 map.clear();
-                print_annotated_board(f.data(), &map, false);
+                print_annotated_board(f.data(), &map, false, None, None);
                 println!("{}", f.data().result().unwrap());
 
                 println!("([u]ndo, [e]xit)");
@@ -168,6 +190,15 @@ fn main() {
                 }
             }
         }
+    }
+}
+
+fn pull_decision<L: EventListener<HiveGameState>>(
+    engine: &mut Engine<HiveGameState, L>,
+) -> PendingDecision<HiveGameState, L> {
+    match engine.pull() {
+        GameState::PendingDecision(dec) => dec,
+        _ => unreachable!(),
     }
 }
 

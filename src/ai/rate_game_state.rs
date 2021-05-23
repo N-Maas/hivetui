@@ -579,7 +579,7 @@ mod test {
             zero + HexaDirection::DownRight + HexaDirection::DownRight + HexaDirection::Down,
         );
 
-        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
 
         let meta = calculate_metadata(&state);
         assert_eq!(
@@ -641,7 +641,7 @@ mod test {
         );
         state.place_piece(PieceType::Spider, zero + HexaDirection::UpLeft);
 
-        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
         print_and_compare_rating(&state, Some([20, 10, 36, 37, -10, -20]));
     }
 
@@ -691,7 +691,7 @@ mod test {
             false,
         );
 
-        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false);
+        print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
         // beetle bonus for black: 22
         // note that white queen is movable
         print_and_compare_rating(&state, Some([20, 15, 66, 37, -32, -40]));
