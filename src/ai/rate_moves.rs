@@ -27,6 +27,7 @@ struct MetaData {
     want_to_block: bool,
     queen_neighbors: [u32; 2],
     queen_pos: [Option<OpenIndex>; 2],
+    is_endgame: bool,
 }
 
 impl MetaData {
@@ -146,6 +147,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
         want_to_block: false,
         queen_neighbors: [0; 2],
         queen_pos: [None; 2],
+        is_endgame: data.total_num_pieces(data.player()) <= 1,
     };
     let mut free_enemy_ant = false;
 
@@ -455,15 +457,22 @@ fn rate_usual_move(
 ) -> RatingType {
     // TODO: endgame (spiders and grasshoppers need to find their way, including previous move)
     let mut total_modifier = modifier;
-    let from_type =
+    let mut from_type =
         interest_to_type_with_mod(&meta.map, piece.player, from, 2, 0, &mut total_modifier);
     let to_type =
         interest_to_type_with_mod(&meta.map, piece.player, to, -5, 4, &mut total_modifier);
+    if meta.is_endgame && from_type == PositionType::Blocking && piece.p_type != PieceType::Ant {
+        from_type = PositionType::NeutralOrBad;
+    }
 
     let rating = match (from_type, to_type) {
         (PositionType::NeutralOrBad, PositionType::NeutralOrBad) => {
             if matches!(piece.p_type, PieceType::Grasshopper | PieceType::Spider) {
-                3
+                if meta.is_endgame {
+                    5
+                } else {
+                    2
+                }
             } else {
                 0
             }

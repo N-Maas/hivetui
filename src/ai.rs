@@ -4,13 +4,16 @@ use tgp_ai::{
     MinMaxAlgorithm, Params, RateAndMap, RatingType,
 };
 use tgp_board::{
-    hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
-    structures::directions::DirectionEnumerable,
+    hypothetical::Hypothetical,
+    index_map::ArrayIndexMap,
+    open_board::OpenIndex,
+    prelude::*,
+    structures::{directions::DirectionEnumerable, NeighborhoodStructure},
 };
 
 use crate::{
     pieces::{Piece, PieceType, Player},
-    state::{HiveBoard, HiveContext, HiveGameState},
+    state::{HiveBoard, HiveContent, HiveContext, HiveGameState},
 };
 
 pub mod rate_game_state;
@@ -22,6 +25,23 @@ pub use rate_game_state::print_and_compare_rating;
 fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
     ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
         as u32
+}
+
+fn neighbors_in_a_row<B>(field: Field<B>) -> bool
+where
+    B: Board<Content = HiveContent>,
+    B::Structure: NeighborhoodStructure<B>,
+{
+    let mut prev_empty = false;
+    let mut num_components = 0;
+    let neighbor_cycle = field.neighbors().chain(field.neighbors().next());
+    for f in neighbor_cycle {
+        if prev_empty && !f.is_empty() {
+            num_components += 1;
+        }
+        prev_empty = f.is_empty();
+    }
+    num_components <= 1
 }
 
 fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
@@ -44,11 +64,7 @@ fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
         neighbor_count <= 1
             || (neighbor_count <= 4
                 // 4 or less neighbors and all neighbors are in a row => movable
-                && h_field.neighbors_by_direction().all(|(d, f)| {
-                    f.is_empty()
-                        || !h_field.next(d.next_direction()).unwrap().is_empty()
-                        || !h_field.next(d.prev_direction()).unwrap().is_empty()
-                }))
+                && neighbors_in_a_row(h_field))
             || h_field.content().len() > 1
     } else {
         false
