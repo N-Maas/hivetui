@@ -23,22 +23,22 @@ pub fn print_move_ratings(
 }
 
 pub fn print_ai_ratings(state: &HiveGameState, ai: &HiveAI) {
-    let mut engine = Engine::new(2, state.clone());
-    let ratings = ai.run_all_ratings(&mut engine).unwrap();
+    let engine = Engine::new(2, state.clone());
+    let ratings = ai.run_all_ratings(&engine).unwrap();
     print_ratings_for_moves(state, &ratings);
 }
 
 fn print_ratings_for_moves(state: &HiveGameState, ratings: &[(RatingType, Box<[usize]>)]) {
     let mut engine = Engine::new(2, state.clone());
     let ratings = ratings
-        .into_iter()
+        .iter()
         .map(|(r, indizes)| match engine.pull() {
             GameState::PendingDecision(dec) => {
                 if let HiveContext::BaseField(_) = dec.context() {
                     dec.select_option(indizes[0]);
                     match engine.pull() {
                         GameState::PendingDecision(subdec) => {
-                            let result = (r, indizes[1], subdec.context().clone());
+                            let result = (r, indizes[1], subdec.context());
                             subdec.into_follow_up_decision().unwrap().retract_all();
                             result
                         }

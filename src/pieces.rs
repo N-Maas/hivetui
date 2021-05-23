@@ -148,7 +148,7 @@ impl PieceType {
             // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant => feasible_steps_plain(field).count() > 0,
             PieceType::Grasshopper | PieceType::Beetle => true,
-            PieceType::Spider => self.get_moves(field).len() > 0,
+            PieceType::Spider => !self.get_moves(field).is_empty(),
         }
     }
 

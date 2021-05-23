@@ -18,10 +18,7 @@ use tgp_board::{
     },
 };
 
-use crate::{
-    display::print_annotated_board,
-    pieces::{Piece, PieceType, Player},
-};
+use crate::pieces::{Piece, PieceType, Player};
 
 #[derive(Debug, Default, Clone)]
 pub struct HiveContent {
@@ -458,7 +455,7 @@ impl HiveGameState {
                 }
             }
         }
-        assert!(dec.len() > 0, "{:?}", &dec);
+        assert!(!dec.is_empty(), "{:?}", &dec);
         dec.spawn_by_rev_effect(|&index, &(p_type, _)| {
             (
                 move |game_state: &mut HiveGameState| {
@@ -484,7 +481,7 @@ impl HiveGameState {
         for field in p_type.get_moves(field).into_iter() {
             dec.add_option(field.index());
         }
-        assert!(dec.len() > 0, "{:?} - {:?}", &dec, p_type);
+        assert!(!dec.is_empty(), "{:?} - {:?}", &dec, p_type);
         dec.spawn_by_rev_effect(|&from, &to| {
             (
                 move |game_state: &mut HiveGameState| {

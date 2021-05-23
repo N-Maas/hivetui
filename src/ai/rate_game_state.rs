@@ -489,7 +489,7 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
 }
 
 pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingType; 6]>) {
-    let player = Player::from(data.player());
+    let player = data.player();
     let enemy = player.switched();
 
     assert_eq!(data.player(), player);
