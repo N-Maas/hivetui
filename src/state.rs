@@ -188,7 +188,7 @@ impl HiveGameState {
                 .content()
                 .top()
                 .map_or(false, |piece| piece.player == self.current_player);
-            moves_enabled && valid_field && self.is_movable(*f, true)
+            moves_enabled && valid_field && self.is_movable_precise(*f, true)
         })
     }
 
@@ -387,6 +387,12 @@ impl HiveGameState {
 
     pub fn is_movable(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
         assert!(!field.is_empty());
+        field.content().is_movable
+            && (!check_player || field.content().top().unwrap().player == self.current_player)
+    }
+
+    pub fn is_movable_precise(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
+        assert!(!field.is_empty());
         let piece_movable = match field.content().top().unwrap().p_type {
             PieceType::Spider => PieceType::Spider.is_movable(field) && !move_violates_ohr(field),
             _ => field.content().is_movable,
@@ -473,7 +479,7 @@ impl HiveGameState {
 
     fn create_movement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
         let field = self.board.get_field_unchecked(index);
-        assert!(self.is_movable(field, true));
+        assert!(!field.is_empty());
         // unwrap: correct because of assertion
         let Piece { p_type, .. } = field.content().top().unwrap();
         let mut dec = MappedDecision::with_inner(self.player_usize(), index);
