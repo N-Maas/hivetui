@@ -275,11 +275,18 @@ fn single_piece_rating(
     let base_rating = match piece.p_type {
         PieceType::Queen => 0,
         PieceType::Ant => match movability {
-            MovabilityType::Movable | MovabilityType::Blocked(_) => {
+            MovabilityType::Movable => {
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
                     24
                 } else {
                     16
+                }
+            }
+            MovabilityType::Blocked(_) => {
+                if meta.flags(piece.player.switched()).queen_is_ant_reachable {
+                    22
+                } else {
+                    14
                 }
             }
             MovabilityType::AtQueen => 8,
@@ -318,12 +325,12 @@ fn single_piece_rating(
                 } else if can_block && piece.player == data.player() {
                     15
                 } else {
-                    10
+                    8
                 }
             }
             MovabilityType::Blocked(_) => 10,
             MovabilityType::AtQueen => 5,
-            MovabilityType::Unmovable => 2,
+            MovabilityType::Unmovable => 3,
         },
         PieceType::Beetle => match movability {
             MovabilityType::Movable => {
