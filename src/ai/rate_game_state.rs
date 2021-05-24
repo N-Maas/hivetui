@@ -318,12 +318,12 @@ fn single_piece_rating(
                 } else if can_block && piece.player == data.player() {
                     15
                 } else {
-                    10
+                    8
                 }
             }
             MovabilityType::Blocked(_) => 10,
             MovabilityType::AtQueen => 5,
-            MovabilityType::Unmovable => 2,
+            MovabilityType::Unmovable => 3,
         },
         PieceType::Beetle => match movability {
             MovabilityType::Movable => {
