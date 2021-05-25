@@ -27,7 +27,7 @@ fn main() {
     pieces.insert(PieceType::Beetle, 2);
     pieces.insert(PieceType::Spider, 2);
 
-    println!("Choose level for AI: [0] [1] [2]");
+    println!("Choose level for AI: [0] [1] [2] [3]");
     let level = loop {
         let input: Result<String, _> = try_read!();
         match input {
@@ -35,7 +35,7 @@ fn main() {
                 let to_num = val.parse::<usize>();
                 match to_num {
                     Ok(index) => {
-                        if index < 3 {
+                        if index < 4 {
                             break index;
                         }
                     }
@@ -44,12 +44,13 @@ fn main() {
             }
             Err(_) => {}
         }
-        println!("Please enter a number between 0 and 2.");
+        println!("Please enter a number between 0 and 3.");
     };
     let level = match level {
         0 => Difficulty::Easy,
         1 => Difficulty::QuiteEasy,
         2 => Difficulty::Medium,
+        3 => Difficulty::Hard,
         _ => unreachable!(),
     };
     let ai = HiveAI::new(level);

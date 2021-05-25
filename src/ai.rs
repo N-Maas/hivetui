@@ -1,14 +1,11 @@
 use tgp::engine::{Engine, EventListener, GameEngine, GameState};
 use tgp_ai::{
     rater::{DecisionType, Rater},
-    MinMaxAlgorithm, Params, RateAndMap, RatingType,
+    MinMaxAlgorithm, Params, RateAndMap, RatingType, SlidingParams,
 };
 use tgp_board::{
-    hypothetical::Hypothetical,
-    index_map::ArrayIndexMap,
-    open_board::OpenIndex,
-    prelude::*,
-    structures::{directions::DirectionEnumerable, NeighborhoodStructure},
+    hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
+    structures::NeighborhoodStructure,
 };
 
 use crate::{
@@ -106,6 +103,7 @@ pub enum Difficulty {
     Easy,
     QuiteEasy,
     Medium,
+    Hard,
 }
 
 pub struct HiveAI {
@@ -115,8 +113,38 @@ pub struct HiveAI {
 
 impl HiveAI {
     pub fn new(level: Difficulty) -> Self {
-        let depth = if level == Difficulty::Medium { 2 } else { 1 };
-        let params = Params::new(depth, 4, 6, 20, 7);
+        let params = match level {
+            Difficulty::Hard => {
+                let sliding = SlidingParams::new(
+                    vec![8, 6, 4, 4],
+                    vec![50, 30, 20, 18],
+                    vec![15, 12, 8, 6, 5, 5],
+                    vec![14, 10, 7, 7, 6, 6],
+                    vec![50, 3, 2, 2],
+                );
+                Params::new(3, sliding)
+            }
+            Difficulty::Medium => {
+                let sliding = SlidingParams::new(
+                    vec![8, 5],
+                    vec![40, 20],
+                    vec![12, 8, 6, 6],
+                    vec![14, 9, 7, 7],
+                    vec![50, 3],
+                );
+                Params::new(2, sliding)
+            }
+            _ => {
+                let sliding = SlidingParams::new(
+                    vec![8, 5],
+                    vec![40, 20],
+                    vec![12, 8],
+                    vec![14, 7],
+                    vec![50, 3],
+                );
+                Params::new(1, sliding)
+            }
+        };
         let alg = MinMaxAlgorithm::<HiveGameState, HiveRater>::new(params, HiveRater {});
         Self {
             alg,
