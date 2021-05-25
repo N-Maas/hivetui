@@ -224,8 +224,7 @@ fn is_only_half_movable(
     field: Field<HiveBoard>,
 ) -> bool {
     assert!(data.is_movable(field, false));
-    let at_queen = meta.adjacent_to_queen(piece.player, field)
-        || meta.adjacent_to_queen(piece.player.switched(), field);
+    let at_queen = meta.adjacent_to_queen(piece.player.switched(), field);
     if !at_queen {
         for f in field.neighbors() {
             if !f.is_empty()
@@ -489,8 +488,14 @@ fn rate_queen_situation(
 
     let mut val = -QUEEN_VAL[num_neighbors];
     if val < 0 {
-        let friendly_factor = if player == data.player() { 20 } else { 15 };
-        val += friendly_factor * num_friendly_movable;
+        if num_friendly_movable > 0 && player == data.player() {
+            val += 20;
+        } else if num_friendly_movable > 0 && player != data.player() {
+            val += 15;
+        }
+        if num_friendly_movable > 1 {
+            val += 8;
+        }
     }
     val -= enemy_beetle_bonus;
 
