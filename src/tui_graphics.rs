@@ -144,7 +144,7 @@ pub fn draw_hex_interior(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, color: C
 }
 
 pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
-    let color = Color::Yellow;
+    let color = Color::from_u32(0x00D0D010);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 4);
     if zoom <= 0.65 {
         ctx.draw(&Points {
@@ -233,7 +233,7 @@ pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
 }
 
 pub fn draw_ant(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::Blue;
+    let color = Color::from_u32(0x0062A2F4);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 5, 7);
     fill_rectangle(ctx, color, x_mid, y_mid, 0, 0, 4, 4);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 0, 3);
@@ -439,7 +439,7 @@ pub fn draw_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
 }
 
 pub fn draw_grasshopper(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::Green;
+    let color = Color::from_u32(0x000DD084);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 8);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, -7, 6);
     ctx.draw(&Circle {

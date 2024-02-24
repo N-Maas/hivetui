@@ -16,10 +16,7 @@ use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
 use std::{collections::HashMap, io};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
-use tgp_board::{
-    open_board::{OpenBoard, OpenIndex},
-    Board, BoardIndexable,
-};
+use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
     pieces::{PieceType, Player},
@@ -206,6 +203,8 @@ fn pull_event() -> io::Result<Option<Event>> {
         KeyCode::Right => Some(Event::MoveRight),
         KeyCode::Up => Some(Event::MoveUp),
         KeyCode::Down => Some(Event::MoveDown),
+        KeyCode::PageDown => Some(Event::ZoomIn),
+        KeyCode::PageUp => Some(Event::ZoomOut),
         _ => None,
     }))
 }
@@ -214,6 +213,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
+    terminal.hide_cursor()?;
     terminal.clear()?;
 
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
@@ -246,10 +246,14 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     }
                 }
                 Event::Undo => {
-                    engine.undo_last_decision();
+                    if ui_state != UIState::Toplevel {
+                        engine.undo_last_decision();
+                    }
                 }
                 Event::Redo => {
-                    engine.redo_decision();
+                    if ui_state != UIState::Toplevel {
+                        engine.redo_decision();
+                    }
                 }
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
@@ -457,9 +461,12 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| {
                 match piece.player {
-                    Player::White => {
-                        tui_graphics::draw_hex_interior(ctx, x_mid, y_mid, Color::Gray)
-                    }
+                    Player::White => tui_graphics::draw_hex_interior(
+                        ctx,
+                        x_mid,
+                        y_mid,
+                        Color::from_u32(0x00D0D0D0),
+                    ),
                     Player::Black => (),
                 };
             });
@@ -483,11 +490,12 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
     ctx.layer();
 
     // is a specific field selected?
+    let red = Color::from_u32(0x00E05959);
     match state.ui_state {
         UIState::PositionSelected(index) | UIState::PieceSelected(index) => {
             let (x_mid, y_mid) = translate_index(index);
-            tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, Color::Red);
-        },
+            tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, red);
+        }
         _ => (),
     }
     ctx.layer();
@@ -502,7 +510,7 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
             ctx.print(
                 x - zoom * 1.0,
                 y - zoom * 2.0,
-                Line::styled(format!("[{}]", number + 1), Color::Red),
+                Line::styled(format!("[{}]", number + 1), red),
             );
         }
     }
