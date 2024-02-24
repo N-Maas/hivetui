@@ -6,6 +6,7 @@ use crossterm::{
 use ratatui::{
     prelude::{CrosstermBackend, Terminal},
     style::Color,
+    text::Line,
     widgets::{
         canvas::{Canvas, Context},
         Block, Borders,
@@ -178,10 +179,10 @@ fn pull_event() -> io::Result<Option<Event>> {
         KeyCode::Char('d') => Some(Event::MoveRight),
         KeyCode::Char(c) => {
             let to_index = c.to_string().parse::<usize>();
-            match to_index {
-                Ok(index) => Some(Event::Selection(index)),
-                Err(_) => None,
-            }
+            to_index
+                .ok()
+                .filter(|&i| i > 0)
+                .map(|i| Event::Selection(i - 1))
         }
         KeyCode::Left => Some(Event::MoveLeft),
         KeyCode::Right => Some(Event::MoveRight),
@@ -198,7 +199,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     terminal.clear()?;
 
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
-    let mut annotations = HashMap::new();
+    let mut board_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::ShowOptions; // TODO: change to top-level
     loop {
@@ -236,14 +237,14 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 Event::MoveRight => graphics_state.move_in_step_size(1.0, 0.0),
                 Event::MoveUp => graphics_state.move_in_step_size(0.0, 1.0),
                 Event::MoveDown => graphics_state.move_in_step_size(0.0, -1.0),
-                Event::Selection(_) => todo!(),
+                Event::Selection(_) => (),
             }
         }
         // now we pull the game state, possibly applying the user input
-        annotations.clear();
+        board_annotations.clear();
         update_game_state_and_fill_input_mapping(
             &mut engine,
-            &mut annotations,
+            &mut board_annotations,
             &mut ui_state,
             event.and_then(|e| e.as_selection()),
         );
@@ -251,6 +252,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         // finally we render the UI
         let state = AllState {
             game_state: engine.data(),
+            board_annotations: &board_annotations,
             ui_state: ui_state,
             graphics_state,
         };
@@ -264,7 +266,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
 
 fn update_game_state_and_fill_input_mapping(
     engine: &mut Engine<HiveGameState, EventLog<HiveGameState>>,
-    annotations: &mut HashMap<OpenIndex, usize>,
+    board_annotations: &mut HashMap<OpenIndex, usize>,
     ui_state: &mut UIState,
     input: Option<usize>,
 ) {
@@ -297,7 +299,7 @@ fn update_game_state_and_fill_input_mapping(
                             } else {
                                 // fill the annotation mapping
                                 for (i, &board_index) in board_indizes.into_iter().enumerate() {
-                                    annotations.insert(board_index, i);
+                                    board_annotations.insert(board_index, i);
                                 }
                             }
                         }
@@ -326,7 +328,7 @@ fn update_game_state_and_fill_input_mapping(
                         } else {
                             // fill the annotation mapping
                             for (i, &board_index) in board_indizes.into_iter().enumerate() {
-                                annotations.insert(board_index, i);
+                                board_annotations.insert(board_index, i);
                             }
                         }
                     }
@@ -359,6 +361,7 @@ fn update_game_state_and_fill_input_mapping(
 #[derive(Clone, Copy)]
 struct AllState<'a> {
     game_state: &'a HiveGameState,
+    board_annotations: &'a HashMap<OpenIndex, usize>,
     ui_state: UIState,
     graphics_state: GraphicsState,
 }
@@ -433,5 +436,20 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
                 PieceType::Grasshopper => tui_graphics::draw_grasshopper(ctx, x_mid, y_mid, zoom),
                 PieceType::Beetle => tui_graphics::draw_beetle(ctx, x_mid, y_mid, zoom),
             });
+    }
+
+    // print indizes
+    if matches!(
+        state.ui_state,
+        UIState::ShowOptions | UIState::PieceSelected(_)
+    ) {
+        for (&board_index, &number) in state.board_annotations.iter() {
+            let (x, y) = translate_index(board_index);
+            ctx.print(
+                x - zoom * 1.0,
+                y - zoom * 2.0,
+                Line::styled(format!("[{}]", number + 1), Color::Red),
+            );
+        }
     }
 }
