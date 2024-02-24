@@ -4,17 +4,24 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{
-    prelude::{CrosstermBackend, Terminal}, style::Color, widgets::{
+    prelude::{CrosstermBackend, Terminal},
+    style::Color,
+    widgets::{
         canvas::{Canvas, Context},
         Block, Borders,
-    }
+    },
 };
 use std::io;
 use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
-use tgp::engine::{logging::EventLog, Engine};
+use tgp::engine::{logging::EventLog, Engine, GameEngine};
+use tgp_board::{open_board::OpenIndex, Board};
 
-use crate::{pieces::PieceType, state::HiveGameState, tui_graphics};
+use crate::{
+    pieces::{PieceType, Player},
+    state::HiveGameState,
+    tui_graphics,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum UIState {
@@ -185,10 +192,9 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
 
         // now we render the UI
         let state = AllState {
-            engine: &engine,
+            game_state: engine.data(),
             ui_state: ui_state,
             graphics_state,
-            event
         };
         render(&mut terminal, state)?;
     }
@@ -198,19 +204,19 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     Ok(())
 }
 
-
 type HiveEngine = Engine<HiveGameState, EventLog<HiveGameState>>;
 
 #[derive(Clone, Copy)]
 struct AllState<'a> {
-    engine: &'a HiveEngine,
+    game_state: &'a HiveGameState,
     ui_state: UIState,
     graphics_state: GraphicsState,
-    event: Option<Event>,
 }
 
-
-fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>, state: AllState<'_>) -> io::Result<()> {
+fn render(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    state: AllState<'_>,
+) -> io::Result<()> {
     let zoom = state.graphics_state.zoom_level.multiplier();
     let center_x = state.graphics_state.center_x;
     let center_y = state.graphics_state.center_y;
@@ -229,14 +235,52 @@ fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>, state: AllState<'_>
     Ok(())
 }
 
+fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
+    let x = f64::from(i32::try_from(x).unwrap());
+    let y = f64::from(i32::try_from(y).unwrap());
+    (x * 28.0, y * 24.0 - x * 12.0)
+}
 
 fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
     let zoom = state.graphics_state.zoom_level.multiplier();
-    tui_graphics::draw_hex_border(ctx, -30.0, 20.0);
-    tui_graphics::draw_hex_interior(ctx, -30.0, 20.0, Color::Gray);
+    let board = state.game_state.board();
+    // first round: draw borders
+    for field in board.iter_fields() {
+        let (x_mid, y_mid) = translate_index(field.index());
+        if field.content_checked().is_some() {
+            tui_graphics::draw_hex_border(ctx, x_mid, y_mid);
+        }
+    }
     ctx.layer();
-    tui_graphics::draw_grasshopper(ctx, 20.0, -10.0, zoom);
+
+    // second round: draw interiors
+    for field in board.iter_fields() {
+        let (x_mid, y_mid) = translate_index(field.index());
+        field
+            .content_checked()
+            .and_then(|content| content.top())
+            .inspect(|piece| {
+                let color = match piece.player {
+                    Player::White => Color::Gray,
+                    Player::Black => Color::Black,
+                };
+                tui_graphics::draw_hex_interior(ctx, x_mid, y_mid, color);
+            });
+    }
     ctx.layer();
-    // piece_drawing::draw_interior_hex_border(ctx, -30.0, -20.0, 0.5, 1.0, Color::Blue);
-    tui_graphics::draw_interior_hex_border(ctx, 20.0, 15.0, 1.5, 1.0, Color::Blue);
+
+    // third round: draw pieces
+    for field in board.iter_fields() {
+        let (x_mid, y_mid) = translate_index(field.index());
+        field
+            .content_checked()
+            .and_then(|content| content.top())
+            .inspect(|piece| match piece.p_type {
+                PieceType::Queen => tui_graphics::draw_queen(ctx, x_mid, y_mid, zoom),
+                PieceType::Ant => tui_graphics::draw_ant(ctx, x_mid, y_mid, zoom),
+                PieceType::Spider => tui_graphics::draw_spider(ctx, x_mid, y_mid, zoom),
+                PieceType::Grasshopper => tui_graphics::draw_grasshopper(ctx, x_mid, y_mid, zoom),
+                PieceType::Beetle => tui_graphics::draw_beetle(ctx, x_mid, y_mid, zoom),
+            });
+    }
 }
