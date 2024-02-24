@@ -10,13 +10,13 @@ use ratatui::{
     style::Color,
     text::Line,
     widgets::{
-        canvas::{self, Canvas, Context},
+        canvas::{Canvas, Context},
         Block, Borders, Paragraph,
     },
 };
-use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
 use std::{collections::HashMap, io};
+use std::{io::stdout, ops::Deref};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
@@ -178,8 +178,11 @@ fn pull_key_event() -> io::Result<Option<KeyCode>> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Event {
+    // TODO: two-digit numbers!!
     Selection(usize),
     MenuOption(usize),
+    TwoDigitInit,
+    TwoDigitAdd(usize),
     Exit,
     ContinueGame,
     NewGame,
@@ -204,7 +207,7 @@ impl Event {
 }
 
 /// pull event in internal represenation: handles mapping of raw key event
-fn pull_event(top_level: bool) -> io::Result<Option<Event>> {
+fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(Event::Exit),
         KeyCode::Char('q') => Some(Event::Exit),
@@ -218,15 +221,21 @@ fn pull_event(top_level: bool) -> io::Result<Option<Event>> {
         KeyCode::Char('a') => Some(Event::MoveLeft),
         KeyCode::Char('s') => Some(Event::MoveDown),
         KeyCode::Char('d') => Some(Event::MoveRight),
+        KeyCode::Enter | KeyCode::Char(' ') => Some(Event::TwoDigitInit).filter(|_| !top_level),
         KeyCode::Char(c) => {
             let to_index = c.to_string().parse::<usize>();
-            to_index.ok().filter(|&i| i > 0).map(|i| {
-                if top_level {
-                    Event::MenuOption(i - 1)
-                } else {
-                    Event::Selection(i - 1)
-                }
-            })
+            to_index
+                .ok()
+                .filter(|&i| i > 0 || (!top_level && two_digit))
+                .map(|i| {
+                    if top_level {
+                        Event::MenuOption(i - 1)
+                    } else if two_digit {
+                        Event::TwoDigitAdd(i)
+                    } else {
+                        Event::Selection(i - 1)
+                    }
+                })
         }
         KeyCode::Left => Some(Event::MoveLeft),
         KeyCode::Right => Some(Event::MoveRight),
@@ -249,13 +258,33 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut board_annotations = HashMap::new();
     let mut piece_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
-    let mut ui_state = UIState::ShowOptions; // TODO: change to top-level
+    let mut ui_state = UIState::Toplevel(0);
+    let mut digits: Option<Vec<usize>> = None;
     loop {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
-        let event = pull_event(matches!(ui_state, UIState::Toplevel(_)))?;
+        let mut event = pull_event(matches!(ui_state, UIState::Toplevel(_)), digits.is_some())?;
         if let Some(e) = event {
+            // two digit handling happens first
+            match e {
+                Event::TwoDigitInit => {
+                    digits = Some(Vec::new());
+                }
+                Event::TwoDigitAdd(digit) => {
+                    let digits_ref = digits.as_mut().unwrap();
+                    digits_ref.push(digit);
+                    if let &[first, second] = digits_ref.as_slice() {
+                        let val = 10 * first + second;
+                        (val > 0).then(|| {
+                            event = Some(Event::Selection(val - 1));
+                            digits = None;
+                        });
+                    }
+                }
+                _ => digits = None,
+            }
+            // general event mapping
             match e {
                 Event::Exit => match ui_state {
                     UIState::Toplevel(_) => break,
@@ -291,8 +320,10 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 Event::MoveDown => {
                     graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
                 }
-                Event::Selection(_) => (),
                 Event::MenuOption(_) => todo!(),
+                Event::Selection(_) => (),
+                Event::TwoDigitInit => (),
+                Event::TwoDigitAdd(_) => (),
             }
         }
         // now we pull the game state, possibly applying the user input
@@ -453,7 +484,7 @@ fn render(
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.size();
-        let mut percentage_left = match state.graphics_state.splitting {
+        let percentage_left = match state.graphics_state.splitting {
             ScreenSplitting::FarLeft => 55,
             ScreenSplitting::Left => 60,
             ScreenSplitting::Normal => 65,
@@ -461,9 +492,10 @@ fn render(
             ScreenSplitting::FarRight => 75,
         };
         let contraints = if matches!(state.ui_state, UIState::Toplevel(_)) {
+            let diff = 15;
             vec![
-                Constraint::Percentage(percentage_left - 20),
-                Constraint::Percentage(20),
+                Constraint::Percentage(percentage_left - diff),
+                Constraint::Percentage(diff),
                 Constraint::Percentage(100 - percentage_left),
             ]
         } else {
@@ -492,6 +524,13 @@ fn render(
         }
 
         if let UIState::Toplevel(index) = state.ui_state {
+            let action_area = splitted_layout[1];
+            let text = "[c]ontinue game\n\
+                [n]ew game";
+            let paragraph =
+                Paragraph::new(text).block(Block::default().title("Actions").borders(Borders::ALL));
+            frame.render_widget(paragraph, action_area);
+
             let [menu_area, help_area] =
                 *Layout::vertical([Constraint::Fill(1), Constraint::Max(7)]).split(menu_area)
             else {
@@ -499,7 +538,7 @@ fn render(
             };
             let text = "[0] Player 1: <human> AI-1 AI-2 AI-3 AI-4";
             let paragraph =
-                Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
+                Paragraph::new(text).block(Block::default().title("Options").borders(Borders::ALL));
             frame.render_widget(paragraph, menu_area);
 
             let text = "This is a TUI version of the hive board game.";
@@ -508,7 +547,7 @@ fn render(
             frame.render_widget(paragraph, help_area);
         } else {
             let [piece_area, tooltip_area] =
-                *Layout::vertical([Constraint::Fill(1), Constraint::Max(7)]).split(menu_area)
+                *Layout::vertical([Constraint::Fill(1), Constraint::Max(8)]).split(menu_area)
             else {
                 unreachable!()
             };
@@ -527,10 +566,12 @@ fn render(
                 .paint(|ctx| draw_pieces(ctx, state, initial_pieces));
             frame.render_widget(canvas, piece_area);
 
-            let text = "[u]ndo or [r]edo a move\n\
-                moving the screen: [↑↓←→] or [wasd]\n\
-                zooming: [+-] or [PageDown PageUp]\n\
-                back to menu: [Esc] or [q]";
+            let text = "press a number to select a move\n   \
+                (two digits: press [Space] or [↲] first)\n\
+                [u]ndo or [r]edo a move\n\
+                [↑↓←→] or [wasd] to move the screen\n\
+                [+-] or [PageDown PageUp] for zooming\n\
+                [Esc] or [q] to get back to menu";
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, tooltip_area);
@@ -599,11 +640,19 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
     ) {
         for (&board_index, &number) in state.board_annotations.iter() {
             let (x, y) = translate_index(board_index);
-            ctx.print(
-                x - zoom * 1.0,
-                y - zoom * 2.0,
-                Line::styled(format!("[{}]", number + 1), RED),
-            );
+            if number >= 9 {
+                ctx.print(
+                    x - zoom * 4.0,
+                    y - zoom * 2.0,
+                    Line::styled(format!("[ {}]", number + 1), RED),
+                );
+            } else {
+                ctx.print(
+                    x - zoom * 1.0,
+                    y - zoom * 2.0,
+                    Line::styled(format!("[{}]", number + 1), RED),
+                );
+            }
         }
     }
 }
