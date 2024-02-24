@@ -21,6 +21,15 @@ pub enum Player {
     Black,
 }
 
+impl Display for Player {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Player::White => write!(f, "White"),
+            Player::Black => write!(f, "Black"),
+        }
+    }
+}
+
 impl From<Player> for usize {
     fn from(p: Player) -> Self {
         match p {

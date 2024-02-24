@@ -12,6 +12,7 @@ use text_io::try_read;
 use crate::{
     ai::{print_and_compare_rating, Difficulty, HiveAI, HiveRater},
     display::{print_ai_ratings, print_move_ratings},
+    pieces::Player,
 };
 
 mod ai;
@@ -27,33 +28,36 @@ fn main() {
     pieces.insert(PieceType::Beetle, 2);
     pieces.insert(PieceType::Spider, 2);
 
-    println!("Choose level for AI: [0] [1] [2] [3]");
-    let level = loop {
-        let input: Result<String, _> = try_read!();
-        match input {
-            Ok(val) => {
-                let to_num = val.parse::<usize>();
-                match to_num {
-                    Ok(index) => {
-                        if index < 4 {
-                            break index;
+    let mut ais = [HiveAI::new(Difficulty::Easy), HiveAI::new(Difficulty::Easy)];
+    for &player in [Player::White, Player::Black].iter() {
+        println!("Choose level for {} AI: [0] [1] [2] [3]", player);
+        let level = loop {
+            let input: Result<String, _> = try_read!();
+            match input {
+                Ok(val) => {
+                    let to_num = val.parse::<usize>();
+                    match to_num {
+                        Ok(index) => {
+                            if index < 4 {
+                                break index;
+                            }
                         }
+                        Err(_) => {}
                     }
-                    Err(_) => {}
                 }
+                Err(_) => {}
             }
-            Err(_) => {}
-        }
-        println!("Please enter a number between 0 and 3.");
-    };
-    let level = match level {
-        0 => Difficulty::Easy,
-        1 => Difficulty::QuiteEasy,
-        2 => Difficulty::Medium,
-        3 => Difficulty::Hard,
-        _ => unreachable!(),
-    };
-    let ai = HiveAI::new(level);
+            println!("Please enter a number between 0 and 3.");
+        };
+        let level = match level {
+            0 => Difficulty::Easy,
+            1 => Difficulty::QuiteEasy,
+            2 => Difficulty::Medium,
+            3 => Difficulty::Hard,
+            _ => unreachable!(),
+        };
+        ais[usize::from(player)] = HiveAI::new(level);
+    }
 
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces));
     let mut map = HashIndexMap::new();
@@ -143,9 +147,10 @@ fn main() {
                         print_move_ratings(engine.data(), &HiveRater {});
                     }
                     Input::ShowAIRating => {
-                        print_ai_ratings(engine.data(), &ai);
+                        print_ai_ratings(engine.data(), &ais[usize::from(engine.data().player())]);
                     }
                     Input::AI => {
+                        let ai = &ais[usize::from(engine.data().player())];
                         let path = ai.run(&engine);
                         pull_decision(&mut engine).select_option(path[0]);
                         let subdec = pull_decision(&mut engine);
