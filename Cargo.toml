@@ -12,3 +12,4 @@ tgp-board = { path = "../tgp/tgp-board" }
 tgp-ai = { path = "../tgp/tgp-ai" }
 text_io = "0.1.8"
 either = "1.6"
+clap = { version = "4.5.1", features = ["derive"] }
