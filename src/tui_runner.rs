@@ -53,37 +53,41 @@ impl UIState {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum ZoomLevel {
-    ZERO,
-    ONE,
-    TWO,
-    THREE,
+    BIRD,
+    STRATEGICAL,
+    WIDER,
+    DEFAULT,
+    CLOSE,
 }
 
 impl ZoomLevel {
     fn zoom_in(self) -> ZoomLevel {
         match self {
-            ZoomLevel::ZERO => ZoomLevel::ONE,
-            ZoomLevel::ONE => ZoomLevel::TWO,
-            ZoomLevel::TWO => ZoomLevel::THREE,
-            ZoomLevel::THREE => ZoomLevel::THREE,
+            ZoomLevel::BIRD => ZoomLevel::STRATEGICAL,
+            ZoomLevel::STRATEGICAL => ZoomLevel::WIDER,
+            ZoomLevel::WIDER => ZoomLevel::DEFAULT,
+            ZoomLevel::DEFAULT => ZoomLevel::CLOSE,
+            ZoomLevel::CLOSE => ZoomLevel::CLOSE,
         }
     }
 
     fn zoom_out(self) -> ZoomLevel {
         match self {
-            ZoomLevel::ZERO => ZoomLevel::ZERO,
-            ZoomLevel::ONE => ZoomLevel::ZERO,
-            ZoomLevel::TWO => ZoomLevel::ONE,
-            ZoomLevel::THREE => ZoomLevel::TWO,
+            ZoomLevel::BIRD => ZoomLevel::BIRD,
+            ZoomLevel::STRATEGICAL => ZoomLevel::BIRD,
+            ZoomLevel::WIDER => ZoomLevel::STRATEGICAL,
+            ZoomLevel::DEFAULT => ZoomLevel::WIDER,
+            ZoomLevel::CLOSE => ZoomLevel::DEFAULT,
         }
     }
 
     fn multiplier(&self) -> f64 {
         match self {
-            ZoomLevel::ZERO => 1.3,
-            ZoomLevel::ONE => 1.0,
-            ZoomLevel::TWO => 0.7,
-            ZoomLevel::THREE => 0.5,
+            ZoomLevel::BIRD => 2.0,
+            ZoomLevel::STRATEGICAL => 1.3,
+            ZoomLevel::WIDER => 1.0,
+            ZoomLevel::DEFAULT => 0.7,
+            ZoomLevel::CLOSE => 0.5,
         }
     }
 
@@ -94,7 +98,7 @@ impl ZoomLevel {
 
 impl Default for ZoomLevel {
     fn default() -> Self {
-        ZoomLevel::TWO
+        ZoomLevel::DEFAULT
     }
 }
 
@@ -418,7 +422,7 @@ fn render(
         let x_len = zoom * f64::from(area.width);
         let y_len = zoom * 2.1 * f64::from(area.height);
         let canvas = Canvas::default()
-            .block(Block::default().title("Canvas").borders(Borders::ALL))
+            .block(Block::default().title("The Board").borders(Borders::ALL))
             .x_bounds([center_x - x_len, center_x + x_len])
             .y_bounds([center_y - y_len, center_y + y_len])
             .paint(|ctx| draw(ctx, state));
@@ -476,6 +480,17 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
                 PieceType::Beetle => tui_graphics::draw_beetle(ctx, x_mid, y_mid, zoom),
             });
     }
+    ctx.layer();
+
+    // is a specific field selected?
+    match state.ui_state {
+        UIState::PositionSelected(index) | UIState::PieceSelected(index) => {
+            let (x_mid, y_mid) = translate_index(index);
+            tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, Color::Red);
+        },
+        _ => (),
+    }
+    ctx.layer();
 
     // print indizes
     if matches!(

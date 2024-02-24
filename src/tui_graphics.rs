@@ -53,7 +53,7 @@ pub fn draw_interior_hex_border(
             &interior_border_points(offset + current),
             color,
         );
-        current += 0.33;
+        current += 0.25;
     }
 }
 
