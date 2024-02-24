@@ -5,6 +5,7 @@ use clap::Parser;
 mod ai;
 mod cli_runner;
 mod tui_runner;
+mod tui_graphics;
 mod display;
 mod pieces;
 mod state;
