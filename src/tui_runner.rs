@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, KeyCode, KeyEvent, KeyEventKind},
+    event::{self, KeyCode, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -11,15 +11,15 @@ use ratatui::{
         Block, Borders,
     },
 };
-use std::io;
 use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
-use tgp::engine::{logging::EventLog, Engine, GameEngine};
+use std::{collections::HashMap, io};
+use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
 use tgp_board::{open_board::OpenIndex, Board};
 
 use crate::{
     pieces::{PieceType, Player},
-    state::HiveGameState,
+    state::{HiveContext, HiveGameState, HiveResult},
     tui_graphics,
 };
 
@@ -27,9 +27,24 @@ use crate::{
 enum UIState {
     Toplevel,
     ShowOptions,
-    PositionSelected, // DATA
-    PieceSelected,
+    /// selected base field
+    PositionSelected(OpenIndex),
+    /// selected base field
+    PieceSelected(OpenIndex),
+    GameFinished(HiveResult),
     // TODO...
+}
+
+impl UIState {
+    fn show_game(&self) -> bool {
+        match self {
+            UIState::Toplevel => false,
+            UIState::ShowOptions => true,
+            UIState::PositionSelected(_) => true,
+            UIState::PieceSelected(_) => true,
+            UIState::GameFinished(_) => true,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -124,6 +139,8 @@ fn pull_key_event() -> io::Result<Option<KeyCode>> {
 enum Event {
     Selection(usize),
     Exit,
+    ContinueGame,
+    NewGame,
     Undo,
     Redo,
     ZoomIn,
@@ -134,6 +151,16 @@ enum Event {
     MoveDown,
 }
 
+impl Event {
+    fn as_selection(&self) -> Option<usize> {
+        if let Event::Selection(index) = *self {
+            Some(index)
+        } else {
+            None
+        }
+    }
+}
+
 /// pull event in internal represenation: handles mapping of raw key event
 fn pull_event() -> io::Result<Option<Event>> {
     Ok(pull_key_event()?.and_then(|key| match key {
@@ -141,6 +168,8 @@ fn pull_event() -> io::Result<Option<Event>> {
         KeyCode::Char('q') => Some(Event::Exit),
         KeyCode::Char('u') => Some(Event::Undo),
         KeyCode::Char('r') => Some(Event::Redo),
+        KeyCode::Char('c') => Some(Event::ContinueGame),
+        KeyCode::Char('n') => Some(Event::NewGame),
         KeyCode::Char('+') => Some(Event::ZoomIn),
         KeyCode::Char('-') => Some(Event::ZoomOut),
         KeyCode::Char('w') => Some(Event::MoveUp),
@@ -168,29 +197,58 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.clear()?;
 
-    let mut engine = Engine::new_logging(2, HiveGameState::new(pieces));
+    let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
+    let mut annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
-    let mut ui_state = UIState::Toplevel;
+    let mut ui_state = UIState::ShowOptions; // TODO: change to top-level
     loop {
-        // first, pull for user input and directly apply any ui status changes
+        // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
         let event = pull_event()?;
-        match event {
-            Some(Event::Exit) => match ui_state {
-                UIState::Toplevel => break,
-                UIState::ShowOptions => ui_state = UIState::Toplevel,
-                UIState::PositionSelected => ui_state = UIState::ShowOptions,
-                UIState::PieceSelected => ui_state = UIState::ShowOptions,
-            },
-            Some(Event::ZoomIn) => graphics_state.zoom_in(),
-            Some(Event::ZoomOut) => graphics_state.zoom_out(),
-            Some(Event::MoveLeft) => graphics_state.move_in_step_size(-1.0, 0.0),
-            Some(Event::MoveRight) => graphics_state.move_in_step_size(1.0, 0.0),
-            Some(Event::MoveUp) => graphics_state.move_in_step_size(0.0, 1.0),
-            Some(Event::MoveDown) => graphics_state.move_in_step_size(0.0, -1.0),
-            _ => (),
+        if let Some(e) = event {
+            match e {
+                Event::Exit => match ui_state {
+                    UIState::Toplevel => break,
+                    UIState::ShowOptions => ui_state = UIState::Toplevel,
+                    UIState::PositionSelected(_) => ui_state = UIState::ShowOptions,
+                    UIState::PieceSelected(_) => ui_state = UIState::ShowOptions,
+                    UIState::GameFinished(_) => ui_state = UIState::Toplevel,
+                },
+                Event::ContinueGame => {
+                    if ui_state == UIState::Toplevel {
+                        ui_state = UIState::ShowOptions;
+                    }
+                }
+                Event::NewGame => {
+                    if ui_state == UIState::Toplevel {
+                        engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
+                        ui_state = UIState::ShowOptions;
+                    }
+                }
+                Event::Undo => {
+                    engine.undo_last_decision();
+                }
+                Event::Redo => {
+                    engine.redo_decision();
+                }
+                Event::ZoomIn => graphics_state.zoom_in(),
+                Event::ZoomOut => graphics_state.zoom_out(),
+                Event::MoveLeft => graphics_state.move_in_step_size(-1.0, 0.0),
+                Event::MoveRight => graphics_state.move_in_step_size(1.0, 0.0),
+                Event::MoveUp => graphics_state.move_in_step_size(0.0, 1.0),
+                Event::MoveDown => graphics_state.move_in_step_size(0.0, -1.0),
+                Event::Selection(_) => todo!(),
+            }
         }
+        // now we pull the game state, possibly applying the user input
+        annotations.clear();
+        update_game_state_and_fill_input_mapping(
+            &mut engine,
+            &mut annotations,
+            &mut ui_state,
+            event.and_then(|e| e.as_selection()),
+        );
 
-        // now we render the UI
+        // finally we render the UI
         let state = AllState {
             game_state: engine.data(),
             ui_state: ui_state,
@@ -204,7 +262,99 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     Ok(())
 }
 
-type HiveEngine = Engine<HiveGameState, EventLog<HiveGameState>>;
+fn update_game_state_and_fill_input_mapping(
+    engine: &mut Engine<HiveGameState, EventLog<HiveGameState>>,
+    annotations: &mut HashMap<OpenIndex, usize>,
+    ui_state: &mut UIState,
+    input: Option<usize>,
+) {
+    match engine.pull() {
+        GameState::PendingEffect(pe) => {
+            // TODO: start animations here?!
+            pe.next_effect()
+        }
+        GameState::PendingDecision(decision) => {
+            let follow_up = decision.try_into_follow_up_decision();
+            match (&ui_state, follow_up) {
+                (UIState::Toplevel, Ok(d)) => d.retract_all(),
+                (UIState::Toplevel, Err(_)) => (),
+                (UIState::ShowOptions, Ok(d)) => d.retract_all(),
+                (UIState::ShowOptions, Err(d)) => {
+                    match d.context() {
+                        HiveContext::BaseField(board_indizes) => {
+                            if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                                // We need to update the UI state according to the selected option.
+                                // This means, we need to find out whether we selected a piece or an empty
+                                // field
+                                let b_index = board_indizes[index];
+                                let board = d.data().board();
+                                if board[b_index].is_empty() {
+                                    *ui_state = UIState::PositionSelected(b_index);
+                                } else {
+                                    *ui_state = UIState::PieceSelected(b_index);
+                                }
+                                d.select_option(index);
+                            } else {
+                                // fill the annotation mapping
+                                for (i, &board_index) in board_indizes.into_iter().enumerate() {
+                                    annotations.insert(board_index, i);
+                                }
+                            }
+                        }
+                        HiveContext::SkipPlayer => todo!("what are edge cases here?"),
+                        _ => unreachable!("this can not be a follow-up decision"),
+                    }
+                }
+                (UIState::PositionSelected(_), Ok(d)) => match d.context() {
+                    HiveContext::Piece(pieces) => {
+                        if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                            d.select_option(index);
+                        } else {
+                            // TODO: we need a UI representation of the pieces!
+                        }
+                    }
+                    HiveContext::TargetField(_) => panic!("this should never happen"),
+                    _ => unreachable!("this must be a follow-up decision"),
+                },
+                (UIState::PositionSelected(_), Err(_)) => {
+                    *ui_state = UIState::ShowOptions;
+                }
+                (UIState::PieceSelected(_), Ok(d)) => match d.context() {
+                    HiveContext::TargetField(board_indizes) => {
+                        if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                            d.select_option(index);
+                        } else {
+                            // fill the annotation mapping
+                            for (i, &board_index) in board_indizes.into_iter().enumerate() {
+                                annotations.insert(board_index, i);
+                            }
+                        }
+                    }
+                    HiveContext::Piece(_) => panic!("this should never happen"),
+                    _ => unreachable!("this must be a follow-up decision"),
+                },
+                (UIState::PieceSelected(_), Err(_)) => {
+                    *ui_state = UIState::ShowOptions;
+                }
+                (UIState::GameFinished(_), follow_up) => {
+                    *ui_state = UIState::ShowOptions;
+                    if let Ok(d) = follow_up {
+                        d.retract_all();
+                    }
+                }
+            }
+        }
+        GameState::Finished(finished) => {
+            let result = finished
+                .data()
+                .result()
+                .expect("game is finished and must have a result");
+            if ui_state.show_game() {
+                *ui_state = UIState::GameFinished(result);
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 struct AllState<'a> {
@@ -238,7 +388,7 @@ fn render(
 fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
     let x = f64::from(i32::try_from(x).unwrap());
     let y = f64::from(i32::try_from(y).unwrap());
-    (x * 28.0, y * 24.0 - x * 12.0)
+    (x * 21.0, y * 24.0 - x * 12.0)
 }
 
 fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
@@ -260,11 +410,12 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
             .content_checked()
             .and_then(|content| content.top())
             .inspect(|piece| {
-                let color = match piece.player {
-                    Player::White => Color::Gray,
-                    Player::Black => Color::Black,
+                match piece.player {
+                    Player::White => {
+                        tui_graphics::draw_hex_interior(ctx, x_mid, y_mid, Color::Gray)
+                    }
+                    Player::Black => (),
                 };
-                tui_graphics::draw_hex_interior(ctx, x_mid, y_mid, color);
             });
     }
     ctx.layer();
