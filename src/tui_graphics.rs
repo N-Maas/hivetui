@@ -3,6 +3,8 @@ use ratatui::{
     widgets::canvas::{Circle, Context, Line, Points},
 };
 
+use crate::pieces::PieceType;
+
 const HEX_BORDER_POINTS: [(f64, f64); 7] = [
     (-7.0, 12.0),
     (7.0, 12.0),
@@ -172,6 +174,16 @@ pub fn draw_hex_interior(
         coords: &points,
         color,
     });
+}
+
+pub fn draw_piece(ctx: &mut Context<'_>, piece_t: PieceType, x_mid: f64, y_mid: f64, zoom: f64) {
+    match piece_t {
+        PieceType::Queen => draw_queen(ctx, x_mid, y_mid, zoom),
+        PieceType::Ant => draw_ant(ctx, x_mid, y_mid, zoom),
+        PieceType::Spider => draw_spider(ctx, x_mid, y_mid, zoom),
+        PieceType::Grasshopper => draw_grasshopper(ctx, x_mid, y_mid, zoom),
+        PieceType::Beetle => draw_beetle(ctx, x_mid, y_mid, zoom),
+    }
 }
 
 pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
