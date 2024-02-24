@@ -473,17 +473,20 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
             .content_checked()
             .and_then(|content| content.top())
             .inspect(|piece| {
-                match piece.player {
-                    Player::White => tui_graphics::draw_interior_hex_border(
-                        ctx,
-                        x_mid,
-                        y_mid,
-                        1.5,
-                        2.0,
-                        Color::from_u32(0x00D0D0D0),
-                    ),
-                    Player::Black => (),
-                };
+                let dark_white = Color::from_u32(0x00D0D0D0);
+                if piece.player == Player::White {
+                    match state.graphics_state.white_tiles_style {
+                        WhiteTilesStyle::Full => {
+                            tui_graphics::draw_hex_interior(ctx, x_mid, y_mid, dark_white, false)
+                        }
+                        WhiteTilesStyle::Border => tui_graphics::draw_interior_hex_border(
+                            ctx, x_mid, y_mid, 1.5, 2.0, dark_white,
+                        ),
+                        WhiteTilesStyle::Hybrid => {
+                            tui_graphics::draw_hex_interior(ctx, x_mid, y_mid, dark_white, true)
+                        }
+                    }
+                }
             });
     }
     ctx.layer();

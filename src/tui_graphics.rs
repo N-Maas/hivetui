@@ -76,9 +76,8 @@ fn draw_hex_border_impl(
     }
 }
 
-pub fn fill_rectangle(
-    ctx: &mut Context<'_>,
-    color: Color,
+pub fn get_rectangle_points(
+    points: &mut Vec<(f64, f64)>,
     x_mid: f64,
     y_mid: f64,
     x_start: i32,
@@ -86,7 +85,6 @@ pub fn fill_rectangle(
     y_start: i32,
     y_end: i32,
 ) {
-    let mut points = Vec::<(f64, f64)>::new();
     for x in x_start..=x_end {
         points.push((x_mid + f64::from(x), y_mid + f64::from(y_end)));
         if x < x_end {
@@ -101,14 +99,47 @@ pub fn fill_rectangle(
             }
         }
     }
+}
+
+pub fn fill_rectangle(
+    ctx: &mut Context<'_>,
+    color: Color,
+    x_mid: f64,
+    y_mid: f64,
+    x_start: i32,
+    x_end: i32,
+    y_start: i32,
+    y_end: i32,
+) {
+    let mut points = Vec::<(f64, f64)>::new();
+    get_rectangle_points(&mut points, x_mid, y_mid, x_start, x_end, y_start, y_end);
     ctx.draw(&Points {
         coords: &points,
         color,
     });
 }
 
-pub fn draw_hex_interior(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, color: Color) {
-    fill_rectangle(ctx, color, x_mid, y_mid, -7, 7, -10, 10);
+pub fn draw_hex_interior(
+    ctx: &mut Context<'_>,
+    x_mid: f64,
+    y_mid: f64,
+    color: Color,
+    leave_circle: bool,
+) {
+    let mut points = Vec::<(f64, f64)>::new();
+    get_rectangle_points(&mut points, x_mid, y_mid, -7, 7, -10, 10);
+    if leave_circle {
+        points.retain(|(x, y)| {
+            let x = x - x_mid;
+            let y = y - y_mid;
+            x * x + y * y > 40.0
+        });
+    }
+    ctx.draw(&Points {
+        coords: &points,
+        color,
+    });
+
     let mut points = Vec::<(f64, f64)>::new();
     let orthogonals = [(-12.0, 7.0), (-12.0, -7.0), (12.0, 7.0), (12.0, -7.0)];
     let bases = [(-13.0, 0.0), (-13.0, 0.0), (13.0, 0.0), (13.0, 0.0)];
