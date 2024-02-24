@@ -87,7 +87,9 @@ impl PieceType {
             .neighbors_by_direction()
             .filter(move |(d, f)| {
                 let height = field.content().len();
-                let plain = f.content().len() <= height;
+                if f.content().len() > height {
+                    return false;
+                }
                 let left_is_plain = field
                     .next(d.prev_direction())
                     .map_or(true, |f| f.content().len() <= height);
@@ -96,10 +98,10 @@ impl PieceType {
                     .map_or(true, |f| f.content().len() <= height);
                 if height == 0 {
                     // we either move along the _border_ of the hive..
-                    (left_is_plain != right_is_plain) && plain
+                    left_is_plain != right_is_plain
                 } else {
                     // ..or on top of the hive
-                    (left_is_plain || right_is_plain) && plain
+                    left_is_plain || right_is_plain
                 }
             })
             .map(|(_, f)| f)
