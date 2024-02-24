@@ -108,7 +108,7 @@ pub fn print_annotated_board<T: Display>(
                 max_line = usize::max(max_line, line + 4);
             }
             draw_field(
-                &board,
+                board,
                 index,
                 &mut lines[line..],
                 map.get(index),
@@ -185,12 +185,7 @@ fn draw_field<T: Display>(
                         } else {
                             fill_char(player_top, print_empty)
                         };
-                        lines[1].push_str(&format!(
-                            "{} {} {}",
-                            fill_top,
-                            p_top.to_string(),
-                            fill_top
-                        ));
+                        lines[1].push_str(&format!("{} {} {}", fill_top, p_top, fill_top));
                         match annot {
                             Some(val) => {
                                 let label = format!("[{}]", val);
@@ -202,12 +197,12 @@ fn draw_field<T: Display>(
                                 }
                             }
                         }
-                        lines[3].push_str(&format!("{}  {}  {}", fill, p_type.to_string(), fill));
+                        lines[3].push_str(&format!("{}  {}  {}", fill, p_type, fill));
                     } else {
                         for _ in 0..5 {
                             lines[1].push(fill);
                         }
-                        lines[2].push_str(&format!("{}  {}  {}", fill, p_type.to_string(), fill));
+                        lines[2].push_str(&format!("{}  {}  {}", fill, p_type, fill));
                         match annot {
                             Some(val) => {
                                 let label = format!("[{}]", val);

@@ -62,8 +62,9 @@ impl MetaData {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum MetaInterest {
+    #[default]
     Uninteresting,
     Blocks(OpenIndex, Player),
     AdjacentToQueen(OpenIndex, Player),
@@ -76,12 +77,6 @@ impl MetaInterest {
             MetaInterest::Blocks(i, _) => i,
             MetaInterest::AdjacentToQueen(i, _) => i,
         }
-    }
-}
-
-impl Default for MetaInterest {
-    fn default() -> Self {
-        MetaInterest::Uninteresting
     }
 }
 
@@ -382,7 +377,7 @@ fn handle_move_ratings(
                     Equivalency::AntToQueen(from.index())
                 }
             };
-            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0);
             set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
         } else if piece.p_type == PieceType::Beetle {
             let mut bonus = 0;
@@ -439,10 +434,10 @@ fn handle_move_ratings(
                 );
                 continue;
             }
-            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, bonus);
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus);
             rater.rate(i, j, rating);
         } else {
-            let rating = rate_usual_move(&meta_data, piece, f_interest, t_interest, 0);
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0);
             rater.rate(i, j, rating);
         }
     }

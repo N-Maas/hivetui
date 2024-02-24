@@ -126,12 +126,12 @@ pub fn draw_hex_interior(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, color: C
                     if x == b_x {
                         continue;
                     }
-                    let vec = (f64::from(x - b_x), f64::from(y - b_y));
+                    let vec = ((x - b_x), (y - b_y));
 
                     let inner_product = o_x * vec.0 + o_y * vec.1;
                     let normalisation = (vec.0 * vec.0 + vec.1 * vec.1).sqrt();
                     if inner_product <= -0.5 * normalisation {
-                        points.push((x_mid + f64::from(x), y_mid + f64::from(y)));
+                        points.push((x_mid + x, y_mid + y));
                     }
                 }
             }

@@ -4,10 +4,14 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{
-    layout::{Constraint, Layout}, prelude::{CrosstermBackend, Terminal}, style::Color, text::Line, widgets::{
+    layout::{Constraint, Layout},
+    prelude::{CrosstermBackend, Terminal},
+    style::Color,
+    text::Line,
+    widgets::{
         canvas::{Canvas, Context},
         Block, Borders,
-    }
+    },
 };
 use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
@@ -45,43 +49,44 @@ impl UIState {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 enum ZoomLevel {
-    BIRD,
-    STRATEGICAL,
-    WIDER,
-    DEFAULT,
-    CLOSE,
+    Bird,
+    Strategical,
+    Wider,
+    #[default]
+    Normal,
+    Close,
 }
 
 impl ZoomLevel {
     fn zoom_in(self) -> ZoomLevel {
         match self {
-            ZoomLevel::BIRD => ZoomLevel::STRATEGICAL,
-            ZoomLevel::STRATEGICAL => ZoomLevel::WIDER,
-            ZoomLevel::WIDER => ZoomLevel::DEFAULT,
-            ZoomLevel::DEFAULT => ZoomLevel::CLOSE,
-            ZoomLevel::CLOSE => ZoomLevel::CLOSE,
+            ZoomLevel::Bird => ZoomLevel::Strategical,
+            ZoomLevel::Strategical => ZoomLevel::Wider,
+            ZoomLevel::Wider => ZoomLevel::Normal,
+            ZoomLevel::Normal => ZoomLevel::Close,
+            ZoomLevel::Close => ZoomLevel::Close,
         }
     }
 
     fn zoom_out(self) -> ZoomLevel {
         match self {
-            ZoomLevel::BIRD => ZoomLevel::BIRD,
-            ZoomLevel::STRATEGICAL => ZoomLevel::BIRD,
-            ZoomLevel::WIDER => ZoomLevel::STRATEGICAL,
-            ZoomLevel::DEFAULT => ZoomLevel::WIDER,
-            ZoomLevel::CLOSE => ZoomLevel::DEFAULT,
+            ZoomLevel::Bird => ZoomLevel::Bird,
+            ZoomLevel::Strategical => ZoomLevel::Bird,
+            ZoomLevel::Wider => ZoomLevel::Strategical,
+            ZoomLevel::Normal => ZoomLevel::Wider,
+            ZoomLevel::Close => ZoomLevel::Normal,
         }
     }
 
     fn multiplier(&self) -> f64 {
         match self {
-            ZoomLevel::BIRD => 2.0,
-            ZoomLevel::STRATEGICAL => 1.3,
-            ZoomLevel::WIDER => 1.0,
-            ZoomLevel::DEFAULT => 0.7,
-            ZoomLevel::CLOSE => 0.5,
+            ZoomLevel::Bird => 2.0,
+            ZoomLevel::Strategical => 1.3,
+            ZoomLevel::Wider => 1.0,
+            ZoomLevel::Normal => 0.7,
+            ZoomLevel::Close => 0.5,
         }
     }
 
@@ -90,17 +95,12 @@ impl ZoomLevel {
     }
 }
 
-impl Default for ZoomLevel {
-    fn default() -> Self {
-        ZoomLevel::DEFAULT
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 enum WhiteTilesStyle {
-    FULL,
-    BORDER,
-    HYBRID,
+    Full,
+    Border,
+    #[default]
+    Hybrid,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -117,7 +117,7 @@ impl GraphicsState {
             center_x: 0.0,
             center_y: 0.0,
             zoom_level: ZoomLevel::default(),
-            white_tiles_style: WhiteTilesStyle::HYBRID,
+            white_tiles_style: WhiteTilesStyle::Hybrid,
         }
     }
 
@@ -291,7 +291,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         let state = AllState {
             game_state: engine.data(),
             board_annotations: &board_annotations,
-            ui_state: ui_state,
+            ui_state,
             graphics_state,
         };
         render(&mut terminal, state)?;
@@ -361,7 +361,7 @@ fn update_game_state_and_fill_input_mapping(
                     }
                 }
                 (UIState::PositionSelected(_), Ok(d)) => match d.context() {
-                    HiveContext::Piece(pieces) => {
+                    HiveContext::Piece(_pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             d.select_option(index);
                         } else {
@@ -429,10 +429,10 @@ fn render(
 
     terminal.draw(|frame| {
         let area = frame.size();
-        let [canvas_area, menu_area] = *Layout::horizontal([
-            Constraint::Percentage(70),
-            Constraint::Percentage(30),
-        ]).split(area) else {
+        let [canvas_area, _menu_area] =
+            *Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)])
+                .split(area)
+        else {
             unreachable!()
         };
 
@@ -474,7 +474,14 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| {
                 match piece.player {
-                    Player::White => tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 1.5, 2.0, Color::from_u32(0x00D0D0D0)),
+                    Player::White => tui_graphics::draw_interior_hex_border(
+                        ctx,
+                        x_mid,
+                        y_mid,
+                        1.5,
+                        2.0,
+                        Color::from_u32(0x00D0D0D0),
+                    ),
                     Player::Black => (),
                 };
             });

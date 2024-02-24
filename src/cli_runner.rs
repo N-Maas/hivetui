@@ -81,7 +81,7 @@ pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
                             map.insert(index, i);
                         }
                         if print {
-                            print_annotated_board(&decision.data(), &map, false, None, None);
+                            print_annotated_board(decision.data(), &map, false, None, None);
                             if is_top_level {
                                 println!("([u]ndo, [r]edo, [a]i)");
                             }
@@ -93,9 +93,7 @@ pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
                         let mapped = context
                             .iter()
                             .enumerate()
-                            .map(|(i, &(p, count))| {
-                                format!("[{}] {} ({})", i, p.to_string(), count)
-                            })
+                            .map(|(i, &(p, count))| format!("[{}] {} ({})", i, p, count))
                             .collect::<Vec<_>>();
                         println!("Choose piece: {}", mapped.join(", "));
                     }
