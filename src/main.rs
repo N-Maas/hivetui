@@ -1,14 +1,14 @@
-use pieces::PieceType;
-use std::collections::BTreeMap;
 use clap::Parser;
+use pieces::PieceType;
+use std::{collections::BTreeMap, io};
 
 mod ai;
 mod cli_runner;
-mod tui_runner;
-mod tui_graphics;
 mod display;
 mod pieces;
 mod state;
+mod tui_graphics;
+mod tui_runner;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -18,7 +18,7 @@ struct Args {
     cli: bool,
 }
 
-fn main() {
+fn main() -> io::Result<()> {
     let mut pieces = BTreeMap::new();
     pieces.insert(PieceType::Queen, 1);
     pieces.insert(PieceType::Ant, 3);
@@ -30,6 +30,7 @@ fn main() {
     if args.cli {
         cli_runner::run_in_cli(pieces);
     } else {
-        tui_runner::run_in_tui(pieces);
+        tui_runner::run_in_tui(pieces)?;
     }
+    Ok(())
 }

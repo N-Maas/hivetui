@@ -73,9 +73,13 @@ pub type HiveBoard = OpenBoard<HiveContent, OffsetStructure<OpenIndex, HexaDirec
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HiveContext {
+    /// Top-level decision: which field should be activated?
     BaseField(VecContext<OpenIndex>),
+    /// Where to move the currently selected piece
     TargetField(VecContext<OpenIndex, OpenIndex>),
+    /// Which piece to place on the currently selected field
     Piece(VecContext<(PieceType, u32), OpenIndex>),
+    /// Player can not move
     SkipPlayer,
 }
 
