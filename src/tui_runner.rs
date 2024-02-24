@@ -184,14 +184,14 @@ impl Event {
 }
 
 /// pull event in internal represenation: handles mapping of raw key event
-fn pull_event() -> io::Result<Option<Event>> {
+fn pull_event(top_level: bool) -> io::Result<Option<Event>> {
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(Event::Exit),
         KeyCode::Char('q') => Some(Event::Exit),
-        KeyCode::Char('u') => Some(Event::Undo),
-        KeyCode::Char('r') => Some(Event::Redo),
-        KeyCode::Char('c') => Some(Event::ContinueGame),
-        KeyCode::Char('n') => Some(Event::NewGame),
+        KeyCode::Char('u') => Some(Event::Undo).filter(|_| !top_level),
+        KeyCode::Char('r') => Some(Event::Redo).filter(|_| !top_level),
+        KeyCode::Char('c') => Some(Event::ContinueGame).filter(|_| top_level),
+        KeyCode::Char('n') => Some(Event::NewGame).filter(|_| top_level),
         KeyCode::Char('+') => Some(Event::ZoomIn),
         KeyCode::Char('-') => Some(Event::ZoomOut),
         KeyCode::Char('w') => Some(Event::MoveUp),
@@ -230,7 +230,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
-        let event = pull_event()?;
+        let event = pull_event(ui_state == UIState::Toplevel)?;
         if let Some(e) = event {
             match e {
                 Event::Exit => match ui_state {
@@ -241,25 +241,17 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     UIState::GameFinished(_) => ui_state = UIState::Toplevel,
                 },
                 Event::ContinueGame => {
-                    if ui_state == UIState::Toplevel {
-                        ui_state = UIState::ShowOptions;
-                    }
+                    ui_state = UIState::ShowOptions;
                 }
                 Event::NewGame => {
-                    if ui_state == UIState::Toplevel {
-                        engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
-                        ui_state = UIState::ShowOptions;
-                    }
+                    engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
+                    ui_state = UIState::ShowOptions;
                 }
                 Event::Undo => {
-                    if ui_state != UIState::Toplevel {
-                        engine.undo_last_decision();
-                    }
+                    engine.undo_last_decision();
                 }
                 Event::Redo => {
-                    if ui_state != UIState::Toplevel {
-                        engine.redo_decision();
-                    }
+                    engine.redo_decision();
                 }
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
