@@ -4,13 +4,10 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{
-    prelude::{CrosstermBackend, Terminal},
-    style::Color,
-    text::Line,
-    widgets::{
+    layout::{Constraint, Layout}, prelude::{CrosstermBackend, Terminal}, style::Color, text::Line, widgets::{
         canvas::{Canvas, Context},
         Block, Borders,
-    },
+    }
 };
 use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
@@ -99,11 +96,19 @@ impl Default for ZoomLevel {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum WhiteTilesStyle {
+    FULL,
+    BORDER,
+    HYBRID,
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct GraphicsState {
     center_x: f64,
     center_y: f64,
     zoom_level: ZoomLevel,
+    white_tiles_style: WhiteTilesStyle,
 }
 
 impl GraphicsState {
@@ -112,6 +117,7 @@ impl GraphicsState {
             center_x: 0.0,
             center_y: 0.0,
             zoom_level: ZoomLevel::default(),
+            white_tiles_style: WhiteTilesStyle::HYBRID,
         }
     }
 
@@ -423,14 +429,21 @@ fn render(
 
     terminal.draw(|frame| {
         let area = frame.size();
-        let x_len = zoom * f64::from(area.width);
-        let y_len = zoom * 2.1 * f64::from(area.height);
+        let [canvas_area, menu_area] = *Layout::horizontal([
+            Constraint::Percentage(70),
+            Constraint::Percentage(30),
+        ]).split(area) else {
+            unreachable!()
+        };
+
+        let x_len = zoom * f64::from(canvas_area.width);
+        let y_len = zoom * 2.1 * f64::from(canvas_area.height);
         let canvas = Canvas::default()
             .block(Block::default().title("The Board").borders(Borders::ALL))
             .x_bounds([center_x - x_len, center_x + x_len])
             .y_bounds([center_y - y_len, center_y + y_len])
             .paint(|ctx| draw(ctx, state));
-        frame.render_widget(canvas, area);
+        frame.render_widget(canvas, canvas_area);
     })?;
     Ok(())
 }
@@ -461,12 +474,7 @@ fn draw(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| {
                 match piece.player {
-                    Player::White => tui_graphics::draw_hex_interior(
-                        ctx,
-                        x_mid,
-                        y_mid,
-                        Color::from_u32(0x00D0D0D0),
-                    ),
+                    Player::White => tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 1.5, 2.0, Color::from_u32(0x00D0D0D0)),
                     Player::Black => (),
                 };
             });
