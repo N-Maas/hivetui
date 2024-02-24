@@ -16,11 +16,14 @@ use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
 use std::{collections::HashMap, io};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
-use tgp_board::{open_board::OpenIndex, Board};
+use tgp_board::{
+    open_board::{OpenBoard, OpenIndex},
+    Board, BoardIndexable,
+};
 
 use crate::{
     pieces::{PieceType, Player},
-    state::{HiveContext, HiveGameState, HiveResult},
+    state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_graphics,
 };
 
@@ -85,7 +88,7 @@ impl ZoomLevel {
     }
 
     fn move_offset(&self) -> f64 {
-        self.multiplier() * 24.0
+        self.multiplier() * 12.0
     }
 }
 
@@ -119,9 +122,20 @@ impl GraphicsState {
         self.zoom_level = self.zoom_level.zoom_out();
     }
 
-    fn move_in_step_size(&mut self, x_mult: f64, y_mult: f64) {
+    fn move_in_step_size(
+        &mut self,
+        x_mult: f64,
+        y_mult: f64,
+        boundaries_x: [f64; 2],
+        boundaries_y: [f64; 2],
+    ) {
         self.center_x += x_mult * self.zoom_level.move_offset();
         self.center_y += y_mult * self.zoom_level.move_offset();
+
+        self.center_x = f64::max(self.center_x, boundaries_x[0]);
+        self.center_x = f64::min(self.center_x, boundaries_x[1]);
+        self.center_y = f64::max(self.center_y, boundaries_y[0]);
+        self.center_y = f64::min(self.center_y, boundaries_y[1]);
     }
 }
 
@@ -203,6 +217,8 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::ShowOptions; // TODO: change to top-level
     loop {
+        let board = engine.data().board();
+        let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
         let event = pull_event()?;
         if let Some(e) = event {
@@ -233,10 +249,18 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 }
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
-                Event::MoveLeft => graphics_state.move_in_step_size(-1.0, 0.0),
-                Event::MoveRight => graphics_state.move_in_step_size(1.0, 0.0),
-                Event::MoveUp => graphics_state.move_in_step_size(0.0, 1.0),
-                Event::MoveDown => graphics_state.move_in_step_size(0.0, -1.0),
+                Event::MoveLeft => {
+                    graphics_state.move_in_step_size(-1.0, 0.0, boundaries_x, boundaries_y)
+                }
+                Event::MoveRight => {
+                    graphics_state.move_in_step_size(1.0, 0.0, boundaries_x, boundaries_y)
+                }
+                Event::MoveUp => {
+                    graphics_state.move_in_step_size(0.0, 1.0, boundaries_x, boundaries_y)
+                }
+                Event::MoveDown => {
+                    graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
+                }
                 Event::Selection(_) => (),
             }
         }
@@ -262,6 +286,21 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
+}
+
+fn compute_view_boundaries(board: &HiveBoard) -> ([f64; 2], [f64; 2]) {
+    let mut min_x = 0_f64;
+    let mut max_x = 0_f64;
+    let mut min_y = 0_f64;
+    let mut max_y = 0_f64;
+    for board_index in board.all_indices() {
+        let (this_x, this_y) = translate_index(board_index);
+        min_x = f64::min(min_x, this_x);
+        max_x = f64::max(max_x, this_x);
+        min_y = f64::min(min_y, this_y);
+        max_y = f64::max(max_y, this_y);
+    }
+    ([min_x - 10.0, max_x + 10.0], [min_y - 10.0, max_y + 10.0])
 }
 
 fn update_game_state_and_fill_input_mapping(
