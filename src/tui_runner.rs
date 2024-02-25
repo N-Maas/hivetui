@@ -30,10 +30,12 @@ use crate::{
     tui_runner::tui_settings::create_menu_setting,
 };
 
-use self::tui_settings::{
-    BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle,
+use self::{
+    animations::{blink_field_default, Animation, Layer},
+    tui_settings::{BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle},
 };
 
+mod animations;
 mod tui_settings;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -46,7 +48,7 @@ enum UIState {
     /// selected base field
     PieceSelected(OpenIndex),
     GameFinished(HiveResult),
-    // TODO...
+    PlaysAnimation,
 }
 
 impl UIState {
@@ -57,6 +59,7 @@ impl UIState {
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
             UIState::GameFinished(_) => true,
+            UIState::PlaysAnimation => true,
         }
     }
 }
@@ -206,10 +209,16 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::Toplevel;
     let mut menu_index = 0;
+    let mut current_animation: Option<Animation> = None;
     let mut digits: Option<Vec<usize>> = None;
     loop {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
+        if current_animation.as_ref().is_some_and(|a| !a.is_finished()) && ui_state.show_game() {
+            ui_state = UIState::PlaysAnimation;
+        } else if ui_state == UIState::PlaysAnimation {
+            ui_state = UIState::ShowOptions;
+        }
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
         let mut event = pull_event(ui_state == UIState::Toplevel, digits.is_some())?;
         if let Some(e) = event {
@@ -239,6 +248,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions,
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions,
                     UIState::GameFinished(_) => ui_state = UIState::Toplevel,
+                    UIState::PlaysAnimation => ui_state = UIState::Toplevel,
                 },
                 Event::ContinueGame => {
                     ui_state = UIState::ShowOptions;
@@ -301,6 +311,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             &mut board_annotations,
             &mut piece_annotations,
             &mut ui_state,
+            &mut current_animation,
             event.and_then(|e| e.as_selection()),
         );
 
@@ -310,6 +321,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             board_annotations: &board_annotations,
             piece_annotations: &piece_annotations,
             ui_state,
+            animation: current_animation.as_ref(),
             menu_index,
             graphics_state,
         };
@@ -320,6 +332,14 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             &mut graphics_state,
             &pieces,
         )?;
+        // update animation state
+        if let Some(animation) = current_animation.as_mut() {
+            if animation.is_finished() {
+                current_animation = None;
+            } else {
+                animation.next_step();
+            }
+        }
     }
 
     stdout().execute(LeaveAlternateScreen)?;
@@ -347,6 +367,7 @@ fn update_game_state_and_fill_input_mapping(
     board_annotations: &mut HashMap<OpenIndex, usize>,
     piece_annotations: &mut HashMap<PieceType, usize>,
     ui_state: &mut UIState,
+    animation: &mut Option<Animation>,
     input: Option<usize>,
 ) {
     match engine.pull() {
@@ -386,10 +407,11 @@ fn update_game_state_and_fill_input_mapping(
                         _ => unreachable!("this can not be a follow-up decision"),
                     }
                 }
-                (UIState::PositionSelected(_), Ok(d)) => match d.context() {
+                (UIState::PositionSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             d.select_option(index);
+                            *animation = Some(Animation::new(blink_field_default(30, *b_index)));
                         } else {
                             // fill the annotation mapping
                             for (i, &(piece_type, _)) in pieces.into_iter().enumerate() {
@@ -426,6 +448,10 @@ fn update_game_state_and_fill_input_mapping(
                         d.retract_all();
                     }
                 }
+                (UIState::PlaysAnimation, Ok(_)) => {
+                    unreachable!("selection during animation should be impossible")
+                }
+                (UIState::PlaysAnimation, Err(_)) => (),
             }
         }
         GameState::Finished(finished) => {
@@ -446,6 +472,7 @@ struct AllState<'a> {
     board_annotations: &'a HashMap<OpenIndex, usize>,
     piece_annotations: &'a HashMap<PieceType, usize>,
     ui_state: UIState,
+    animation: Option<&'a Animation>,
     menu_index: usize,
     graphics_state: GraphicsState,
 }
@@ -608,6 +635,7 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             // which sides should be drawn?
         }
     }
+    state.animation.inspect(|a| a.draw(ctx, Layer::Borders));
     ctx.layer();
 
     // second round: draw interiors
@@ -622,6 +650,7 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
                 }
             });
     }
+    state.animation.inspect(|a| a.draw(ctx, Layer::Interiors));
     ctx.layer();
 
     // third round: draw pieces
@@ -632,6 +661,7 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| tui_graphics::draw_piece(ctx, piece.p_type, x_mid, y_mid, zoom));
     }
+    state.animation.inspect(|a| a.draw(ctx, Layer::Pieces));
     ctx.layer();
 
     // is a specific field selected?
@@ -642,7 +672,10 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
         }
         _ => (),
     }
+    state.animation.inspect(|a| a.draw(ctx, Layer::Selection));
     ctx.layer();
+
+    state.animation.inspect(|a| a.draw(ctx, Layer::Final));
 
     // print indizes
     if matches!(
@@ -679,10 +712,15 @@ fn draw_pieces(
     initial_pieces: &BTreeMap<PieceType, u32>,
 ) {
     let zoom = state.graphics_state.piece_zoom_level.multiplier();
-    let (pieces, _) = state.game_state.pieces();
-    let interior_color = match state.game_state.player() {
+    let player = if state.ui_state == UIState::PlaysAnimation {
+        state.game_state.player().switched()
+    } else {
+        state.game_state.player()
+    };
+    let (pieces, _) = state.game_state.pieces_for_player(player);
+    let interior_color = match player {
         Player::White => DARK_WHITE,
-        Player::Black => Color::from_u32(0),
+        Player::Black => Color::from_u32(0x00303030),
     };
 
     let pieces_with_counts = if let UIState::PositionSelected(_) = state.ui_state {

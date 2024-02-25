@@ -149,7 +149,11 @@ impl HiveGameState {
     }
 
     pub fn pieces(&self) -> (&BTreeMap<PieceType, u32>, u8) {
-        match self.current_player {
+        self.pieces_for_player(self.current_player)
+    }
+
+    pub fn pieces_for_player(&self, player: Player) -> (&BTreeMap<PieceType, u32>, u8) {
+        match player {
             Player::White => (&self.white_pieces, self.white_pieces_on_board),
             Player::Black => (&self.black_pieces, self.black_pieces_on_board),
         }
