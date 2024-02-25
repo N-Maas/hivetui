@@ -3,20 +3,19 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use num_enum::TryFromPrimitive;
 use ratatui::{
     layout::{Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
     style::Color,
-    text::Line,
+    text::{Line, Text},
     widgets::{
         canvas::{Canvas, Context},
         Block, Borders, Paragraph,
     },
 };
+use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
 use std::{collections::HashMap, io};
-use std::{io::stdout, ops::Deref};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
@@ -24,12 +23,17 @@ use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_graphics,
+    tui_runner::tui_settings::create_menu_setting,
 };
+
+use self::tui_settings::{GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle};
+
+mod tui_settings;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum UIState {
     /// selected menu option
-    Toplevel(usize),
+    Toplevel,
     ShowOptions,
     /// selected base field
     PositionSelected(OpenIndex),
@@ -42,7 +46,7 @@ enum UIState {
 impl UIState {
     fn show_game(&self) -> bool {
         match self {
-            UIState::Toplevel(_) => false,
+            UIState::Toplevel => false,
             UIState::ShowOptions => true,
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
@@ -51,118 +55,19 @@ impl UIState {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive)]
-#[repr(u8)]
-enum ZoomLevel {
-    Bird = 0,
-    Strategical = 1,
-    Wider = 2,
-    #[default]
-    Normal = 3,
-    Close = 4,
-}
-
-impl ZoomLevel {
-    fn zoom_in(self) -> ZoomLevel {
-        match self {
-            ZoomLevel::Bird => ZoomLevel::Strategical,
-            ZoomLevel::Strategical => ZoomLevel::Wider,
-            ZoomLevel::Wider => ZoomLevel::Normal,
-            ZoomLevel::Normal => ZoomLevel::Close,
-            ZoomLevel::Close => ZoomLevel::Close,
-        }
-    }
-
-    fn zoom_out(self) -> ZoomLevel {
-        match self {
-            ZoomLevel::Bird => ZoomLevel::Bird,
-            ZoomLevel::Strategical => ZoomLevel::Bird,
-            ZoomLevel::Wider => ZoomLevel::Strategical,
-            ZoomLevel::Normal => ZoomLevel::Wider,
-            ZoomLevel::Close => ZoomLevel::Normal,
-        }
-    }
-
-    fn multiplier(&self) -> f64 {
-        match self {
-            ZoomLevel::Bird => 2.0,
-            ZoomLevel::Strategical => 1.3,
-            ZoomLevel::Wider => 1.0,
-            ZoomLevel::Normal => 0.7,
-            ZoomLevel::Close => 0.5,
-        }
-    }
-
-    fn move_offset(&self) -> f64 {
-        self.multiplier() * 12.0
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive)]
-#[repr(u8)]
-enum WhiteTilesStyle {
-    Full = 0,
-    Border = 1,
-    #[default]
-    Hybrid = 2,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive)]
-#[repr(u8)]
-enum ScreenSplitting {
-    FarLeft = 0,
-    Left = 1,
-    #[default]
-    Normal = 2,
-    Right = 3,
-    FarRight = 4,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-struct GraphicsState {
-    center_x: f64,
-    center_y: f64,
-    zoom_level: ZoomLevel,
-    piece_zoom_level: ZoomLevel,
-    white_tiles_style: WhiteTilesStyle,
-    splitting: ScreenSplitting,
-}
-
-impl GraphicsState {
-    fn new() -> Self {
-        GraphicsState {
-            center_x: 0.0,
-            center_y: 0.0,
-            zoom_level: ZoomLevel::default(),
-            piece_zoom_level: ZoomLevel::Wider,
-            white_tiles_style: WhiteTilesStyle::Hybrid,
-            splitting: ScreenSplitting::default(),
-        }
-    }
-
-    fn zoom_in(&mut self) {
-        self.zoom_level = self.zoom_level.zoom_in();
-    }
-
-    fn zoom_out(&mut self) {
-        self.zoom_level = self.zoom_level.zoom_out();
-    }
-
-    fn move_in_step_size(
-        &mut self,
-        x_mult: f64,
-        y_mult: f64,
-        boundaries_x: [f64; 2],
-        boundaries_y: [f64; 2],
-    ) {
-        self.center_x += x_mult * self.zoom_level.move_offset();
-        self.center_y += y_mult * self.zoom_level.move_offset();
-
-        self.center_x = f64::max(self.center_x, boundaries_x[0]);
-        self.center_x = f64::min(self.center_x, boundaries_x[1]);
-        self.center_y = f64::max(self.center_y, boundaries_y[0]);
-        self.center_y = f64::min(self.center_y, boundaries_y[1]);
-    }
+fn build_settings() -> Vec<Box<dyn MenuSetting>> {
+    vec![
+        create_menu_setting(
+            "screen splitting (left to right): ",
+            vec!["1", "2", "3", "4", "5"],
+            |g_state| &mut g_state.splitting,
+        ),
+        create_menu_setting(
+            "available pieces display size: ",
+            vec!["1", "2", "3", "4", "5"],
+            |g_state| &mut g_state.piece_zoom_level,
+        ),
+    ]
 }
 
 fn pull_key_event() -> io::Result<Option<KeyCode>> {
@@ -181,6 +86,10 @@ enum Event {
     // TODO: two-digit numbers!!
     Selection(usize),
     MenuOption(usize),
+    MenuUp,
+    MenuDown,
+    MenuIncrease,
+    MenuDecrease,
     TwoDigitInit,
     TwoDigitAdd(usize),
     Exit,
@@ -237,10 +146,26 @@ fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
                     }
                 })
         }
-        KeyCode::Left => Some(Event::MoveLeft),
-        KeyCode::Right => Some(Event::MoveRight),
-        KeyCode::Up => Some(Event::MoveUp),
-        KeyCode::Down => Some(Event::MoveDown),
+        KeyCode::Left => Some(if top_level {
+            Event::MenuDecrease
+        } else {
+            Event::MoveLeft
+        }),
+        KeyCode::Right => Some(if top_level {
+            Event::MenuIncrease
+        } else {
+            Event::MoveRight
+        }),
+        KeyCode::Up => Some(if top_level {
+            Event::MenuUp
+        } else {
+            Event::MoveUp
+        }),
+        KeyCode::Down => Some(if top_level {
+            Event::MenuDown
+        } else {
+            Event::MoveDown
+        }),
         KeyCode::PageDown => Some(Event::ZoomIn),
         KeyCode::PageUp => Some(Event::ZoomOut),
         _ => None,
@@ -254,17 +179,19 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     terminal.hide_cursor()?;
     terminal.clear()?;
 
+    let settings = build_settings();
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
     let mut board_annotations = HashMap::new();
     let mut piece_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
-    let mut ui_state = UIState::Toplevel(0);
+    let mut ui_state = UIState::Toplevel;
+    let mut menu_index = 0;
     let mut digits: Option<Vec<usize>> = None;
     loop {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
-        let mut event = pull_event(matches!(ui_state, UIState::Toplevel(_)), digits.is_some())?;
+        let mut event = pull_event(ui_state == UIState::Toplevel, digits.is_some())?;
         if let Some(e) = event {
             // two digit handling happens first
             match e {
@@ -287,11 +214,11 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             // general event mapping
             match e {
                 Event::Exit => match ui_state {
-                    UIState::Toplevel(_) => break,
-                    UIState::ShowOptions => ui_state = UIState::Toplevel(0),
+                    UIState::Toplevel => break,
+                    UIState::ShowOptions => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions,
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions,
-                    UIState::GameFinished(_) => ui_state = UIState::Toplevel(0),
+                    UIState::GameFinished(_) => ui_state = UIState::Toplevel,
                 },
                 Event::ContinueGame => {
                     ui_state = UIState::ShowOptions;
@@ -320,7 +247,27 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 Event::MoveDown => {
                     graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
                 }
-                Event::MenuOption(_) => todo!(),
+                Event::MenuOption(new_index) => {
+                    if new_index < settings.len() {
+                        menu_index = new_index;
+                    }
+                }
+                Event::MenuUp => {
+                    if menu_index > 0 {
+                        menu_index -= 1;
+                    }
+                }
+                Event::MenuDown => {
+                    if menu_index + 1 < settings.len() {
+                        menu_index += 1;
+                    }
+                }
+                Event::MenuIncrease => {
+                    settings[menu_index].increase(&mut graphics_state);
+                }
+                Event::MenuDecrease => {
+                    settings[menu_index].decrease(&mut graphics_state);
+                }
                 Event::Selection(_) => (),
                 Event::TwoDigitInit => (),
                 Event::TwoDigitAdd(_) => (),
@@ -343,9 +290,16 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             board_annotations: &board_annotations,
             piece_annotations: &piece_annotations,
             ui_state,
+            menu_index,
             graphics_state,
         };
-        render(&mut terminal, state, &pieces)?;
+        render(
+            &mut terminal,
+            &settings,
+            state,
+            &mut graphics_state,
+            &pieces,
+        )?;
     }
 
     stdout().execute(LeaveAlternateScreen)?;
@@ -383,8 +337,8 @@ fn update_game_state_and_fill_input_mapping(
         GameState::PendingDecision(decision) => {
             let follow_up = decision.try_into_follow_up_decision();
             match (&ui_state, follow_up) {
-                (UIState::Toplevel(_), Ok(d)) => d.retract_all(),
-                (UIState::Toplevel(_), Err(_)) => (),
+                (UIState::Toplevel, Ok(d)) => d.retract_all(),
+                (UIState::Toplevel, Err(_)) => (),
                 (UIState::ShowOptions, Ok(d)) => d.retract_all(),
                 (UIState::ShowOptions, Err(d)) => {
                     match d.context() {
@@ -472,6 +426,7 @@ struct AllState<'a> {
     board_annotations: &'a HashMap<OpenIndex, usize>,
     piece_annotations: &'a HashMap<PieceType, usize>,
     ui_state: UIState,
+    menu_index: usize,
     graphics_state: GraphicsState,
 }
 
@@ -479,7 +434,10 @@ const RED: Color = Color::from_u32(0x00E05959);
 
 fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    settings: &[Box<dyn MenuSetting>],
     state: AllState<'_>,
+    // we don't actually mutate anything, this is just an API limitation
+    graphics_state: &mut GraphicsState,
     initial_pieces: &BTreeMap<PieceType, u32>,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
@@ -491,7 +449,7 @@ fn render(
             ScreenSplitting::Right => 70,
             ScreenSplitting::FarRight => 75,
         };
-        let contraints = if matches!(state.ui_state, UIState::Toplevel(_)) {
+        let contraints = if matches!(state.ui_state, UIState::Toplevel) {
             let diff = 15;
             vec![
                 Constraint::Percentage(percentage_left - diff),
@@ -523,7 +481,7 @@ fn render(
             frame.render_widget(canvas, canvas_area);
         }
 
-        if let UIState::Toplevel(index) = state.ui_state {
+        if let UIState::Toplevel = state.ui_state {
             let action_area = splitted_layout[1];
             let text = "[c]ontinue game\n\
                 [n]ew game";
@@ -536,9 +494,15 @@ fn render(
             else {
                 unreachable!()
             };
-            let text = "[0] Player 1: <human> AI-1 AI-2 AI-3 AI-4";
-            let paragraph =
-                Paragraph::new(text).block(Block::default().title("Options").borders(Borders::ALL));
+            let text = Text::from(
+                settings
+                    .iter()
+                    .enumerate()
+                    .map(|(i, option)| option.get_line(graphics_state, state.menu_index == i))
+                    .collect::<Vec<_>>(),
+            );
+            let paragraph = Paragraph::new(text)
+                .block(Block::default().title("Settings").borders(Borders::ALL));
             frame.render_widget(paragraph, menu_area);
 
             let text = "This is a TUI version of the hive board game.";
@@ -688,8 +652,8 @@ fn draw_pieces(
     };
 
     let get_coords = |i: usize, depth: u32| {
-        let x = 12_f64 + f64::from(u32::try_from(i).unwrap()) * 26.0;
-        let y = -17_f64 - f64::from(u32::try_from(3 - depth).unwrap()) * 10.0;
+        let x = 12_f64 + f64::from(u32::try_from(i).unwrap()) * (22.0 + 4.0 * zoom);
+        let y = -10_f64 - 8.0 * zoom - f64::from(u32::try_from(3 - depth).unwrap()) * 10.0;
         (x, y)
     };
     for depth in 0..=3 {
@@ -719,20 +683,29 @@ fn draw_pieces(
                     if let UIState::PositionSelected(_) = state.ui_state {
                         let number = state.piece_annotations[&piece_t];
                         ctx.print(
-                            x - zoom * 6.5,
+                            x - zoom * 3.5 - 2.5,
                             -2.0,
                             Line::styled(format!("[{number}]"), RED),
                         );
                         ctx.print(
-                            x + zoom * 2.0,
+                            x + zoom * 1.0 + 1.2,
                             -2.0,
-                            Line::styled(format!("{count}/{intial_count}"), Color::White),
+                            Line::raw(format!("{count}/{intial_count}")),
                         );
                     } else {
+                        let content;
+                        let x_shift;
+                        if zoom < 1.5 {
+                            x_shift = zoom * 4.0;
+                            content = format!("{count} / {intial_count}")
+                        } else {
+                            x_shift = zoom + 1.0;
+                            content = format!("{count}/{intial_count}")
+                        };
                         ctx.print(
-                            x - zoom * 4.0,
+                            x - x_shift,
                             -2.0,
-                            Line::styled(format!("{count} / {intial_count}"), Color::White),
+                            Line::styled(content, Color::White),
                         );
                     }
                 }
