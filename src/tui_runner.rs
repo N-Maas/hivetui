@@ -32,8 +32,8 @@ use crate::{
 
 use self::{
     animations::{
-        blink_field_default, flying_piece, mark_field, Animation, ChainedEffect, CombinedEffect,
-        Layer,
+        blink_field_default, build_complete_piece_move_animation, flying_piece, mark_field,
+        Animation, ChainedEffect, CombinedEffect, Layer,
     },
     tui_settings::{BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle},
 };
@@ -88,6 +88,11 @@ fn build_settings() -> Vec<Box<dyn MenuSetting>> {
             "border drawing style: ",
             vec!["complete", "partial", "none"],
             |g_state| &mut g_state.borders_style,
+        ),
+        create_menu_setting(
+            "animation speed: ",
+            vec!["1", "2", "3", "4", "5", "6"],
+            |g_state| &mut g_state.animation_speed,
         ),
     ]
 }
@@ -314,6 +319,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             &mut board_annotations,
             &mut piece_annotations,
             &mut ui_state,
+            &graphics_state,
             &mut current_animation,
             event.and_then(|e| e.as_selection()),
         );
@@ -370,6 +376,7 @@ fn update_game_state_and_fill_input_mapping(
     board_annotations: &mut HashMap<OpenIndex, usize>,
     piece_annotations: &mut HashMap<PieceType, usize>,
     ui_state: &mut UIState,
+    graphics_state: &GraphicsState,
     animation: &mut Option<Animation>,
     input: Option<usize>,
 ) {
@@ -414,7 +421,8 @@ fn update_game_state_and_fill_input_mapping(
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             d.select_option(index);
-                            *animation = Some(Animation::new(blink_field_default(30, *b_index)));
+                            let steps = graphics_state.animation_speed.map_steps(30);
+                            *animation = Some(Animation::new(blink_field_default(steps, *b_index)));
                         } else {
                             // fill the annotation mapping
                             for (i, &(piece_type, _)) in pieces.into_iter().enumerate() {
@@ -433,25 +441,17 @@ fn update_game_state_and_fill_input_mapping(
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             let board = d.data().board();
                             let piece_t = board.get(*b_index).and_then(|c| c.top()).unwrap().p_type;
-                            let interior_color = match Player::from(d.player()) {
-                                Player::White => DARK_WHITE,
-                                Player::Black => Color::from_u32(0x00303030),
-                            };
-                            d.select_option(index);
-                            let flying = flying_piece(
-                                30,
+                            let player = Player::from(d.player());
+                            let target = board_indizes[index];
+                            *animation = Some(build_complete_piece_move_animation(
+                                graphics_state,
                                 piece_t,
+                                player,
                                 *b_index,
-                                board_indizes[index],
-                                interior_color,
-                                RED,
-                            );
-                            let mark = mark_field(30, board_indizes[index], ORANGE);
-                            let blink = blink_field_default(15, board_indizes[index]);
-                            *animation = Some(Animation::new(ChainedEffect::new(
-                                CombinedEffect::new(flying, mark),
-                                blink,
-                            )));
+                                target,
+                            ));
+
+                            d.select_option(index);
                         } else {
                             // fill the annotation mapping
                             for (i, &board_index) in board_indizes.into_iter().enumerate() {
@@ -629,7 +629,13 @@ fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
 
 fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
     let zoom = state.graphics_state.zoom_level.multiplier();
-    let board = state.game_state.board();
+    let temporary_state = state
+        .animation
+        .and_then(|a| a.get_temporary_state(state.game_state));
+    let board = temporary_state
+        .as_ref()
+        .map_or(state.game_state.board(), |s| s.board());
+
     // first round: draw borders
     for field in board.iter_fields() {
         let (x_mid, y_mid) = translate_index(field.index());

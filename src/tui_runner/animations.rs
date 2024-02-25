@@ -1,12 +1,16 @@
 use ratatui::{style::Color, widgets::canvas::Context};
-use tgp_board::open_board::OpenIndex;
+use tgp_board::{open_board::OpenIndex, Board};
 
-use crate::{pieces::PieceType, tui_graphics};
+use crate::{
+    pieces::{PieceType, Player},
+    state::HiveGameState,
+    tui_graphics,
+};
 
 use super::{
     draw_interior, translate_index,
     tui_settings::{GraphicsState, WhiteTilesStyle},
-    RED,
+    DARK_WHITE, ORANGE, RED,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -152,6 +156,7 @@ impl<A: AnimationEffect, B: AnimationEffect> AnimationEffect for ChainedEffect<A
 
 pub struct Animation {
     effect: Box<dyn AnimationEffect>,
+    temporary_state: Box<dyn Fn(&HiveGameState, usize) -> Option<HiveGameState>>,
     current_step: usize,
     total_steps: usize,
 }
@@ -161,6 +166,23 @@ impl Animation {
         let total_steps = a.total_steps();
         Self {
             effect: Box::new(a),
+            temporary_state: Box::new(|_, _| None),
+            current_step: 0,
+            total_steps,
+        }
+    }
+
+    pub fn with_state<
+        A: AnimationEffect + 'static,
+        F: Fn(&HiveGameState, usize) -> Option<HiveGameState> + 'static,
+    >(
+        a: A,
+        state_fn: F,
+    ) -> Self {
+        let total_steps = a.total_steps();
+        Self {
+            effect: Box::new(a),
+            temporary_state: Box::new(state_fn),
             current_step: 0,
             total_steps,
         }
@@ -172,6 +194,10 @@ impl Animation {
 
     pub fn next_step(&mut self) {
         self.current_step = usize::min(self.current_step + 1, self.total_steps);
+    }
+
+    pub fn get_temporary_state(&self, state: &HiveGameState) -> Option<HiveGameState> {
+        (self.temporary_state)(state, self.current_step)
     }
 
     pub fn draw(&self, ctx: &mut Context<'_>, graphics_state: &GraphicsState, layer: Layer) {
@@ -228,8 +254,9 @@ pub fn flying_piece(
     piece_t: PieceType,
     start: OpenIndex,
     end: OpenIndex,
-    color_interior: Color,
     color_border: Color,
+    color_interior: Color,
+    draw_interior: bool,
 ) -> impl AnimationEffect {
     let start = translate_index(start);
     let end = translate_index(end);
@@ -239,11 +266,55 @@ pub fn flying_piece(
         start,
         end,
         move |ctx, g, _ratio, (x, y)| {
-            draw_interior(ctx, g, x, y, color_interior);
-            ctx.layer();
+            if draw_interior {
+                super::draw_interior(ctx, g, x, y, color_interior);
+                ctx.layer();
+            }
             tui_graphics::draw_piece(ctx, piece_t, x, y, g.zoom_level.multiplier());
             ctx.layer();
             tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, 0.0, color_border);
+        },
+    )
+}
+
+pub fn build_complete_piece_move_animation(
+    graphics_state: &GraphicsState,
+    piece_t: PieceType,
+    player: Player,
+    start: OpenIndex,
+    target: OpenIndex,
+) -> Animation {
+    let speed = graphics_state.animation_speed;
+    let blink_steps = speed.map_steps(20);
+    let (x1, y1) = translate_index(start);
+    let (x2, y2) = translate_index(target);
+    let distance = f64::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+    let fly_steps = speed.map_steps_normal(5.0) + 2.5 * speed.map_steps_extreme(distance.sqrt());
+    let fly_steps = fly_steps.round() as usize;
+
+    let flying = flying_piece(
+        fly_steps,
+        piece_t,
+        start,
+        target,
+        RED,
+        DARK_WHITE,
+        player == Player::White,
+    );
+    let mark = mark_field(fly_steps, target, ORANGE);
+    let blink = blink_field_default(blink_steps, target);
+    Animation::with_state(
+        ChainedEffect::new(CombinedEffect::new(flying, mark), blink),
+        move |state, step| {
+            // remove the piece from the target field during the flight
+            let content = state.board().get(target);
+            content
+                .filter(|c| step <= fly_steps && !c.is_empty())
+                .and_then(|_| {
+                    let mut cloned = state.clone();
+                    cloned.remove_piece(target);
+                    Some(cloned)
+                })
         },
     )
 }

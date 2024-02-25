@@ -1,8 +1,5 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use ratatui::{
-    style::Color,
-    text::{Line, Span, Text},
-};
+use ratatui::text::{Line, Span};
 use std::fmt::Debug;
 
 use super::RED;
@@ -83,6 +80,49 @@ pub enum ScreenSplitting {
     FarRight = 4,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum AnimationSpeed {
+    Slower = 0,
+    Slow = 1,
+    #[default]
+    Normal = 2,
+    Fast = 3,
+    Faster = 4,
+    BlazinglyFast = 5,
+}
+
+impl AnimationSpeed {
+    pub fn map_steps(&self, steps: usize) -> usize {
+        self.map_steps_normal(f64::from(u32::try_from(steps).unwrap()))
+            .round() as usize
+    }
+
+    pub fn map_steps_normal(&self, steps: f64) -> f64 {
+        let factor = match self {
+            AnimationSpeed::Slower => 2.0,
+            AnimationSpeed::Slow => 1.4,
+            AnimationSpeed::Normal => 1.0,
+            AnimationSpeed::Fast => 0.7,
+            AnimationSpeed::Faster => 0.5,
+            AnimationSpeed::BlazinglyFast => 0.25,
+        };
+        factor * steps
+    }
+
+    pub fn map_steps_extreme(&self, steps: f64) -> f64 {
+        let factor = match self {
+            AnimationSpeed::Slower => 3.0,
+            AnimationSpeed::Slow => 1.8,
+            AnimationSpeed::Normal => 1.0,
+            AnimationSpeed::Fast => 0.35,
+            AnimationSpeed::Faster => 0.25,
+            AnimationSpeed::BlazinglyFast => 0.125,
+        };
+        factor * steps
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct GraphicsState {
     pub center_x: f64,
@@ -92,6 +132,7 @@ pub struct GraphicsState {
     pub white_tiles_style: WhiteTilesStyle,
     pub borders_style: BordersStyle,
     pub splitting: ScreenSplitting,
+    pub animation_speed: AnimationSpeed,
 }
 
 impl GraphicsState {
@@ -104,6 +145,7 @@ impl GraphicsState {
             white_tiles_style: WhiteTilesStyle::default(),
             borders_style: BordersStyle::default(),
             splitting: ScreenSplitting::default(),
+            animation_speed: AnimationSpeed::default(),
         }
     }
 
