@@ -67,6 +67,11 @@ fn build_settings() -> Vec<Box<dyn MenuSetting>> {
             vec!["1", "2", "3", "4", "5"],
             |g_state| &mut g_state.piece_zoom_level,
         ),
+        create_menu_setting(
+            "white tiles filling style: ",
+            vec!["full", "border", "hybrid"],
+            |g_state| &mut g_state.white_tiles_style,
+        ),
     ]
 }
 
@@ -130,7 +135,11 @@ fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
         KeyCode::Char('a') => Some(Event::MoveLeft),
         KeyCode::Char('s') => Some(Event::MoveDown),
         KeyCode::Char('d') => Some(Event::MoveRight),
-        KeyCode::Enter | KeyCode::Char(' ') => Some(Event::TwoDigitInit).filter(|_| !top_level),
+        KeyCode::Enter | KeyCode::Char(' ') => Some(if top_level {
+            Event::ContinueGame
+        } else {
+            Event::TwoDigitInit
+        }),
         KeyCode::Char(c) => {
             let to_index = c.to_string().parse::<usize>();
             to_index
@@ -431,6 +440,7 @@ struct AllState<'a> {
 }
 
 const RED: Color = Color::from_u32(0x00E05959);
+const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
 fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -483,7 +493,7 @@ fn render(
 
         if let UIState::Toplevel = state.ui_state {
             let action_area = splitted_layout[1];
-            let text = "[c]ontinue game\n\
+            let text = "[c]ontinue game  [↲]\n\
                 [n]ew game";
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Actions").borders(Borders::ALL));
@@ -505,7 +515,7 @@ fn render(
                 .block(Block::default().title("Settings").borders(Borders::ALL));
             frame.render_widget(paragraph, menu_area);
 
-            let text = "This is a TUI version of the hive board game.";
+            let text = "This is a TUI version of the Hive board game.";
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, help_area);
@@ -569,9 +579,8 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             .content_checked()
             .and_then(|content| content.top())
             .inspect(|piece| {
-                let dark_white = Color::from_u32(0x00D0D0D0);
                 if piece.player == Player::White {
-                    draw_interior(ctx, &state.graphics_state, x_mid, y_mid, dark_white);
+                    draw_interior(ctx, &state.graphics_state, x_mid, y_mid, DARK_WHITE);
                 }
             });
     }
@@ -629,8 +638,8 @@ fn draw_pieces(
     let zoom = state.graphics_state.piece_zoom_level.multiplier();
     let (pieces, _) = state.game_state.pieces();
     let interior_color = match state.game_state.player() {
-        Player::White => Color::from_u32(0x00D0D0D0),
-        Player::Black => Color::from_u32(0x00404040),
+        Player::White => DARK_WHITE,
+        Player::Black => Color::from_u32(0),
     };
 
     let pieces_with_counts = if let UIState::PositionSelected(_) = state.ui_state {
@@ -681,7 +690,7 @@ fn draw_pieces(
                 if depth == 3 {
                     let intial_count = initial_pieces[&piece_t];
                     if let UIState::PositionSelected(_) = state.ui_state {
-                        let number = state.piece_annotations[&piece_t];
+                        let number = state.piece_annotations[&piece_t] + 1;
                         ctx.print(
                             x - zoom * 3.5 - 2.5,
                             -2.0,
@@ -702,11 +711,7 @@ fn draw_pieces(
                             x_shift = zoom + 1.0;
                             content = format!("{count}/{intial_count}")
                         };
-                        ctx.print(
-                            x - x_shift,
-                            -2.0,
-                            Line::styled(content, Color::White),
-                        );
+                        ctx.print(x - x_shift, -2.0, Line::styled(content, Color::White));
                     }
                 }
             }
@@ -725,7 +730,7 @@ fn draw_interior(
     match graphics_state.white_tiles_style {
         WhiteTilesStyle::Full => tui_graphics::draw_hex_interior(ctx, x, y, color, false),
         WhiteTilesStyle::Border => {
-            tui_graphics::draw_interior_hex_border(ctx, x, y, 1.5, 2.0, color)
+            tui_graphics::draw_interior_hex_border(ctx, x, y, 1.5, 1.5, color)
         }
         WhiteTilesStyle::Hybrid => tui_graphics::draw_hex_interior(ctx, x, y, color, true),
     }
