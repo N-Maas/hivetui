@@ -31,7 +31,10 @@ use crate::{
 };
 
 use self::{
-    animations::{blink_field_default, Animation, Layer},
+    animations::{
+        blink_field_default, flying_piece, mark_field, Animation, ChainedEffect, CombinedEffect,
+        Layer,
+    },
     tui_settings::{BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle},
 };
 
@@ -425,10 +428,30 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PositionSelected(_), Err(_)) => {
                     *ui_state = UIState::ShowOptions;
                 }
-                (UIState::PieceSelected(_), Ok(d)) => match d.context() {
+                (UIState::PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                            let board = d.data().board();
+                            let piece_t = board.get(*b_index).and_then(|c| c.top()).unwrap().p_type;
+                            let interior_color = match Player::from(d.player()) {
+                                Player::White => DARK_WHITE,
+                                Player::Black => Color::from_u32(0x00303030),
+                            };
                             d.select_option(index);
+                            let flying = flying_piece(
+                                30,
+                                piece_t,
+                                *b_index,
+                                board_indizes[index],
+                                interior_color,
+                                RED,
+                            );
+                            let mark = mark_field(30, board_indizes[index], ORANGE);
+                            let blink = blink_field_default(15, board_indizes[index]);
+                            *animation = Some(Animation::new(ChainedEffect::new(
+                                CombinedEffect::new(flying, mark),
+                                blink,
+                            )));
                         } else {
                             // fill the annotation mapping
                             for (i, &board_index) in board_indizes.into_iter().enumerate() {
@@ -635,7 +658,9 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             // which sides should be drawn?
         }
     }
-    state.animation.inspect(|a| a.draw(ctx, Layer::Borders));
+    state
+        .animation
+        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Borders));
     ctx.layer();
 
     // second round: draw interiors
@@ -650,7 +675,9 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
                 }
             });
     }
-    state.animation.inspect(|a| a.draw(ctx, Layer::Interiors));
+    state
+        .animation
+        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Interiors));
     ctx.layer();
 
     // third round: draw pieces
@@ -661,7 +688,9 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| tui_graphics::draw_piece(ctx, piece.p_type, x_mid, y_mid, zoom));
     }
-    state.animation.inspect(|a| a.draw(ctx, Layer::Pieces));
+    state
+        .animation
+        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Pieces));
     ctx.layer();
 
     // is a specific field selected?
@@ -672,10 +701,14 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
         }
         _ => (),
     }
-    state.animation.inspect(|a| a.draw(ctx, Layer::Selection));
+    state
+        .animation
+        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Selection));
     ctx.layer();
 
-    state.animation.inspect(|a| a.draw(ctx, Layer::Final));
+    state
+        .animation
+        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Final));
 
     // print indizes
     if matches!(

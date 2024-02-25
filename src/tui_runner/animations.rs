@@ -1,9 +1,13 @@
 use ratatui::{style::Color, widgets::canvas::Context};
 use tgp_board::open_board::OpenIndex;
 
-use crate::tui_graphics;
+use crate::{pieces::PieceType, tui_graphics};
 
-use super::{translate_index, RED};
+use super::{
+    draw_interior, translate_index,
+    tui_settings::{GraphicsState, WhiteTilesStyle},
+    RED,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Layer {
@@ -17,10 +21,16 @@ pub enum Layer {
 pub trait AnimationEffect {
     fn total_steps(&self) -> usize;
 
-    fn draw(&self, ctx: &mut Context<'_>, step: usize, layer: Layer);
+    fn draw(
+        &self,
+        ctx: &mut Context<'_>,
+        graphics_state: &GraphicsState,
+        step: usize,
+        layer: Layer,
+    );
 }
 
-pub struct BaseEffect<F: Fn(&mut Context<'_>, f64, (f64, f64))> {
+pub struct BaseEffect<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> {
     x_start: f64,
     y_start: f64,
     x_end: f64,
@@ -30,7 +40,7 @@ pub struct BaseEffect<F: Fn(&mut Context<'_>, f64, (f64, f64))> {
     draw_fn: F,
 }
 
-impl<F: Fn(&mut Context<'_>, f64, (f64, f64))> BaseEffect<F> {
+impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> BaseEffect<F> {
     pub fn new(steps: usize, layer: Layer, start: (f64, f64), end: (f64, f64), draw_fn: F) -> Self {
         Self {
             x_start: start.0,
@@ -56,18 +66,24 @@ impl<F: Fn(&mut Context<'_>, f64, (f64, f64))> BaseEffect<F> {
     }
 }
 
-impl<F: Fn(&mut Context<'_>, f64, (f64, f64))> AnimationEffect for BaseEffect<F> {
+impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> AnimationEffect for BaseEffect<F> {
     fn total_steps(&self) -> usize {
         self.total_steps
     }
 
-    fn draw(&self, ctx: &mut Context<'_>, step: usize, layer: Layer) {
+    fn draw(
+        &self,
+        ctx: &mut Context<'_>,
+        graphics_state: &GraphicsState,
+        step: usize,
+        layer: Layer,
+    ) {
         assert!(step <= self.total_steps);
         if layer == self.layer {
             let ratio = step as f64 / self.total_steps as f64;
             let x = (1.0 - ratio) * self.x_start + ratio * self.x_end;
             let y = (1.0 - ratio) * self.y_start + ratio * self.y_end;
-            (self.draw_fn)(ctx, ratio, (x, y));
+            (self.draw_fn)(ctx, graphics_state, ratio, (x, y));
         }
     }
 }
@@ -88,9 +104,16 @@ impl<A: AnimationEffect, B: AnimationEffect> AnimationEffect for CombinedEffect<
         usize::max(self.a.total_steps(), self.b.total_steps())
     }
 
-    fn draw(&self, ctx: &mut Context<'_>, step: usize, layer: Layer) {
-        self.a.draw(ctx, step, layer);
-        self.b.draw(ctx, step, layer);
+    fn draw(
+        &self,
+        ctx: &mut Context<'_>,
+        graphics_state: &GraphicsState,
+        step: usize,
+        layer: Layer,
+    ) {
+        self.a.draw(ctx, graphics_state, step, layer);
+        ctx.layer();
+        self.b.draw(ctx, graphics_state, step, layer);
     }
 }
 
@@ -110,12 +133,19 @@ impl<A: AnimationEffect, B: AnimationEffect> AnimationEffect for ChainedEffect<A
         self.a.total_steps() + self.b.total_steps()
     }
 
-    fn draw(&self, ctx: &mut Context<'_>, step: usize, layer: Layer) {
+    fn draw(
+        &self,
+        ctx: &mut Context<'_>,
+        graphics_state: &GraphicsState,
+        step: usize,
+        layer: Layer,
+    ) {
         if step <= self.a.total_steps() {
-            self.a.draw(ctx, step, layer);
+            self.a.draw(ctx, graphics_state, step, layer);
         }
-        if step >= self.a.total_steps() {
-            self.b.draw(ctx, step - self.a.total_steps(), layer);
+        if step > self.a.total_steps() {
+            self.b
+                .draw(ctx, graphics_state, step - self.a.total_steps(), layer);
         }
     }
 }
@@ -144,31 +174,76 @@ impl Animation {
         self.current_step = usize::min(self.current_step + 1, self.total_steps);
     }
 
-    pub fn draw(&self, ctx: &mut Context<'_>, layer: Layer) {
+    pub fn draw(&self, ctx: &mut Context<'_>, graphics_state: &GraphicsState, layer: Layer) {
         ctx.layer();
-        self.effect.draw(ctx, self.current_step, layer);
+        self.effect
+            .draw(ctx, graphics_state, self.current_step, layer);
     }
 }
 
-pub fn blink_field_effect(
+pub fn mark_field(steps: usize, index: OpenIndex, color: Color) -> impl AnimationEffect {
+    let (x, y) = translate_index(index);
+    BaseEffect::new_static(
+        steps,
+        Layer::Interiors,
+        x,
+        y,
+        move |ctx, _g, _ratio, (x, y)| {
+            tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, 0.0, color)
+        },
+    )
+}
+
+pub fn blink_field(
     steps: usize,
     index: OpenIndex,
     color_start: (u8, u8, u8),
     color_end: (u8, u8, u8),
 ) -> impl AnimationEffect {
     let (x, y) = translate_index(index);
-    BaseEffect::new_static(steps, Layer::Interiors, x, y, move |ctx, ratio, (x, y)| {
-        let r = ((1.0 - ratio) * f64::from(color_start.0) + ratio * f64::from(color_end.0)).round()
-            as u32;
-        let g = ((1.0 - ratio) * f64::from(color_start.1) + ratio * f64::from(color_end.1)).round()
-            as u32;
-        let b = ((1.0 - ratio) * f64::from(color_start.2) + ratio * f64::from(color_end.2)).round()
-            as u32;
-        let color = Color::from_u32((r << 16) | (g << 8) | b);
-        tui_graphics::draw_interior_hex_border(ctx, x, y, 1.0, ratio * 10.0, color)
-    })
+    BaseEffect::new_static(
+        steps,
+        Layer::Interiors,
+        x,
+        y,
+        move |ctx, _g, ratio, (x, y)| {
+            let r = ((1.0 - ratio) * f64::from(color_start.0) + ratio * f64::from(color_end.0))
+                .round() as u32;
+            let g = ((1.0 - ratio) * f64::from(color_start.1) + ratio * f64::from(color_end.1))
+                .round() as u32;
+            let b = ((1.0 - ratio) * f64::from(color_start.2) + ratio * f64::from(color_end.2))
+                .round() as u32;
+            let color = Color::from_u32((r << 16) | (g << 8) | b);
+            tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, ratio * 10.0, color)
+        },
+    )
 }
 
 pub fn blink_field_default(steps: usize, index: OpenIndex) -> impl AnimationEffect {
-    return blink_field_effect(steps, index, (0xFF, 0x30, 0x30), (0x70, 0x70, 0x70));
+    return blink_field(steps, index, (0xFF, 0x30, 0x30), (0x70, 0x70, 0x70));
+}
+
+pub fn flying_piece(
+    steps: usize,
+    piece_t: PieceType,
+    start: OpenIndex,
+    end: OpenIndex,
+    color_interior: Color,
+    color_border: Color,
+) -> impl AnimationEffect {
+    let start = translate_index(start);
+    let end = translate_index(end);
+    BaseEffect::new(
+        steps,
+        Layer::Final,
+        start,
+        end,
+        move |ctx, g, _ratio, (x, y)| {
+            draw_interior(ctx, g, x, y, color_interior);
+            ctx.layer();
+            tui_graphics::draw_piece(ctx, piece_t, x, y, g.zoom_level.multiplier());
+            ctx.layer();
+            tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, 0.0, color_border);
+        },
+    )
 }
