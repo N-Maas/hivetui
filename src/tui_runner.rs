@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
     style::Color,
-    text::{Line, Text},
+    text::{Line, Span, Text},
     widgets::{
         canvas::{Canvas, Context},
         Block, Borders, Paragraph,
@@ -17,7 +17,11 @@ use std::io::stdout;
 use std::{collections::BTreeMap, io::Stdout};
 use std::{collections::HashMap, io};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
-use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
+use tgp_board::{
+    open_board::OpenIndex,
+    structures::directions::{DirectionEnumerable, HexaDirection},
+    Board, BoardIndexable,
+};
 
 use crate::{
     pieces::{PieceType, Player},
@@ -26,7 +30,9 @@ use crate::{
     tui_runner::tui_settings::create_menu_setting,
 };
 
-use self::tui_settings::{GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle};
+use self::tui_settings::{
+    BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle,
+};
 
 mod tui_settings;
 
@@ -71,6 +77,11 @@ fn build_settings() -> Vec<Box<dyn MenuSetting>> {
             "white tiles filling style: ",
             vec!["full", "border", "hybrid"],
             |g_state| &mut g_state.white_tiles_style,
+        ),
+        create_menu_setting(
+            "border drawing style: ",
+            vec!["complete", "partial", "none"],
+            |g_state| &mut g_state.borders_style,
         ),
     ]
 }
@@ -440,6 +451,7 @@ struct AllState<'a> {
 }
 
 const RED: Color = Color::from_u32(0x00E05959);
+const ORANGE: Color = Color::from_u32(0x00D89040);
 const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
 fn render(
@@ -504,13 +516,18 @@ fn render(
             else {
                 unreachable!()
             };
-            let text = Text::from(
-                settings
-                    .iter()
-                    .enumerate()
-                    .map(|(i, option)| option.get_line(graphics_state, state.menu_index == i))
-                    .collect::<Vec<_>>(),
-            );
+            let mut lines = Vec::<Line>::new();
+            for (i, option) in settings.iter().enumerate() {
+                let color = if state.menu_index == i {
+                    RED
+                } else {
+                    Color::White
+                };
+                let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
+                spans.extend(option.get_line(graphics_state, state.menu_index == i));
+                lines.push(Line::from(spans));
+            }
+            let text = Text::from(lines);
             let paragraph = Paragraph::new(text)
                 .block(Block::default().title("Settings").borders(Borders::ALL));
             frame.render_widget(paragraph, menu_area);
@@ -545,7 +562,7 @@ fn render(
                 [u]ndo or [r]edo a move\n\
                 [↑↓←→] or [wasd] to move the screen\n\
                 [+-] or [PageDown PageUp] for zooming\n\
-                [Esc] or [q] to get back to menu";
+                [Esc] or [q] to get back to the menu";
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, tooltip_area);
@@ -566,8 +583,29 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
     // first round: draw borders
     for field in board.iter_fields() {
         let (x_mid, y_mid) = translate_index(field.index());
-        if field.content_checked().is_some() {
-            tui_graphics::draw_hex_border(ctx, x_mid, y_mid);
+        if let Some(content) = field.content_checked() {
+            if content.is_empty()
+                && state.graphics_state.borders_style == BordersStyle::Partial
+                && board.size() > 1
+            {
+                // we don't want to draw "lonely" borders, thus we check where tiles are adjacent
+                let mut to_draw = Vec::new();
+                for direction in HexaDirection::enumerate_all() {
+                    if let Some(next) = field.next(direction).and_then(|f| f.content_checked()) {
+                        if !next.is_empty() {
+                            to_draw.push(direction.prev_direction());
+                            to_draw.push(direction);
+                            to_draw.push(direction.next_direction());
+                        }
+                    }
+                }
+                to_draw.sort();
+                to_draw.dedup();
+                tui_graphics::draw_restricted_hex_border(ctx, x_mid, y_mid, &to_draw);
+            } else if state.graphics_state.borders_style != BordersStyle::None {
+                tui_graphics::draw_hex_border(ctx, x_mid, y_mid);
+            }
+            // which sides should be drawn?
         }
     }
     ctx.layer();
@@ -611,19 +649,24 @@ fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
         state.ui_state,
         UIState::ShowOptions | UIState::PieceSelected(_)
     ) {
+        let color = if state.ui_state == UIState::ShowOptions {
+            RED
+        } else {
+            ORANGE
+        };
         for (&board_index, &number) in state.board_annotations.iter() {
             let (x, y) = translate_index(board_index);
             if number >= 9 {
                 ctx.print(
                     x - zoom * 4.0,
                     y - zoom * 2.0,
-                    Line::styled(format!("[ {}]", number + 1), RED),
+                    Line::styled(format!("[ {}]", number + 1), color),
                 );
             } else {
                 ctx.print(
                     x - zoom * 1.0,
                     y - zoom * 2.0,
-                    Line::styled(format!("[{}]", number + 1), RED),
+                    Line::styled(format!("[{}]", number + 1), color),
                 );
             }
         }
@@ -694,7 +737,7 @@ fn draw_pieces(
                         ctx.print(
                             x - zoom * 3.5 - 2.5,
                             -2.0,
-                            Line::styled(format!("[{number}]"), RED),
+                            Line::styled(format!("[{number}]"), ORANGE),
                         );
                         ctx.print(
                             x + zoom * 1.0 + 1.2,

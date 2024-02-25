@@ -2,6 +2,7 @@ use ratatui::{
     style::Color,
     widgets::canvas::{Circle, Context, Line, Points},
 };
+use tgp_board::structures::directions::HexaDirection;
 
 use crate::pieces::PieceType;
 
@@ -13,6 +14,14 @@ const HEX_BORDER_POINTS: [(f64, f64); 7] = [
     (-7.0, -12.0),
     (-14.0, 0.0),
     (-7.0, 12.0),
+];
+const HEX_BORDER_ORIENTATIONS: [HexaDirection; 6] = [
+    HexaDirection::Up,
+    HexaDirection::UpRight,
+    HexaDirection::DownRight,
+    HexaDirection::Down,
+    HexaDirection::DownLeft,
+    HexaDirection::UpLeft,
 ];
 
 fn interior_border_points(offset: f64) -> [(f64, f64); 7] {
@@ -34,7 +43,30 @@ fn interior_border_points(offset: f64) -> [(f64, f64); 7] {
 }
 
 pub fn draw_hex_border(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64) {
-    draw_hex_border_impl(ctx, x_mid, y_mid, &HEX_BORDER_POINTS, Color::DarkGray);
+    draw_hex_border_impl(
+        ctx,
+        x_mid,
+        y_mid,
+        &HEX_BORDER_POINTS,
+        &HEX_BORDER_ORIENTATIONS,
+        Color::DarkGray,
+    );
+}
+
+pub fn draw_restricted_hex_border(
+    ctx: &mut Context<'_>,
+    x_mid: f64,
+    y_mid: f64,
+    orientations: &[HexaDirection],
+) {
+    draw_hex_border_impl(
+        ctx,
+        x_mid,
+        y_mid,
+        &HEX_BORDER_POINTS,
+        &orientations,
+        Color::DarkGray,
+    );
 }
 
 pub fn draw_interior_hex_border(
@@ -53,6 +85,7 @@ pub fn draw_interior_hex_border(
             x_mid,
             y_mid,
             &interior_border_points(offset + current),
+            &HEX_BORDER_ORIENTATIONS,
             color,
         );
         current += 0.25;
@@ -64,17 +97,21 @@ fn draw_hex_border_impl(
     x_mid: f64,
     y_mid: f64,
     points: &[(f64, f64); 7],
+    orientations: &[HexaDirection],
     color: Color,
 ) {
-    let mut it = points.iter().copied().peekable();
-    while let (Some((x1, y1)), Some((x2, y2))) = (it.next(), it.peek().copied()) {
-        ctx.draw(&Line {
-            x1: x_mid + x1,
-            y1: y_mid + y1,
-            x2: x_mid + x2,
-            y2: y_mid + y2,
-            color,
-        });
+    for i in 0..(points.len() - 1) {
+        if orientations.contains(&HEX_BORDER_ORIENTATIONS[i]) {
+            let (x1, y1) = points[i];
+            let (x2, y2) = points[i + 1];
+            ctx.draw(&Line {
+                x1: x_mid + x1,
+                y1: y_mid + y1,
+                x2: x_mid + x2,
+                y2: y_mid + y2,
+                color,
+            });
+        }
     }
 }
 

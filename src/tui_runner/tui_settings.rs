@@ -65,6 +65,15 @@ pub enum WhiteTilesStyle {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
+pub enum BordersStyle {
+    Complete = 0,
+    #[default]
+    Partial = 1,
+    None = 2,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
 pub enum ScreenSplitting {
     FarLeft = 0,
     Left = 1,
@@ -81,6 +90,7 @@ pub struct GraphicsState {
     pub zoom_level: ZoomLevel,
     pub piece_zoom_level: ZoomLevel,
     pub white_tiles_style: WhiteTilesStyle,
+    pub borders_style: BordersStyle,
     pub splitting: ScreenSplitting,
 }
 
@@ -91,7 +101,8 @@ impl GraphicsState {
             center_y: 0.0,
             zoom_level: ZoomLevel::default(),
             piece_zoom_level: ZoomLevel::Wider,
-            white_tiles_style: WhiteTilesStyle::Hybrid,
+            white_tiles_style: WhiteTilesStyle::default(),
+            borders_style: BordersStyle::default(),
             splitting: ScreenSplitting::default(),
         }
     }
