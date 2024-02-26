@@ -8,9 +8,8 @@ use crate::{
 };
 
 use super::{
-    translate_index,
-    tui_settings::{AnimationStyle, GraphicsState, MovingTileStyle},
-    DARK_WHITE, ORANGE, RED,
+    tui_rendering::{self, translate_index, DARK_WHITE, ORANGE, RED},
+    tui_settings::{GraphicsState, MovingTileStyle},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -301,7 +300,7 @@ pub fn flying_piece(
         end,
         move |ctx, g, _ratio, (x, y)| {
             if draw_interior {
-                super::draw_interior(ctx, g, x, y, color_interior);
+                tui_rendering::draw_interior(ctx, g, x, y, color_interior);
                 ctx.layer();
             }
             tui_graphics::draw_piece(ctx, piece_t, x, y, g.zoom_level.multiplier());

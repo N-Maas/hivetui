@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 use crate::pieces::Player;
 
-use super::RED;
+use super::tui_rendering::RED;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
