@@ -2,6 +2,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use ratatui::text::{Line, Span};
 use std::fmt::Debug;
 
+use crate::pieces::Player;
+
 use super::RED;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
@@ -90,6 +92,7 @@ pub enum AnimationSpeed {
     Fast = 3,
     Faster = 4,
     BlazinglyFast = 5,
+    Off = 6,
 }
 
 impl AnimationSpeed {
@@ -106,6 +109,7 @@ impl AnimationSpeed {
             AnimationSpeed::Fast => 0.7,
             AnimationSpeed::Faster => 0.5,
             AnimationSpeed::BlazinglyFast => 0.25,
+            AnimationSpeed::Off => panic!("should not play animation"),
         };
         factor * steps
     }
@@ -118,9 +122,29 @@ impl AnimationSpeed {
             AnimationSpeed::Fast => 0.35,
             AnimationSpeed::Faster => 0.25,
             AnimationSpeed::BlazinglyFast => 0.125,
+            AnimationSpeed::Off => panic!("should not play animation"),
         };
         factor * steps
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum MovingTileStyle {
+    #[default]
+    Filled = 0,
+    Tranparent = 1,
+    Minimal = 2,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum AnimationStyle {
+    #[default]
+    Blink = 0,
+    Plain = 1,
+    BlinkOnlyAi = 2,
+    Rainbow = 3,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -133,6 +157,8 @@ pub struct GraphicsState {
     pub borders_style: BordersStyle,
     pub splitting: ScreenSplitting,
     pub animation_speed: AnimationSpeed,
+    pub animation_style: AnimationStyle,
+    pub moving_tile_style: MovingTileStyle,
 }
 
 impl GraphicsState {
@@ -146,6 +172,8 @@ impl GraphicsState {
             borders_style: BordersStyle::default(),
             splitting: ScreenSplitting::default(),
             animation_speed: AnimationSpeed::default(),
+            animation_style: AnimationStyle::default(),
+            moving_tile_style: MovingTileStyle::default(),
         }
     }
 
@@ -171,6 +199,14 @@ impl GraphicsState {
         self.center_x = f64::min(self.center_x, boundaries_x[1]);
         self.center_y = f64::max(self.center_y, boundaries_y[0]);
         self.center_y = f64::min(self.center_y, boundaries_y[1]);
+    }
+
+    pub fn get_animation_speed(&self, _player: Player) -> AnimationSpeed {
+        self.animation_speed
+    }
+
+    pub fn should_play_animation(&self, _player: Player) -> bool {
+        self.animation_speed != AnimationSpeed::Off
     }
 }
 
@@ -246,4 +282,44 @@ where
         }));
         Line::from(spans)
     }
+}
+
+pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
+    vec![
+        create_menu_setting(
+            "screen splitting (left to right): ",
+            vec!["1", "2", "3", "4", "5"],
+            |g_state| &mut g_state.splitting,
+        ),
+        create_menu_setting(
+            "available pieces display size: ",
+            vec!["1", "2", "3", "4", "5"],
+            |g_state| &mut g_state.piece_zoom_level,
+        ),
+        create_menu_setting(
+            "white tiles filling style: ",
+            vec!["full", "border", "hybrid"],
+            |g_state| &mut g_state.white_tiles_style,
+        ),
+        create_menu_setting(
+            "border drawing style: ",
+            vec!["complete", "partial", "none"],
+            |g_state| &mut g_state.borders_style,
+        ),
+        create_menu_setting(
+            "animation speed: ",
+            vec!["1", "2", "3", "4", "5", "6", "off"],
+            |g_state| &mut g_state.animation_speed,
+        ),
+        create_menu_setting(
+            "animation style: ",
+            vec!["blink", "plain", "blink-only-ai", "rainbow"],
+            |g_state| &mut g_state.animation_style,
+        ),
+        create_menu_setting(
+            "moving tile style: ",
+            vec!["filled", "transparent", "minimal"],
+            |g_state| &mut g_state.moving_tile_style,
+        ),
+    ]
 }

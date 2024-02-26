@@ -27,14 +27,10 @@ use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_graphics,
-    tui_runner::tui_settings::create_menu_setting,
 };
 
 use self::{
-    animations::{
-        blink_field_default, build_complete_piece_move_animation, flying_piece, mark_field,
-        Animation, ChainedEffect, CombinedEffect, Layer,
-    },
+    animations::{build_blink_animation, build_complete_piece_move_animation, Animation, Layer},
     tui_settings::{BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle},
 };
 
@@ -65,36 +61,6 @@ impl UIState {
             UIState::PlaysAnimation => true,
         }
     }
-}
-
-fn build_settings() -> Vec<Box<dyn MenuSetting>> {
-    vec![
-        create_menu_setting(
-            "screen splitting (left to right): ",
-            vec!["1", "2", "3", "4", "5"],
-            |g_state| &mut g_state.splitting,
-        ),
-        create_menu_setting(
-            "available pieces display size: ",
-            vec!["1", "2", "3", "4", "5"],
-            |g_state| &mut g_state.piece_zoom_level,
-        ),
-        create_menu_setting(
-            "white tiles filling style: ",
-            vec!["full", "border", "hybrid"],
-            |g_state| &mut g_state.white_tiles_style,
-        ),
-        create_menu_setting(
-            "border drawing style: ",
-            vec!["complete", "partial", "none"],
-            |g_state| &mut g_state.borders_style,
-        ),
-        create_menu_setting(
-            "animation speed: ",
-            vec!["1", "2", "3", "4", "5", "6"],
-            |g_state| &mut g_state.animation_speed,
-        ),
-    ]
 }
 
 fn pull_key_event() -> io::Result<Option<KeyCode>> {
@@ -145,7 +111,11 @@ impl Event {
 /// pull event in internal represenation: handles mapping of raw key event
 fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
     Ok(pull_key_event()?.and_then(|key| match key {
-        KeyCode::Esc => Some(Event::Exit),
+        KeyCode::Esc => Some(if top_level {
+            Event::ContinueGame
+        } else {
+            Event::Exit
+        }),
         KeyCode::Char('q') => Some(Event::Exit),
         KeyCode::Char('u') => Some(Event::Undo).filter(|_| !top_level),
         KeyCode::Char('r') => Some(Event::Redo).filter(|_| !top_level),
@@ -210,7 +180,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     terminal.hide_cursor()?;
     terminal.clear()?;
 
-    let settings = build_settings();
+    let settings = tui_settings::build_settings();
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
     let mut board_annotations = HashMap::new();
     let mut piece_annotations = HashMap::new();
@@ -420,9 +390,17 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PositionSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                            let player = Player::from(d.player());
+                            if graphics_state.should_play_animation(player) {
+                                *animation = Some(build_blink_animation(
+                                    graphics_state,
+                                    player,
+                                    *b_index,
+                                    false,
+                                ));
+                            }
+
                             d.select_option(index);
-                            let steps = graphics_state.animation_speed.map_steps(30);
-                            *animation = Some(Animation::new(blink_field_default(steps, *b_index)));
                         } else {
                             // fill the annotation mapping
                             for (i, &(piece_type, _)) in pieces.into_iter().enumerate() {
@@ -439,17 +417,20 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
-                            let board = d.data().board();
-                            let piece_t = board.get(*b_index).and_then(|c| c.top()).unwrap().p_type;
                             let player = Player::from(d.player());
-                            let target = board_indizes[index];
-                            *animation = Some(build_complete_piece_move_animation(
-                                graphics_state,
-                                piece_t,
-                                player,
-                                *b_index,
-                                target,
-                            ));
+                            if graphics_state.should_play_animation(player) {
+                                let board = d.data().board();
+                                let piece_t =
+                                    board.get(*b_index).and_then(|c| c.top()).unwrap().p_type;
+                                let target = board_indizes[index];
+                                *animation = Some(build_complete_piece_move_animation(
+                                    graphics_state,
+                                    piece_t,
+                                    player,
+                                    *b_index,
+                                    target,
+                                ));
+                            }
 
                             d.select_option(index);
                         } else {
@@ -546,7 +527,7 @@ fn render(
             let x_len = zoom * f64::from(canvas_area.width);
             let y_len = zoom * 2.1 * f64::from(canvas_area.height);
             let canvas = Canvas::default()
-                .block(Block::default().title("The Board").borders(Borders::ALL))
+                .block(Block::default().borders(Borders::ALL))
                 .x_bounds([center_x - x_len, center_x + x_len])
                 .y_bounds([center_y - y_len, center_y + y_len])
                 .paint(|ctx| draw_board(ctx, state));
@@ -556,7 +537,9 @@ fn render(
         if let UIState::Toplevel = state.ui_state {
             let action_area = splitted_layout[1];
             let text = "[c]ontinue game  [↲]\n\
-                [n]ew game";
+                [n]ew game\n\
+                \n\
+                [q]uit";
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Actions").borders(Borders::ALL));
             frame.render_widget(paragraph, action_area);
