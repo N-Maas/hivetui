@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     tui_rendering::{self, translate_index, DARK_WHITE, ORANGE, RED},
-    tui_settings::{GraphicsState, MovingTileStyle},
+    tui_settings::{AnimationStyle, GraphicsState, MovingTileStyle},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -281,6 +281,34 @@ pub fn blink_field_default(steps: usize, index: OpenIndex) -> impl AnimationEffe
     blink_field(steps, index, (0xFF, 0x30, 0x30), (0x70, 0x70, 0x70))
 }
 
+pub fn rainbow_field(steps: usize, length: usize, index: OpenIndex) -> impl AnimationEffect {
+    let colors = [
+        Color::from_u32(0x00E00040),
+        Color::from_u32(0x00DA9000),
+        Color::from_u32(0x00D0D000),
+        Color::from_u32(0x0000C865),
+        Color::from_u32(0x000065EE),
+        Color::from_u32(0x007500DA),
+    ];
+    let (x, y) = translate_index(index);
+    BaseEffect::new_static(
+        steps,
+        Layer::Interiors,
+        x,
+        y,
+        move |ctx, _g, ratio, (x, y)| {
+            let progress = ratio * (length as f64);
+            for offset_mult in 0..=40 {
+                let offset = 0.25 * (offset_mult as f64);
+                let local_progress = progress + offset / 3.0;
+                assert!(local_progress >= 0.0);
+                let index = f64::floor(local_progress) as usize % colors.len();
+                tui_graphics::draw_interior_hex_border(ctx, x, y, offset, 0.0, colors[index]);
+            }
+        },
+    )
+}
+
 pub fn flying_piece(
     steps: usize,
     piece_t: PieceType,
@@ -323,14 +351,13 @@ pub fn build_blink_animation(
         .get_animation_speed(player)
         .map_steps(base_steps);
     match graphics_state.animation_style {
-        super::tui_settings::AnimationStyle::Blink => {
-            Animation::new(blink_field_default(steps, index))
+        AnimationStyle::Blink => Animation::new(blink_field_default(steps, index)),
+        AnimationStyle::Plain => Animation::new(mark_field((steps + 2) / 3, index, RED)),
+        AnimationStyle::BlinkOnlyAi => todo!(),
+        AnimationStyle::Rainbow => {
+            let length = if short { 6 } else { 9 };
+            Animation::new(rainbow_field(3 * steps / 2 + 2, length, index))
         }
-        super::tui_settings::AnimationStyle::Plain => {
-            Animation::new(mark_field((steps + 2) / 3, index, RED))
-        }
-        super::tui_settings::AnimationStyle::BlinkOnlyAi => todo!(),
-        super::tui_settings::AnimationStyle::Rainbow => todo!(),
     }
 }
 
