@@ -62,30 +62,42 @@ pub fn render(
             ScreenSplitting::Right => 70,
             ScreenSplitting::FarRight => 75,
         };
-        let contraints = if matches!(state.ui_state, UIState::Toplevel) {
-            let diff = 15;
-            vec![
-                Constraint::Percentage(percentage_left - diff),
-                Constraint::Percentage(diff),
-                Constraint::Percentage(100 - percentage_left),
-            ]
+        let diff = 15;
+        let splitted_top_level = Layout::horizontal(vec![
+            Constraint::Percentage(percentage_left - diff),
+            Constraint::Percentage(diff),
+            Constraint::Percentage(100 - percentage_left),
+        ])
+        .split(area);
+        let splitted_in_game = Layout::horizontal(vec![
+            Constraint::Percentage(percentage_left),
+            Constraint::Percentage(100 - percentage_left),
+        ])
+        .split(area);
+
+        let splitted_layout = if let UIState::Toplevel = state.ui_state {
+            splitted_top_level
         } else {
-            vec![
-                Constraint::Percentage(percentage_left),
-                Constraint::Percentage(100 - percentage_left),
-            ]
+            splitted_in_game.clone()
         };
-        let splitted_layout = Layout::horizontal(contraints).split(area);
         let canvas_area = splitted_layout[0];
         let &menu_area = splitted_layout.last().unwrap();
         {
             // the board
+            let y_factor = 2.1;
             let zoom = state.graphics_state.zoom_level.multiplier();
-            let center_x = state.graphics_state.center_x;
+            let mut center_x = state.graphics_state.center_x;
             let center_y = state.graphics_state.center_y;
 
-            let x_len = zoom * f64::from(canvas_area.width);
-            let y_len = zoom * 2.1 * f64::from(canvas_area.height);
+            let x_len = zoom * f64::from(canvas_area.width - 2);
+            let y_len = zoom * y_factor * f64::from(canvas_area.height - 2);
+
+            // use same center with the top level layout
+            if let UIState::Toplevel = state.ui_state {
+                let alt_x_len = zoom * f64::from(splitted_in_game[0].width - 2);
+                let diff = x_len - alt_x_len;
+                center_x += diff;
+            }
             let canvas = Canvas::default()
                 .block(Block::default().borders(Borders::ALL))
                 .x_bounds([center_x - x_len, center_x + x_len])
