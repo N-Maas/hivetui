@@ -1,64 +1,32 @@
-use super::tui_settings::WhiteTilesStyle;
-use crate::pieces::Player;
-
-use super::tui_animations::Layer;
-
-use crate::tui_graphics;
-
-use ratatui::text::Span;
-use tgp_board::structures::directions::DirectionEnumerable;
-use tgp_board::structures::directions::HexaDirection;
-use tgp_board::Board;
-
-use super::tui_settings::BordersStyle;
-
-use ratatui::widgets::canvas::Context;
-
-use ratatui::text::Text;
-
-use ratatui::text::Line;
-
-use ratatui::layout::Constraint;
-
-use ratatui::widgets::Paragraph;
-
-use ratatui::widgets::Borders;
-
-use ratatui::widgets::Block;
-
-use ratatui::widgets::canvas::Canvas;
-
-use ratatui::layout::Layout;
-
-use super::tui_settings::ScreenSplitting;
-
-use std::io;
-
-use std::collections::BTreeMap;
-
-use super::tui_settings::MenuSetting;
-
-use std::io::Stdout;
-
-use ratatui::prelude::CrosstermBackend;
-
-use ratatui::prelude::Terminal;
-
-use ratatui::style::Color;
-
-use super::tui_settings::GraphicsState;
-
-use super::tui_animations::Animation;
-
-use super::UIState;
-
-use crate::pieces::PieceType;
-
-use tgp_board::open_board::OpenIndex;
-
-use std::collections::HashMap;
-
-use crate::state::HiveGameState;
+use super::{
+    tui_animations::{Animation, Layer},
+    tui_settings::{BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle},
+    UIState,
+};
+use crate::{
+    pieces::{PieceType, Player},
+    state::HiveGameState,
+    tui_graphics,
+};
+use ratatui::{
+    layout::{Constraint, Layout},
+    prelude::{CrosstermBackend, Terminal},
+    style::Color,
+    text::{Line, Span, Text},
+    widgets::{
+        canvas::{Canvas, Context},
+        Block, Borders, Paragraph,
+    },
+};
+use std::{
+    collections::{BTreeMap, HashMap},
+    io::{self, Stdout},
+};
+use tgp_board::{
+    open_board::OpenIndex,
+    structures::directions::{DirectionEnumerable, HexaDirection},
+    Board,
+};
 
 #[derive(Clone, Copy)]
 pub struct AllState<'a> {
