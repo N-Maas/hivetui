@@ -10,7 +10,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 use std::{collections::HashMap, io};
-use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
+use tgp::{
+    engine::{logging::EventLog, Engine, FollowUpDecision, GameEngine, GameState},
+    vec_context::VecContext,
+};
 use tgp_ai::RatingType;
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
@@ -517,15 +520,50 @@ fn update_game_state_and_fill_input_mapping(
                 Player::from(decision.player()),
                 animation,
             );
+            let follow_up = decision.try_into_follow_up_decision();
             if ai_state.should_use_ai && ui_state.show_game() {
-                if let Some(_result) = ai_state.result() {
-                    todo!();
+                let decision = match follow_up {
+                    Ok(d) => {
+                        d.retract_all();
+                        return;
+                    }
+                    Err(d) => d,
+                };
+
+                if let Some(result) = ai_state.result() {
+                    assert!(result.player == Player::from(decision.player()));
+                    let best = result.best_move;
+
+                    let context = match decision.context() {
+                        HiveContext::BaseField(context) => context,
+                        HiveContext::SkipPlayer => {
+                            decision.select_option(0);
+                            return;
+                        }
+                        _ => unreachable!(""),
+                    };
+                    let position = context[best[0]];
+                    decision.select_option(best[0]);
+
+                    if let GameState::PendingDecision(next) = engine.pull() {
+                        next.into_follow_up_decision().map(|d| match d.context() {
+                            HiveContext::TargetField(targets) => {
+                                handle_moved_piece(
+                                    d, targets, best[1], position, settings, animation,
+                                );
+                            }
+                            HiveContext::Piece(_) => {
+                                handle_placed_piece(d, best[1], position, settings, animation);
+                            }
+                            _ => unreachable!(""),
+                        });
+                    }
                 } else {
                     *ui_state = UIState::PlaysAnimation(true);
                 }
+                return; // don't risk a weird decision state
             }
 
-            let follow_up = decision.try_into_follow_up_decision();
             match (&ui_state, follow_up) {
                 (UIState::Toplevel, Ok(d)) => d.retract_all(),
                 (UIState::Toplevel, Err(_)) => (),
@@ -559,13 +597,7 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PositionSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
-                            let player = Player::from(d.player());
-                            if settings.should_play_animation(player) {
-                                *animation =
-                                    Some(build_blink_animation(settings, player, *b_index, false));
-                            }
-
-                            d.select_option(index);
+                            handle_placed_piece(d, index, *b_index, settings, animation);
                         } else {
                             // fill the annotation mapping
                             for (i, &(piece_type, _)) in pieces.into_iter().enumerate() {
@@ -582,18 +614,14 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
-                            let player = Player::from(d.player());
-                            if settings.should_play_animation(player) {
-                                let board = d.data().board();
-                                let piece_t =
-                                    board.get(*b_index).and_then(|c| c.top()).unwrap().p_type;
-                                let target = board_indizes[index];
-                                *animation = Some(build_complete_piece_move_animation(
-                                    settings, piece_t, player, *b_index, target,
-                                ));
-                            }
-
-                            d.select_option(index);
+                            handle_moved_piece(
+                                d,
+                                board_indizes,
+                                index,
+                                *b_index,
+                                settings,
+                                animation,
+                            );
                         } else {
                             // fill the annotation mapping
                             for (i, &board_index) in board_indizes.into_iter().enumerate() {
@@ -613,8 +641,9 @@ fn update_game_state_and_fill_input_mapping(
                         d.retract_all();
                     }
                 }
-                (UIState::PlaysAnimation(is_ai), Ok(_)) => {
-                    assert!(is_ai, "selection during animation should be impossible")
+                (UIState::PlaysAnimation(is_ai), Ok(d)) => {
+                    assert!(is_ai, "selection during animation should be impossible");
+                    d.retract_all();
                 }
                 (UIState::PlaysAnimation(_), Err(_)) => (),
             }
@@ -630,4 +659,39 @@ fn update_game_state_and_fill_input_mapping(
             }
         }
     }
+}
+
+fn handle_placed_piece(
+    dec: FollowUpDecision<'_, HiveGameState, EventLog<HiveGameState>>,
+    index: usize,
+    pos: OpenIndex,
+    settings: &Settings,
+    animation: &mut Option<Animation>,
+) {
+    let player = Player::from(dec.player());
+    if settings.should_play_animation(player) {
+        *animation = Some(build_blink_animation(settings, player, pos, false));
+    }
+    dec.select_option(index);
+}
+
+fn handle_moved_piece(
+    dec: FollowUpDecision<'_, HiveGameState, EventLog<HiveGameState>>,
+    context: VecContext<OpenIndex, OpenIndex>,
+    index: usize,
+    pos: OpenIndex,
+    settings: &Settings,
+    animation: &mut Option<Animation>,
+) {
+    let player = Player::from(dec.player());
+    if settings.should_play_animation(player) {
+        let board = dec.data().board();
+        let piece_t = board.get(pos).and_then(|c| c.top()).unwrap().p_type;
+        let target = context[index];
+        *animation = Some(build_complete_piece_move_animation(
+            settings, piece_t, player, pos, target,
+        ));
+    }
+
+    dec.select_option(index);
 }
