@@ -1,7 +1,8 @@
 use super::{
     tui_animations::{Animation, Layer},
     tui_settings::{
-        BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, Settings, WhiteTilesStyle,
+        render_settings, BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, Settings,
+        WhiteTilesStyle,
     },
     UIState,
 };
@@ -14,7 +15,7 @@ use ratatui::{
     layout::{Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
     style::Color,
-    text::{Line, Span, Text},
+    text::Line,
     widgets::{
         canvas::{Canvas, Context},
         Block, Borders, Paragraph,
@@ -124,18 +125,7 @@ pub fn render(
             else {
                 unreachable!()
             };
-            let mut lines = Vec::<Line>::new();
-            for (i, option) in settings_list.iter().enumerate() {
-                let color = if state.menu_index == i {
-                    RED
-                } else {
-                    Color::White
-                };
-                let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
-                spans.extend(option.get_line(settings, state.menu_index == i));
-                lines.push(Line::from(spans));
-            }
-            let text = Text::from(lines);
+            let text = render_settings(settings, settings_list, state.menu_index);
             let paragraph = Paragraph::new(text)
                 .block(Block::default().title("Settings").borders(Borders::ALL));
             frame.render_widget(paragraph, menu_area);

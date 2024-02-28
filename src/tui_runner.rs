@@ -20,7 +20,7 @@ use crate::{
 
 use self::{
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
-    tui_settings::{GraphicsState, Settings},
+    tui_settings::{GraphicsState, PlayerType, Settings},
 };
 
 mod tui_animations;
@@ -255,13 +255,14 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
 
     let settings_list = tui_settings::build_settings();
     let mut settings = Settings::default();
+    settings.black_player_type = PlayerType::AI2;
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
     let mut board_annotations = HashMap::new();
     let mut piece_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::Toplevel;
     let mut ai_state = AIState::new();
-    let mut menu_index = 0;
+    let mut menu_index = 2;
     let mut current_animation: Option<Animation> = None;
     let mut digits: Option<Vec<usize>> = None;
     loop {

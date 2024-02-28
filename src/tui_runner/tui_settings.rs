@@ -1,5 +1,8 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use ratatui::text::{Line, Span};
+use ratatui::{
+    style::Color,
+    text::{Line, Span, Text},
+};
 use std::fmt::Debug;
 
 use crate::pieces::Player;
@@ -51,6 +54,17 @@ impl ZoomLevel {
     fn move_offset(&self) -> f64 {
         self.multiplier() * 12.0
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum PlayerType {
+    #[default]
+    Human = 0,
+    AI1 = 1,
+    AI2 = 2,
+    AI3 = 3,
+    AI4 = 4,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
@@ -190,6 +204,8 @@ impl GraphicsState {
 
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct Settings {
+    pub white_player_type: PlayerType,
+    pub black_player_type: PlayerType,
     pub piece_zoom_level: ZoomLevel,
     pub white_tiles_style: WhiteTilesStyle,
     pub borders_style: BordersStyle,
@@ -214,7 +230,9 @@ pub trait MenuSetting {
 
     fn decrease(&self, state: &mut Settings);
 
-    fn get_line(&self, state: &mut Settings, highlight: bool) -> Line;
+    fn get_line(&self, state: &mut Settings, highlight: bool) -> Line<'static>;
+
+    fn get_entry(&self, state: &mut Settings, highlight: bool, at: usize) -> Span<'static>;
 }
 
 pub fn create_menu_setting<
@@ -267,26 +285,38 @@ where
         }
     }
 
-    fn get_line(&self, state: &mut Settings, highlight: bool) -> Line {
-        let current_val = self.val(state);
+    fn get_line(&self, state: &mut Settings, highlight: bool) -> Line<'static> {
         let mut spans = vec![Span::raw(self.prefix)];
-        spans.extend(self.texts.iter().enumerate().map(|(i, &str)| {
-            if usize::from(current_val) == i && highlight {
-                Span::styled(format!("<{str}>"), RED)
-            } else if usize::from(current_val) == i {
-                Span::raw(format!("<{str}>"))
-            } else {
-                Span::raw(format!(" {str} "))
-            }
-        }));
+        spans.extend((0..self.texts.len()).map(|i| self.get_entry(state, highlight, i)));
         Line::from(spans)
+    }
+
+    fn get_entry(&self, state: &mut Settings, highlight: bool, at: usize) -> Span<'static> {
+        let current_val = self.val(state);
+        let str = self.texts[at];
+        if usize::from(current_val) == at && highlight {
+            Span::styled(format!("<{str}>"), RED)
+        } else if usize::from(current_val) == at {
+            Span::raw(format!("<{str}>"))
+        } else {
+            Span::raw(format!(" {str} "))
+        }
     }
 }
 
+const PLAYER_PREFIXES: [&'static str; 2] = ["white player: ", "black player: "];
+const PLAYER_TYPES: [&'static str; 5] = ["human", "beginner", "easy", "normal", "hard"];
+
 pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
     vec![
+        create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), |state| {
+            &mut state.white_player_type
+        }),
+        create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), |state| {
+            &mut state.black_player_type
+        }),
         create_menu_setting(
-            "screen splitting (left to right): ",
+            "screen splitting: ",
             vec!["1", "2", "3", "4", "5"],
             |state| &mut state.splitting,
         ),
@@ -321,4 +351,47 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
             |state| &mut state.moving_tile_style,
         ),
     ]
+}
+
+pub fn render_settings(
+    settings: &mut Settings,
+    settings_list: &[Box<dyn MenuSetting>],
+    menu_index: usize,
+) -> Text<'static> {
+    let mut lines = Vec::<Line>::new();
+    for (i, option) in settings_list.iter().enumerate() {
+        let color = if menu_index == i { RED } else { Color::White };
+        let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
+        if i <= 1 {
+            spans.push(Span::raw(PLAYER_PREFIXES[i]));
+            let position: u8 = if i == 0 {
+                settings.white_player_type.into()
+            } else {
+                settings.black_player_type.into()
+            };
+            spans.push(Span::raw(PLAYER_TYPES[position as usize]));
+            if position > 0 {
+                spans.push(Span::raw(" AI"));
+            }
+            lines.push(Line::from(spans));
+
+            spans = Vec::new();
+            if menu_index == i {
+                spans.push(Span::raw("    "));
+                spans.push(option.get_entry(settings, menu_index == i, 0));
+                spans.push(Span::raw(" or AI: "));
+                for level in 1..PLAYER_TYPES.len() {
+                    spans.push(option.get_entry(settings, menu_index == i, level));
+                }
+            }
+            lines.push(Line::from(spans));
+        } else {
+            spans.extend(option.get_line(settings, menu_index == i));
+            lines.push(Line::from(spans));
+        }
+        if i == 1 {
+            lines.push(Line::raw(""));
+        }
+    }
+    Text::from(lines)
 }
