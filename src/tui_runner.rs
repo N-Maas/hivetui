@@ -4,8 +4,11 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
-use std::collections::BTreeMap;
 use std::io::stdout;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
 use std::{collections::HashMap, io};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
@@ -17,7 +20,7 @@ use crate::{
 
 use self::{
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
-    tui_settings::GraphicsState,
+    tui_settings::{GraphicsState, Settings},
 };
 
 mod tui_animations;
@@ -50,6 +53,75 @@ impl UIState {
     }
 }
 
+#[derive(Debug)]
+struct AIResult {}
+
+#[derive(Debug)]
+enum AIMessage {
+    Start,
+    Cancel,
+    Result(Box<AIResult>),
+}
+
+struct AIState {
+    exchange_point: Arc<Mutex<Option<AIMessage>>>,
+    current_player: Player,
+    is_started: bool,
+    // TODO: update in case of menu changes?!
+    should_use_ai: bool,
+    result: Option<AIResult>,
+    animation_progress: usize,
+}
+
+impl AIState {
+    fn new() -> Self {
+        Self {
+            exchange_point: Arc::new(Mutex::new(None)),
+            current_player: Player::White,
+            is_started: false,
+            should_use_ai: false,
+            result: None,
+            animation_progress: 0,
+        }
+    }
+
+    fn reset(&mut self, player: Player) {
+        {
+            let mut lock = self.exchange_point.lock().unwrap();
+            let new_msg = match lock.take() {
+                Some(AIMessage::Cancel) => Some(AIMessage::Cancel),
+                Some(AIMessage::Start) => None,
+                Some(AIMessage::Result(_)) => {
+                    assert!(self.is_started);
+                    None
+                }
+                None => {
+                    if self.is_started {
+                        Some(AIMessage::Cancel)
+                    } else {
+                        None
+                    }
+                }
+            };
+            *lock = new_msg;
+        }
+        self.current_player = player;
+        self.is_started = false;
+        self.should_use_ai = false;
+        self.result = None;
+        self.animation_progress = 0;
+    }
+
+    fn use_ai(&mut self) {
+        self.should_use_ai = true;
+    }
+
+    fn dont_use_ai(&mut self) {
+        self.should_use_ai = false;
+        self.animation_progress = 0;
+    }
+}
+
 fn pull_key_event() -> io::Result<Option<KeyCode>> {
     if event::poll(std::time::Duration::from_millis(16))? {
         if let event::Event::Key(key) = event::read()? {
@@ -73,6 +145,8 @@ enum Event {
     TwoDigitInit,
     TwoDigitAdd(usize),
     Exit,
+    Cancel,
+    SoftCancel,
     ContinueGame,
     NewGame,
     Undo,
@@ -96,7 +170,7 @@ impl Event {
 }
 
 /// pull event in internal represenation: handles mapping of raw key event
-fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
+fn pull_event(top_level: bool, two_digit: bool, animation: bool) -> io::Result<Option<Event>> {
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(if top_level {
             Event::ContinueGame
@@ -106,7 +180,11 @@ fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
         KeyCode::Char('q') => Some(Event::Exit),
         KeyCode::Char('u') => Some(Event::Undo).filter(|_| !top_level),
         KeyCode::Char('r') => Some(Event::Redo).filter(|_| !top_level),
-        KeyCode::Char('c') => Some(Event::ContinueGame).filter(|_| top_level),
+        KeyCode::Char('c') => Some(if top_level {
+            Event::ContinueGame
+        } else {
+            Event::Cancel
+        }),
         KeyCode::Char('n') => Some(Event::NewGame).filter(|_| top_level),
         KeyCode::Char('+') => Some(Event::ZoomIn),
         KeyCode::Char('-') => Some(Event::ZoomOut),
@@ -114,11 +192,18 @@ fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
         KeyCode::Char('a') => Some(Event::MoveLeft),
         KeyCode::Char('s') => Some(Event::MoveDown),
         KeyCode::Char('d') => Some(Event::MoveRight),
-        KeyCode::Enter | KeyCode::Char(' ') => Some(if top_level {
-            Event::ContinueGame
-        } else {
-            Event::TwoDigitInit
-        }),
+        KeyCode::Enter | KeyCode::Char(' ') => {
+            if top_level {
+                Some(Event::ContinueGame)
+            } else if !animation {
+                Some(Event::TwoDigitInit)
+            } else if key == KeyCode::Enter {
+                Some(Event::SoftCancel)
+            } else {
+                None
+            }
+        }
+        KeyCode::BackTab => Some(Event::Cancel),
         KeyCode::Char(c) => {
             let to_index = c.to_string().parse::<usize>();
             to_index
@@ -160,6 +245,7 @@ fn pull_event(top_level: bool, two_digit: bool) -> io::Result<Option<Event>> {
     }))
 }
 
+/// this implements the main event loop
 pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -167,12 +253,14 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     terminal.hide_cursor()?;
     terminal.clear()?;
 
-    let settings = tui_settings::build_settings();
+    let settings_list = tui_settings::build_settings();
+    let mut settings = Settings::default();
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
     let mut board_annotations = HashMap::new();
     let mut piece_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::Toplevel;
+    let mut ai_state = AIState::new();
     let mut menu_index = 0;
     let mut current_animation: Option<Animation> = None;
     let mut digits: Option<Vec<usize>> = None;
@@ -180,12 +268,17 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         if current_animation.as_ref().is_some_and(|a| !a.is_finished()) && ui_state.show_game() {
+            // TODO: interaction with AI?!
             ui_state = UIState::PlaysAnimation;
         } else if ui_state == UIState::PlaysAnimation {
             ui_state = UIState::ShowOptions;
         }
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
-        let mut event = pull_event(ui_state == UIState::Toplevel, digits.is_some())?;
+        let mut event = pull_event(
+            ui_state == UIState::Toplevel,
+            digits.is_some(),
+            current_animation.is_some(),
+        )?;
         if let Some(e) = event {
             // two digit handling happens first
             match e {
@@ -215,6 +308,15 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     UIState::GameFinished(_) => ui_state = UIState::Toplevel,
                     UIState::PlaysAnimation => ui_state = UIState::Toplevel,
                 },
+                Event::Cancel => {
+                    current_animation = None;
+                    ai_state.should_use_ai = false;
+                }
+                Event::SoftCancel => {
+                    if ui_state == UIState::PlaysAnimation {
+                        current_animation = None;
+                    }
+                }
                 Event::ContinueGame => {
                     ui_state = UIState::ShowOptions;
                 }
@@ -243,7 +345,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
                 }
                 Event::MenuOption(new_index) => {
-                    if new_index < settings.len() {
+                    if new_index < settings_list.len() {
                         menu_index = new_index;
                     }
                 }
@@ -253,15 +355,15 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     }
                 }
                 Event::MenuDown => {
-                    if menu_index + 1 < settings.len() {
+                    if menu_index + 1 < settings_list.len() {
                         menu_index += 1;
                     }
                 }
                 Event::MenuIncrease => {
-                    settings[menu_index].increase(&mut graphics_state);
+                    settings_list[menu_index].increase(&mut settings);
                 }
                 Event::MenuDecrease => {
-                    settings[menu_index].decrease(&mut graphics_state);
+                    settings_list[menu_index].decrease(&mut settings);
                 }
                 Event::Selection(_) => (),
                 Event::TwoDigitInit => (),
@@ -276,7 +378,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             &mut board_annotations,
             &mut piece_annotations,
             &mut ui_state,
-            &graphics_state,
+            &settings,
             &mut current_animation,
             event.and_then(|e| e.as_selection()),
         );
@@ -284,6 +386,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         // finally we render the UI
         let state = tui_rendering::AllState {
             game_state: engine.data(),
+            settings: settings,
             board_annotations: &board_annotations,
             piece_annotations: &piece_annotations,
             ui_state,
@@ -291,13 +394,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             menu_index,
             graphics_state,
         };
-        tui_rendering::render(
-            &mut terminal,
-            &settings,
-            state,
-            &mut graphics_state,
-            &pieces,
-        )?;
+        tui_rendering::render(&mut terminal, &settings_list, state, &mut settings, &pieces)?;
         // update animation state
         if let Some(animation) = current_animation.as_mut() {
             if animation.is_finished() {
@@ -333,7 +430,7 @@ fn update_game_state_and_fill_input_mapping(
     board_annotations: &mut HashMap<OpenIndex, usize>,
     piece_annotations: &mut HashMap<PieceType, usize>,
     ui_state: &mut UIState,
-    graphics_state: &GraphicsState,
+    settings: &Settings,
     animation: &mut Option<Animation>,
     input: Option<usize>,
 ) {
@@ -378,13 +475,9 @@ fn update_game_state_and_fill_input_mapping(
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             let player = Player::from(d.player());
-                            if graphics_state.should_play_animation(player) {
-                                *animation = Some(build_blink_animation(
-                                    graphics_state,
-                                    player,
-                                    *b_index,
-                                    false,
-                                ));
+                            if settings.should_play_animation(player) {
+                                *animation =
+                                    Some(build_blink_animation(settings, player, *b_index, false));
                             }
 
                             d.select_option(index);
@@ -405,17 +498,13 @@ fn update_game_state_and_fill_input_mapping(
                     HiveContext::TargetField(board_indizes) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             let player = Player::from(d.player());
-                            if graphics_state.should_play_animation(player) {
+                            if settings.should_play_animation(player) {
                                 let board = d.data().board();
                                 let piece_t =
                                     board.get(*b_index).and_then(|c| c.top()).unwrap().p_type;
                                 let target = board_indizes[index];
                                 *animation = Some(build_complete_piece_move_animation(
-                                    graphics_state,
-                                    piece_t,
-                                    player,
-                                    *b_index,
-                                    target,
+                                    settings, piece_t, player, *b_index, target,
                                 ));
                             }
 

@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     tui_rendering::{self, translate_index, DARK_WHITE, ORANGE, RED},
-    tui_settings::{AnimationStyle, GraphicsState, MovingTileStyle},
+    tui_settings::{AnimationStyle, GraphicsState, MovingTileStyle, Settings, WhiteTilesStyle},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -318,6 +318,7 @@ pub fn flying_piece(
     draw_border: bool,
     color_interior: Color,
     draw_interior: bool,
+    style: WhiteTilesStyle,
 ) -> impl AnimationEffect {
     let start = translate_index(start);
     let end = translate_index(end);
@@ -328,7 +329,7 @@ pub fn flying_piece(
         end,
         move |ctx, g, _ratio, (x, y)| {
             if draw_interior {
-                tui_rendering::draw_interior(ctx, g, x, y, color_interior);
+                tui_rendering::draw_interior(ctx, style, x, y, color_interior);
                 ctx.layer();
             }
             tui_graphics::draw_piece(ctx, piece_t, x, y, g.zoom_level.multiplier());
@@ -341,16 +342,14 @@ pub fn flying_piece(
 }
 
 pub fn build_blink_animation(
-    graphics_state: &GraphicsState,
+    settings: &Settings,
     player: Player,
     index: OpenIndex,
     short: bool,
 ) -> Animation {
     let base_steps = if short { 20 } else { 30 };
-    let steps = graphics_state
-        .get_animation_speed(player)
-        .map_steps(base_steps);
-    match graphics_state.animation_style {
+    let steps = settings.get_animation_speed(player).map_steps(base_steps);
+    match settings.animation_style {
         AnimationStyle::Blink => Animation::new(blink_field_default(steps, index)),
         AnimationStyle::Plain => Animation::new(mark_field((steps + 2) / 3, index, RED)),
         AnimationStyle::BlinkOnlyAi => todo!(),
@@ -362,13 +361,13 @@ pub fn build_blink_animation(
 }
 
 pub fn build_complete_piece_move_animation(
-    graphics_state: &GraphicsState,
+    settings: &Settings,
     piece_t: PieceType,
     player: Player,
     start: OpenIndex,
     target: OpenIndex,
 ) -> Animation {
-    let speed = graphics_state.get_animation_speed(player);
+    let speed = settings.get_animation_speed(player);
     let (x1, y1) = translate_index(start);
     let (x2, y2) = translate_index(target);
     let distance = f64::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
@@ -385,12 +384,13 @@ pub fn build_complete_piece_move_animation(
         start,
         target,
         RED,
-        graphics_state.moving_tile_style != MovingTileStyle::Minimal,
+        settings.moving_tile_style != MovingTileStyle::Minimal,
         color,
-        graphics_state.moving_tile_style == MovingTileStyle::Filled,
+        settings.moving_tile_style == MovingTileStyle::Filled,
+        settings.white_tiles_style,
     );
     let mark = mark_field(fly_steps, target, ORANGE);
-    let blink = build_blink_animation(graphics_state, player, target, true);
+    let blink = build_blink_animation(settings, player, target, true);
     Animation::with_state(
         ChainedEffect::new(CombinedEffect::new(flying, mark), blink.into_effect()),
         move |state, step| {

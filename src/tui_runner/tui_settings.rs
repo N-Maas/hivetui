@@ -11,8 +11,8 @@ use super::tui_rendering::RED;
 pub enum ZoomLevel {
     Bird = 0,
     Strategical = 1,
-    Wider = 2,
     #[default]
+    Wider = 2,
     Normal = 3,
     Close = 4,
 }
@@ -152,13 +152,6 @@ pub struct GraphicsState {
     pub center_x: f64,
     pub center_y: f64,
     pub zoom_level: ZoomLevel,
-    pub piece_zoom_level: ZoomLevel,
-    pub white_tiles_style: WhiteTilesStyle,
-    pub borders_style: BordersStyle,
-    pub splitting: ScreenSplitting,
-    pub animation_speed: AnimationSpeed,
-    pub animation_style: AnimationStyle,
-    pub moving_tile_style: MovingTileStyle,
 }
 
 impl GraphicsState {
@@ -166,14 +159,7 @@ impl GraphicsState {
         GraphicsState {
             center_x: 0.0,
             center_y: 0.0,
-            zoom_level: ZoomLevel::default(),
-            piece_zoom_level: ZoomLevel::Wider,
-            white_tiles_style: WhiteTilesStyle::default(),
-            borders_style: BordersStyle::default(),
-            splitting: ScreenSplitting::default(),
-            animation_speed: AnimationSpeed::default(),
-            animation_style: AnimationStyle::default(),
-            moving_tile_style: MovingTileStyle::default(),
+            zoom_level: ZoomLevel::Normal,
         }
     }
 
@@ -200,7 +186,20 @@ impl GraphicsState {
         self.center_y = f64::max(self.center_y, boundaries_y[0]);
         self.center_y = f64::min(self.center_y, boundaries_y[1]);
     }
+}
 
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
+pub struct Settings {
+    pub piece_zoom_level: ZoomLevel,
+    pub white_tiles_style: WhiteTilesStyle,
+    pub borders_style: BordersStyle,
+    pub splitting: ScreenSplitting,
+    pub animation_speed: AnimationSpeed,
+    pub animation_style: AnimationStyle,
+    pub moving_tile_style: MovingTileStyle,
+}
+
+impl Settings {
     pub fn get_animation_speed(&self, _player: Player) -> AnimationSpeed {
         self.animation_speed
     }
@@ -211,17 +210,17 @@ impl GraphicsState {
 }
 
 pub trait MenuSetting {
-    fn increase(&self, state: &mut GraphicsState);
+    fn increase(&self, state: &mut Settings);
 
-    fn decrease(&self, state: &mut GraphicsState);
+    fn decrease(&self, state: &mut Settings);
 
-    fn get_line(&self, state: &mut GraphicsState, highlight: bool) -> Line;
+    fn get_line(&self, state: &mut Settings, highlight: bool) -> Line;
 }
 
 pub fn create_menu_setting<
     'a,
     E: Copy + TryFrom<u8> + Into<u8> + 'a,
-    F: Fn(&mut GraphicsState) -> &mut E + 'a,
+    F: Fn(&mut Settings) -> &mut E + 'a,
 >(
     prefix: &'static str,
     texts: Vec<&'static str>,
@@ -237,38 +236,38 @@ where
     })
 }
 
-struct MenuSettingImpl<E, F: Fn(&mut GraphicsState) -> &mut E> {
+struct MenuSettingImpl<E, F: Fn(&mut Settings) -> &mut E> {
     prefix: &'static str,
     texts: Vec<&'static str>,
     get_setting_fn: F,
 }
 
-impl<E: Copy + Into<u8>, F: Fn(&mut GraphicsState) -> &mut E> MenuSettingImpl<E, F> {
-    fn val(&self, state: &mut GraphicsState) -> u8 {
+impl<E: Copy + Into<u8>, F: Fn(&mut Settings) -> &mut E> MenuSettingImpl<E, F> {
+    fn val(&self, state: &mut Settings) -> u8 {
         (*(self.get_setting_fn)(state)).into()
     }
 }
 
-impl<E: Copy + TryFrom<u8> + Into<u8>, F: Fn(&mut GraphicsState) -> &mut E> MenuSetting
+impl<E: Copy + TryFrom<u8> + Into<u8>, F: Fn(&mut Settings) -> &mut E> MenuSetting
     for MenuSettingImpl<E, F>
 where
     <E as TryFrom<u8>>::Error: Debug,
 {
-    fn increase(&self, state: &mut GraphicsState) {
+    fn increase(&self, state: &mut Settings) {
         let current_val = self.val(state);
         if usize::from(current_val + 1) < self.texts.len() {
             *(self.get_setting_fn)(state) = E::try_from(current_val + 1).unwrap();
         }
     }
 
-    fn decrease(&self, state: &mut GraphicsState) {
+    fn decrease(&self, state: &mut Settings) {
         let current_val = self.val(state);
         if current_val > 0 {
             *(self.get_setting_fn)(state) = E::try_from(current_val - 1).unwrap();
         }
     }
 
-    fn get_line(&self, state: &mut GraphicsState, highlight: bool) -> Line {
+    fn get_line(&self, state: &mut Settings, highlight: bool) -> Line {
         let current_val = self.val(state);
         let mut spans = vec![Span::raw(self.prefix)];
         spans.extend(self.texts.iter().enumerate().map(|(i, &str)| {
@@ -289,37 +288,37 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
         create_menu_setting(
             "screen splitting (left to right): ",
             vec!["1", "2", "3", "4", "5"],
-            |g_state| &mut g_state.splitting,
+            |state| &mut state.splitting,
         ),
         create_menu_setting(
             "available pieces display size: ",
             vec!["1", "2", "3", "4", "5"],
-            |g_state| &mut g_state.piece_zoom_level,
+            |state| &mut state.piece_zoom_level,
         ),
         create_menu_setting(
             "white tiles filling style: ",
             vec!["full", "border", "hybrid"],
-            |g_state| &mut g_state.white_tiles_style,
+            |state| &mut state.white_tiles_style,
         ),
         create_menu_setting(
             "border drawing style: ",
             vec!["complete", "partial", "none"],
-            |g_state| &mut g_state.borders_style,
+            |state| &mut state.borders_style,
         ),
         create_menu_setting(
             "animation speed: ",
             vec!["1", "2", "3", "4", "5", "6", "off"],
-            |g_state| &mut g_state.animation_speed,
+            |state| &mut state.animation_speed,
         ),
         create_menu_setting(
             "animation style: ",
             vec!["blink", "plain", "blink-only-ai", "rainbow"],
-            |g_state| &mut g_state.animation_style,
+            |state| &mut state.animation_style,
         ),
         create_menu_setting(
             "moving tile style: ",
             vec!["filled", "transparent", "minimal"],
-            |g_state| &mut g_state.moving_tile_style,
+            |state| &mut state.moving_tile_style,
         ),
     ]
 }

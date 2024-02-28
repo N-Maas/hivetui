@@ -1,6 +1,8 @@
 use super::{
     tui_animations::{Animation, Layer},
-    tui_settings::{BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, WhiteTilesStyle},
+    tui_settings::{
+        BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, Settings, WhiteTilesStyle,
+    },
     UIState,
 };
 use crate::{
@@ -31,6 +33,7 @@ use tgp_board::{
 #[derive(Clone, Copy)]
 pub struct AllState<'a> {
     pub game_state: &'a HiveGameState,
+    pub settings: Settings,
     pub board_annotations: &'a HashMap<OpenIndex, usize>,
     pub piece_annotations: &'a HashMap<PieceType, usize>,
     pub ui_state: UIState,
@@ -47,15 +50,15 @@ pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
 pub fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    settings: &[Box<dyn MenuSetting>],
+    settings_list: &[Box<dyn MenuSetting>],
     state: AllState<'_>,
     // we don't actually mutate anything, this is just an API limitation
-    graphics_state: &mut GraphicsState,
+    settings: &mut Settings,
     initial_pieces: &BTreeMap<PieceType, u32>,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.size();
-        let percentage_left = match state.graphics_state.splitting {
+        let percentage_left = match state.settings.splitting {
             ScreenSplitting::FarLeft => 55,
             ScreenSplitting::Left => 60,
             ScreenSplitting::Normal => 65,
@@ -122,14 +125,14 @@ pub fn render(
                 unreachable!()
             };
             let mut lines = Vec::<Line>::new();
-            for (i, option) in settings.iter().enumerate() {
+            for (i, option) in settings_list.iter().enumerate() {
                 let color = if state.menu_index == i {
                     RED
                 } else {
                     Color::White
                 };
                 let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
-                spans.extend(option.get_line(graphics_state, state.menu_index == i));
+                spans.extend(option.get_line(settings, state.menu_index == i));
                 lines.push(Line::from(spans));
             }
             let text = Text::from(lines);
@@ -148,7 +151,7 @@ pub fn render(
                 unreachable!()
             };
             // the pieces
-            let zoom = state.graphics_state.piece_zoom_level.multiplier();
+            let zoom = state.settings.piece_zoom_level.multiplier();
             let x_len = zoom * f64::from(2 * piece_area.width);
             let y_len = zoom * 2.1 * f64::from(2 * piece_area.height);
             let canvas = Canvas::default()
@@ -167,7 +170,8 @@ pub fn render(
                 [u]ndo or [r]edo a move\n\
                 [↑↓←→] or [wasd] to move the screen\n\
                 [+-] or [PageDown PageUp] for zooming\n\
-                [Esc] or [q] to get back to the menu";
+                [Esc] or [q] to get back to the menu\n\
+                [←] or [c] to cancel AI move/animation";
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, tooltip_area);
@@ -196,7 +200,7 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
         let (x_mid, y_mid) = translate_index(field.index());
         if let Some(content) = field.content_checked() {
             if content.is_empty()
-                && state.graphics_state.borders_style == BordersStyle::Partial
+                && state.settings.borders_style == BordersStyle::Partial
                 && board.size() > 1
             {
                 // we don't want to draw "lonely" borders, thus we check where tiles are adjacent
@@ -213,7 +217,7 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
                 to_draw.sort();
                 to_draw.dedup();
                 tui_graphics::draw_restricted_hex_border(ctx, x_mid, y_mid, &to_draw);
-            } else if state.graphics_state.borders_style != BordersStyle::None {
+            } else if state.settings.borders_style != BordersStyle::None {
                 tui_graphics::draw_hex_border(ctx, x_mid, y_mid);
             }
             // which sides should be drawn?
@@ -232,7 +236,13 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| {
                 if piece.player == Player::White {
-                    draw_interior(ctx, &state.graphics_state, x_mid, y_mid, DARK_WHITE);
+                    draw_interior(
+                        ctx,
+                        state.settings.white_tiles_style,
+                        x_mid,
+                        y_mid,
+                        DARK_WHITE,
+                    );
                 }
             });
     }
@@ -305,7 +315,7 @@ pub fn draw_pieces(
     state: AllState<'_>,
     initial_pieces: &BTreeMap<PieceType, u32>,
 ) {
-    let zoom = state.graphics_state.piece_zoom_level.multiplier();
+    let zoom = state.settings.piece_zoom_level.multiplier();
     let player = if state.ui_state == UIState::PlaysAnimation {
         state.game_state.player().switched()
     } else {
@@ -352,7 +362,7 @@ pub fn draw_pieces(
         for (i, (_, count)) in it.clone() {
             if count > 3 - depth {
                 let (x, y) = get_coords(i, depth);
-                draw_interior(ctx, &state.graphics_state, x, y, interior_color);
+                draw_interior(ctx, state.settings.white_tiles_style, x, y, interior_color);
             }
         }
         ctx.layer();
@@ -395,14 +405,8 @@ pub fn draw_pieces(
     }
 }
 
-pub fn draw_interior(
-    ctx: &mut Context<'_>,
-    graphics_state: &GraphicsState,
-    x: f64,
-    y: f64,
-    color: Color,
-) {
-    match graphics_state.white_tiles_style {
+pub fn draw_interior(ctx: &mut Context<'_>, style: WhiteTilesStyle, x: f64, y: f64, color: Color) {
+    match style {
         WhiteTilesStyle::Full => tui_graphics::draw_hex_interior(ctx, x, y, color, false),
         WhiteTilesStyle::Border => {
             tui_graphics::draw_interior_hex_border(ctx, x, y, 1.5, 1.5, color)
