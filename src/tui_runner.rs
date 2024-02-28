@@ -195,7 +195,7 @@ fn pull_event(top_level: bool, two_digit: bool, animation: bool) -> io::Result<O
         KeyCode::Enter | KeyCode::Char(' ') => {
             if top_level {
                 Some(Event::ContinueGame)
-            } else if !animation {
+            } else if !animation && !two_digit {
                 Some(Event::TwoDigitInit)
             } else if key == KeyCode::Enter {
                 Some(Event::SoftCancel)
@@ -203,7 +203,7 @@ fn pull_event(top_level: bool, two_digit: bool, animation: bool) -> io::Result<O
                 None
             }
         }
-        KeyCode::BackTab => Some(Event::Cancel),
+        KeyCode::Backspace => Some(Event::Cancel),
         KeyCode::Char(c) => {
             let to_index = c.to_string().parse::<usize>();
             to_index
