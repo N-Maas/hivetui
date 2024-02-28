@@ -35,7 +35,7 @@ pub fn start_ai_worker_thread(exchange_point: Arc<Mutex<AIExchange>>) {
         let (_, best_move) = ratings.iter().max_by_key(|(r, _)| r).unwrap();
 
         let mut exchange = exchange_point.lock().unwrap();
-        let return_result = match exchange.for_worker.take() {
+        let return_result = match exchange.for_worker.as_ref() {
             Some(AIMessage::Cancel | AIMessage::Start(_, _)) => false,
             None => true,
         };

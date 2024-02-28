@@ -126,6 +126,7 @@ impl AIState {
         player: Player,
         animation: &mut Option<Animation>,
     ) {
+        // TODO: interaction with undo
         assert!(self.current_player == player || !self.is_started);
         if !self.is_started {
             assert!(self.result.is_none() && self.animation_progress == 0);
@@ -387,13 +388,21 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 }
                 Event::NewGame => {
                     engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
+                    graphics_state.center_x = 0.0;
+                    graphics_state.center_y = 0.0;
+                    current_animation = None;
+                    ai_state.reset();
                     ui_state = UIState::ShowOptions;
                 }
                 Event::Undo => {
                     engine.undo_last_decision();
+                    current_animation = None;
+                    ai_state.reset();
                 }
                 Event::Redo => {
                     engine.redo_decision();
+                    current_animation = None;
+                    ai_state.reset();
                 }
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
