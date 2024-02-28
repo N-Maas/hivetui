@@ -11,6 +11,7 @@ use std::{
 };
 use std::{collections::HashMap, io};
 use tgp::engine::{logging::EventLog, Engine, GameEngine, GameState};
+use tgp_ai::RatingType;
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
@@ -20,10 +21,12 @@ use crate::{
 };
 
 use self::{
+    ai_worker::start_ai_worker_thread,
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
     tui_settings::{is_ai_setting, AILevel, GraphicsState, PlayerType, Settings},
 };
 
+mod ai_worker;
 mod tui_animations;
 mod tui_rendering;
 mod tui_settings;
@@ -58,17 +61,24 @@ impl UIState {
 #[derive(Debug)]
 struct AIResult {
     player: Player,
+    best_move: Box<[usize]>,
+    all_ratings: Vec<(RatingType, Box<[usize]>)>,
 }
 
 #[derive(Debug)]
 enum AIMessage {
     Start(AILevel, Box<HiveGameState>),
     Cancel,
-    Result(Box<AIResult>),
+}
+
+#[derive(Default)]
+struct AIExchange {
+    for_runner: Option<Box<AIResult>>,
+    for_worker: Option<AIMessage>,
 }
 
 struct AIState {
-    exchange_point: Arc<Mutex<Option<AIMessage>>>,
+    exchange_point: Arc<Mutex<AIExchange>>,
     current_player: Player,
     is_started: bool,
     // TODO: update in case of menu changes?!
@@ -83,7 +93,7 @@ impl AIState {
 
     fn new() -> Self {
         Self {
-            exchange_point: Arc::new(Mutex::new(None)),
+            exchange_point: Arc::new(Mutex::default()),
             current_player: Player::White,
             is_started: false,
             should_use_ai: false,
@@ -95,23 +105,11 @@ impl AIState {
 
     fn reset(&mut self) {
         {
-            let mut lock = self.exchange_point.lock().unwrap();
-            let new_msg = match lock.take() {
-                Some(AIMessage::Cancel) => Some(AIMessage::Cancel),
-                Some(AIMessage::Start(_, _)) => None,
-                Some(AIMessage::Result(_)) => {
-                    assert!(self.is_started);
-                    None
-                }
-                None => {
-                    if self.is_started {
-                        Some(AIMessage::Cancel)
-                    } else {
-                        None
-                    }
-                }
-            };
-            *lock = new_msg;
+            let mut exchange = self.exchange_point.lock().unwrap();
+            exchange.for_runner = None;
+            if self.is_started {
+                exchange.for_worker = Some(AIMessage::Cancel);
+            }
         }
         self.is_started = false;
         self.result = None;
@@ -133,7 +131,7 @@ impl AIState {
             } else {
                 settings.ai_assistant
             };
-            *self.exchange_point.lock().unwrap() =
+            self.exchange_point.lock().unwrap().for_worker =
                 Some(AIMessage::Start(level, Box::new(state.clone())));
             self.current_player = player;
             self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::AUTOMATIC;
@@ -142,12 +140,10 @@ impl AIState {
         }
 
         {
-            let mut lock = self.exchange_point.lock().unwrap();
-            lock.take().map(|msg| match msg {
-                AIMessage::Start(_, _) => *lock = Some(msg),
-                AIMessage::Cancel => unreachable!(),
-                AIMessage::Result(r) => self.result = Some(*r),
-            });
+            let mut exchange = self.exchange_point.lock().unwrap();
+            if let Some(result) = exchange.for_runner.take() {
+                self.result = Some(*result);
+            }
         }
         if self.should_use_ai && (self.animation_progress > 0 || animation.is_none()) {
             self.animation_progress += 1;
@@ -327,6 +323,8 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut menu_index = 2;
     let mut current_animation: Option<Animation> = None;
     let mut digits: Option<Vec<usize>> = None;
+    start_ai_worker_thread(ai_state.exchange_point.clone());
+
     loop {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
