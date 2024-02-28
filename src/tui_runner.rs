@@ -16,11 +16,12 @@ use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
+    tui_runner::tui_settings::AIMoves,
 };
 
 use self::{
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
-    tui_settings::{GraphicsState, PlayerType, Settings},
+    tui_settings::{is_ai_setting, AILevel, GraphicsState, PlayerType, Settings},
 };
 
 mod tui_animations;
@@ -37,7 +38,8 @@ enum UIState {
     /// selected base field
     PieceSelected(OpenIndex),
     GameFinished(HiveResult),
-    PlaysAnimation,
+    /// true if the animation is waiting for ai
+    PlaysAnimation(bool),
 }
 
 impl UIState {
@@ -48,17 +50,19 @@ impl UIState {
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
             UIState::GameFinished(_) => true,
-            UIState::PlaysAnimation => true,
+            UIState::PlaysAnimation(_) => true,
         }
     }
 }
 
 #[derive(Debug)]
-struct AIResult {}
+struct AIResult {
+    player: Player,
+}
 
 #[derive(Debug)]
 enum AIMessage {
-    Start,
+    Start(AILevel, Box<HiveGameState>),
     Cancel,
     Result(Box<AIResult>),
 }
@@ -69,28 +73,32 @@ struct AIState {
     is_started: bool,
     // TODO: update in case of menu changes?!
     should_use_ai: bool,
+    should_show_animation: bool,
     result: Option<AIResult>,
     animation_progress: usize,
 }
 
 impl AIState {
+    const AI_DELAY: usize = 40;
+
     fn new() -> Self {
         Self {
             exchange_point: Arc::new(Mutex::new(None)),
             current_player: Player::White,
             is_started: false,
             should_use_ai: false,
+            should_show_animation: false,
             result: None,
             animation_progress: 0,
         }
     }
 
-    fn reset(&mut self, player: Player) {
+    fn reset(&mut self) {
         {
             let mut lock = self.exchange_point.lock().unwrap();
             let new_msg = match lock.take() {
                 Some(AIMessage::Cancel) => Some(AIMessage::Cancel),
-                Some(AIMessage::Start) => None,
+                Some(AIMessage::Start(_, _)) => None,
                 Some(AIMessage::Result(_)) => {
                     assert!(self.is_started);
                     None
@@ -105,20 +113,69 @@ impl AIState {
             };
             *lock = new_msg;
         }
-        self.current_player = player;
         self.is_started = false;
-        self.should_use_ai = false;
         self.result = None;
         self.animation_progress = 0;
     }
 
-    fn use_ai(&mut self) {
-        self.should_use_ai = true;
+    fn update(
+        &mut self,
+        state: &HiveGameState,
+        settings: &Settings,
+        player: Player,
+        animation: &mut Option<Animation>,
+    ) {
+        assert!(self.current_player == player || !self.is_started);
+        if !self.is_started {
+            assert!(self.result.is_none() && self.animation_progress == 0);
+            let level = if settings.is_ai(player) {
+                settings.player_type(player).into_ai_level()
+            } else {
+                settings.ai_assistant
+            };
+            *self.exchange_point.lock().unwrap() =
+                Some(AIMessage::Start(level, Box::new(state.clone())));
+            self.current_player = player;
+            self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::AUTOMATIC;
+            self.should_show_animation = settings.is_ai(player);
+            self.is_started = true;
+        }
+
+        {
+            let mut lock = self.exchange_point.lock().unwrap();
+            lock.take().map(|msg| match msg {
+                AIMessage::Start(_, _) => *lock = Some(msg),
+                AIMessage::Cancel => unreachable!(),
+                AIMessage::Result(r) => self.result = Some(*r),
+            });
+        }
+        if self.should_use_ai && (self.animation_progress > 0 || animation.is_none()) {
+            self.animation_progress += 1;
+        }
+        if self.should_show_animation && animation.is_none() {
+            // TODO: animaton = ...
+        }
+    }
+
+    fn use_ai(&mut self, settings: &Settings) {
+        if settings.is_ai(self.current_player) {
+            self.should_use_ai = true;
+            self.should_show_animation = true;
+        }
     }
 
     fn dont_use_ai(&mut self) {
         self.should_use_ai = false;
+        self.should_show_animation = false;
         self.animation_progress = 0;
+    }
+
+    fn result(&mut self) -> Option<AIResult> {
+        if self.animation_progress >= Self::AI_DELAY {
+            self.result.take()
+        } else {
+            None
+        }
     }
 }
 
@@ -151,6 +208,7 @@ enum Event {
     NewGame,
     Undo,
     Redo,
+    LetAIMove,
     ZoomIn,
     ZoomOut,
     MoveLeft,
@@ -178,14 +236,18 @@ fn pull_event(top_level: bool, two_digit: bool, animation: bool) -> io::Result<O
             Event::Exit
         }),
         KeyCode::Char('q') => Some(Event::Exit),
-        KeyCode::Char('u') => Some(Event::Undo).filter(|_| !top_level),
-        KeyCode::Char('r') => Some(Event::Redo).filter(|_| !top_level),
+        KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
+        KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
         KeyCode::Char('c') => Some(if top_level {
             Event::ContinueGame
         } else {
             Event::Cancel
         }),
-        KeyCode::Char('n') => Some(Event::NewGame).filter(|_| top_level),
+        KeyCode::Char('n') => Some(if top_level {
+            Event::NewGame
+        } else {
+            Event::LetAIMove
+        }),
         KeyCode::Char('+') => Some(Event::ZoomIn),
         KeyCode::Char('-') => Some(Event::ZoomOut),
         KeyCode::Char('w') => Some(Event::MoveUp),
@@ -270,8 +332,8 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         if current_animation.as_ref().is_some_and(|a| !a.is_finished()) && ui_state.show_game() {
             // TODO: interaction with AI?!
-            ui_state = UIState::PlaysAnimation;
-        } else if ui_state == UIState::PlaysAnimation {
+            ui_state = UIState::PlaysAnimation(false);
+        } else if matches!(ui_state, UIState::PlaysAnimation(_)) {
             ui_state = UIState::ShowOptions;
         }
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
@@ -307,16 +369,17 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions,
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions,
                     UIState::GameFinished(_) => ui_state = UIState::Toplevel,
-                    UIState::PlaysAnimation => ui_state = UIState::Toplevel,
+                    UIState::PlaysAnimation(_) => ui_state = UIState::Toplevel,
                 },
                 Event::Cancel => {
                     current_animation = None;
-                    ai_state.should_use_ai = false;
+                    ai_state.dont_use_ai();
                 }
                 Event::SoftCancel => {
-                    if ui_state == UIState::PlaysAnimation {
-                        current_animation = None;
-                    }
+                    current_animation = None;
+                }
+                Event::LetAIMove => {
+                    ai_state.use_ai(&settings);
                 }
                 Event::ContinueGame => {
                     ui_state = UIState::ShowOptions;
@@ -362,9 +425,15 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 }
                 Event::MenuIncrease => {
                     settings_list[menu_index].increase(&mut settings);
+                    if is_ai_setting(menu_index) {
+                        ai_state.reset();
+                    }
                 }
                 Event::MenuDecrease => {
                     settings_list[menu_index].decrease(&mut settings);
+                    if is_ai_setting(menu_index) {
+                        ai_state.reset();
+                    }
                 }
                 Event::Selection(_) => (),
                 Event::TwoDigitInit => (),
@@ -379,6 +448,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             &mut board_annotations,
             &mut piece_annotations,
             &mut ui_state,
+            &mut ai_state,
             &settings,
             &mut current_animation,
             event.and_then(|e| e.as_selection()),
@@ -431,6 +501,7 @@ fn update_game_state_and_fill_input_mapping(
     board_annotations: &mut HashMap<OpenIndex, usize>,
     piece_annotations: &mut HashMap<PieceType, usize>,
     ui_state: &mut UIState,
+    ai_state: &mut AIState,
     settings: &Settings,
     animation: &mut Option<Animation>,
     input: Option<usize>,
@@ -438,9 +509,24 @@ fn update_game_state_and_fill_input_mapping(
     match engine.pull() {
         GameState::PendingEffect(pe) => {
             // TODO: start animations here?!
+            ai_state.reset();
             pe.next_effect()
         }
         GameState::PendingDecision(decision) => {
+            ai_state.update(
+                decision.data(),
+                settings,
+                Player::from(decision.player()),
+                animation,
+            );
+            if ai_state.should_use_ai && ui_state.show_game() {
+                if let Some(_result) = ai_state.result() {
+                    todo!();
+                } else {
+                    *ui_state = UIState::PlaysAnimation(true);
+                }
+            }
+
             let follow_up = decision.try_into_follow_up_decision();
             match (&ui_state, follow_up) {
                 (UIState::Toplevel, Ok(d)) => d.retract_all(),
@@ -529,13 +615,14 @@ fn update_game_state_and_fill_input_mapping(
                         d.retract_all();
                     }
                 }
-                (UIState::PlaysAnimation, Ok(_)) => {
-                    unreachable!("selection during animation should be impossible")
+                (UIState::PlaysAnimation(is_ai), Ok(_)) => {
+                    assert!(is_ai, "selection during animation should be impossible")
                 }
-                (UIState::PlaysAnimation, Err(_)) => (),
+                (UIState::PlaysAnimation(_), Err(_)) => (),
             }
         }
         GameState::Finished(finished) => {
+            ai_state.reset();
             let result = finished
                 .data()
                 .result()

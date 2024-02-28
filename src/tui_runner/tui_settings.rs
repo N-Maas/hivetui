@@ -67,6 +67,31 @@ pub enum PlayerType {
     AI4 = 4,
 }
 
+impl PlayerType {
+    pub fn into_ai_level(self) -> AILevel {
+        assert!(self != PlayerType::Human);
+        AILevel::try_from(u8::from(self) - 1).unwrap()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum AILevel {
+    BEGINNER = 0,
+    EASY = 1,
+    #[default]
+    NORMAL = 2,
+    HARD = 3,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum AIMoves {
+    #[default]
+    AUTOMATIC = 0,
+    MANUAL = 1,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum WhiteTilesStyle {
@@ -206,6 +231,8 @@ impl GraphicsState {
 pub struct Settings {
     pub white_player_type: PlayerType,
     pub black_player_type: PlayerType,
+    pub ai_moves: AIMoves,
+    pub ai_assistant: AILevel,
     pub piece_zoom_level: ZoomLevel,
     pub white_tiles_style: WhiteTilesStyle,
     pub borders_style: BordersStyle,
@@ -216,6 +243,17 @@ pub struct Settings {
 }
 
 impl Settings {
+    pub fn player_type(&self, player: Player) -> PlayerType {
+        match player {
+            Player::White => self.white_player_type,
+            Player::Black => self.black_player_type,
+        }
+    }
+
+    pub fn is_ai(&self, player: Player) -> bool {
+        self.player_type(player) != PlayerType::Human
+    }
+
     pub fn get_animation_speed(&self, _player: Player) -> AnimationSpeed {
         self.animation_speed
     }
@@ -307,6 +345,10 @@ where
 const PLAYER_PREFIXES: [&'static str; 2] = ["white player: ", "black player: "];
 const PLAYER_TYPES: [&'static str; 5] = ["human", "beginner", "easy", "normal", "hard"];
 
+pub fn is_ai_setting(menu_index: usize) -> bool {
+    [0, 1, 2, 3].contains(&menu_index)
+}
+
 pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
     vec![
         create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), |state| {
@@ -314,6 +356,12 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
         }),
         create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), |state| {
             &mut state.black_player_type
+        }),
+        create_menu_setting("automatic ai moves: ", vec!["on", "off"], |state| {
+            &mut state.ai_moves
+        }),
+        create_menu_setting("ai assistant level: ", vec!["1", "2", "3", "4"], |state| {
+            &mut state.ai_assistant
         }),
         create_menu_setting(
             "screen splitting: ",

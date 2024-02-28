@@ -306,7 +306,7 @@ pub fn draw_pieces(
     initial_pieces: &BTreeMap<PieceType, u32>,
 ) {
     let zoom = state.settings.piece_zoom_level.multiplier();
-    let player = if state.ui_state == UIState::PlaysAnimation {
+    let player = if state.ui_state == UIState::PlaysAnimation(false) {
         state.game_state.player().switched()
     } else {
         state.game_state.player()
