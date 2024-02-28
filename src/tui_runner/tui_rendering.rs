@@ -93,12 +93,12 @@ pub fn render(
             let mut center_x = state.graphics_state.center_x;
             let center_y = state.graphics_state.center_y;
 
-            let x_len = zoom * f64::from(canvas_area.width - 2);
-            let y_len = zoom * y_factor * f64::from(canvas_area.height - 2);
+            let x_len = zoom * (f64::from(canvas_area.width) - 2.5);
+            let y_len = zoom * y_factor * (f64::from(canvas_area.height) - 2.5);
 
             // use same center with the top level layout
             if let UIState::Toplevel = state.ui_state {
-                let alt_x_len = zoom * f64::from(splitted_in_game[0].width - 2);
+                let alt_x_len = zoom * (f64::from(splitted_in_game[0].width) - 2.5);
                 let diff = x_len - alt_x_len;
                 center_x += diff;
             }
