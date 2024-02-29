@@ -240,6 +240,10 @@ impl AIState {
             None
         }
     }
+
+    fn animation_has_started(&self) -> bool {
+        self.animation_progress > 0
+    }
 }
 
 fn pull_key_event() -> io::Result<Option<KeyCode>> {
@@ -649,7 +653,7 @@ fn update_game_state_and_fill_input_mapping(
                         });
                     }
                 } else {
-                    *ui_state = UIState::PlaysAnimation(true);
+                    *ui_state = UIState::PlaysAnimation(ai_state.animation_has_started());
                 }
                 return; // don't risk a weird decision state
             }
