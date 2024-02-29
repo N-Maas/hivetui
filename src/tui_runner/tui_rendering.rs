@@ -12,17 +12,18 @@ use crate::{
     tui_graphics,
 };
 use ratatui::{
-    layout::{Constraint, Layout},
+    layout::{Alignment, Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
     style::Color,
-    text::Line,
+    text::{Line, Text},
     widgets::{
         canvas::{Canvas, Context},
-        Block, Borders, Paragraph,
+        Block, Borders, Clear, Paragraph,
     },
 };
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt::format,
     io::{self, Stdout},
 };
 use tgp_board::{
@@ -166,6 +167,74 @@ pub fn render(
             let paragraph =
                 Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, tooltip_area);
+
+            let message_hor = Layout::horizontal(vec![
+                Constraint::Fill(1),
+                Constraint::Max(42),
+                Constraint::Fill(1),
+            ])
+            .split(canvas_area);
+            let message_vert = Layout::vertical(vec![
+                Constraint::Fill(1),
+                Constraint::Max(6),
+                Constraint::Fill(20),
+            ])
+            .split(message_hor[1]);
+            let msg_area = message_vert[1];
+            match state.ui_state {
+                UIState::ShowOptions(true) => {
+                    let player_name = match state.game_state.player() {
+                        Player::White => "white",
+                        Player::Black => "black",
+                    };
+                    let msg = Text::from(vec![
+                        Line::raw(format!("The {} player has no available move", player_name))
+                            .alignment(Alignment::Center),
+                        Line::raw("and must therefore skip its turn.").alignment(Alignment::Center),
+                        Line::raw(""),
+                        Line::raw("continue with [1] or [↲]").alignment(Alignment::Center),
+                    ]);
+                    frame.render_widget(Clear, msg_area);
+                    frame.render_widget(
+                        Paragraph::new(msg).block(Block::default().borders(Borders::ALL)),
+                        msg_area,
+                    );
+                }
+                UIState::GameFinished(result) => {
+                    let msg;
+                    if let Some(player) = result.to_player() {
+                        let player_name = match player {
+                            Player::White => "white",
+                            Player::Black => "black",
+                        };
+                        msg = Text::from(vec![
+                            Line::raw(""),
+                            Line::styled("Victory!", RED).alignment(Alignment::Center),
+                            Line::raw(""),
+                            Line::styled(
+                                format!("The {} player has won!", player_name),
+                                Color::White,
+                            )
+                            .alignment(Alignment::Center),
+                        ]);
+                    } else {
+                        msg = Text::from(vec![
+                            Line::raw(""),
+                            Line::styled("Draw!", RED).alignment(Alignment::Center),
+                            Line::raw(""),
+                            Line::styled("None of the players could get on top!", Color::White)
+                                .alignment(Alignment::Center),
+                        ]);
+                    }
+                    frame.render_widget(Clear, msg_area);
+                    frame.render_widget(
+                        Paragraph::new(msg)
+                            .block(Block::default().borders(Borders::ALL).style(RED)),
+                        msg_area,
+                    );
+                }
+                _ => (),
+            }
         }
     })?;
     Ok(())
