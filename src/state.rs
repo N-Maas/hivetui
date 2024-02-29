@@ -108,6 +108,16 @@ pub enum HiveResult {
     BlackWin,
 }
 
+impl HiveResult {
+    pub fn to_player(self) -> Option<Player> {
+        match self {
+            HiveResult::Draw => None,
+            HiveResult::WhiteWin => Some(Player::White),
+            HiveResult::BlackWin => Some(Player::Black),
+        }
+    }
+}
+
 impl Display for HiveResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

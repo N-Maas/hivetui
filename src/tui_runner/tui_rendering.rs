@@ -1,14 +1,14 @@
 use super::{
-    tui_animations::{Animation, Layer},
+    tui_animations::Layer,
     tui_settings::{
         render_settings, BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, Settings,
         WhiteTilesStyle,
     },
-    UIState,
+    AnimationState, UIState,
 };
 use crate::{
     pieces::{PieceType, Player},
-    state::HiveGameState,
+    state::{HiveBoard, HiveGameState, HiveResult},
     tui_graphics,
 };
 use ratatui::{
@@ -38,7 +38,7 @@ pub struct AllState<'a> {
     pub board_annotations: &'a HashMap<OpenIndex, usize>,
     pub piece_annotations: &'a HashMap<PieceType, usize>,
     pub ui_state: UIState,
-    pub animation: Option<&'a Animation>,
+    pub animation_state: &'a AnimationState,
     pub menu_index: usize,
     pub graphics_state: GraphicsState,
 }
@@ -155,6 +155,7 @@ pub fn render(
                 .paint(|ctx| draw_pieces(ctx, state, initial_pieces));
             frame.render_widget(canvas, piece_area);
 
+            // TODO: [z] and [y]
             let text = "press a number to select a move\n   \
                 (two digits: press [Space] or [↲] first)\n\
                 [u]ndo or [r]edo a move\n\
@@ -179,7 +180,8 @@ pub fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
 pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
     let zoom = state.graphics_state.zoom_level.multiplier();
     let temporary_state = state
-        .animation
+        .animation_state
+        .animation()
         .and_then(|a| a.get_temporary_state(state.game_state));
     let board = temporary_state
         .as_ref()
@@ -214,7 +216,8 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
         }
     }
     state
-        .animation
+        .animation_state
+        .animation()
         .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Borders));
     ctx.layer();
 
@@ -237,7 +240,8 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             });
     }
     state
-        .animation
+        .animation_state
+        .animation()
         .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Interiors));
     ctx.layer();
 
@@ -250,7 +254,8 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             .inspect(|piece| tui_graphics::draw_piece(ctx, piece.p_type, x_mid, y_mid, zoom));
     }
     state
-        .animation
+        .animation_state
+        .animation()
         .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Pieces));
     ctx.layer();
 
@@ -260,23 +265,31 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             let (x_mid, y_mid) = translate_index(index);
             tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, RED);
         }
+        UIState::GameFinished(result) => {
+            if let Some((index, _)) = find_losing_queen(board, result) {
+                let (x_mid, y_mid) = translate_index(index);
+                tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, RED);
+            }
+        }
         _ => (),
     }
     state
-        .animation
+        .animation_state
+        .animation()
         .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Selection));
     ctx.layer();
 
     state
-        .animation
+        .animation_state
+        .animation()
         .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Final));
 
     // print indizes
     if matches!(
         state.ui_state,
-        UIState::ShowOptions | UIState::PieceSelected(_)
+        UIState::ShowOptions(false) | UIState::PieceSelected(_)
     ) {
-        let color = if state.ui_state == UIState::ShowOptions {
+        let color = if state.ui_state == UIState::ShowOptions(false) {
             RED
         } else {
             ORANGE
@@ -403,4 +416,19 @@ pub fn draw_interior(ctx: &mut Context<'_>, style: WhiteTilesStyle, x: f64, y: f
         }
         WhiteTilesStyle::Hybrid => tui_graphics::draw_hex_interior(ctx, x, y, color, true),
     }
+}
+
+pub fn find_losing_queen(board: &HiveBoard, result: HiveResult) -> Option<(OpenIndex, Player)> {
+    result.to_player().and_then(|player| {
+        for field in board.iter_fields() {
+            let queen_pos = field.content().bottom().and_then(|&piece| {
+                (piece.p_type == PieceType::Queen && piece.player != player)
+                    .then_some(field.index())
+            });
+            if let Some(pos) = queen_pos {
+                return Some((pos, player));
+            }
+        }
+        None
+    })
 }
