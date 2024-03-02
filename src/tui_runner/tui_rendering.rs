@@ -18,7 +18,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{
         canvas::{Canvas, Context},
-        Block, Borders, Clear, Paragraph,
+        Block, Borders, Clear, Paragraph, Widget,
     },
 };
 use std::{
@@ -44,6 +44,23 @@ pub struct AllState<'a> {
 }
 
 pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
+
+const LONG_IN_GAME_HELP: &'static str = "\
+    press a number to select a move\n   \
+    (two digits: press [Space] or [↲] first)\n\
+    \n\
+    [↑↓←→] or [wasd] to move the screen\n\
+    [+-] or [PageDown PageUp] for zooming\n\
+    \n\
+    [h] to show AI suggested moves\n   \
+    (for human players: AI assistant)\n\
+    [u] or [z] to undo a move\n\
+    [r] or [y] to redo a move\n\
+    [←] or [c] to cancel AI move/animation\n\
+    [n] to let the AI move (if not automatic)\n\
+    \n\
+    [Esc] or [q] to get back to the menu\
+";
 
 pub fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -82,8 +99,8 @@ pub fn render(
         };
         let canvas_area = splitted_layout[0];
         let &menu_area = splitted_layout.last().unwrap();
+        // the board
         {
-            // the board
             let y_factor = 2.1;
             let zoom = state.graphics_state.zoom_level.multiplier();
             let mut center_x = state.graphics_state.center_x;
@@ -109,138 +126,96 @@ pub fn render(
         }
 
         if let UIState::Toplevel = state.ui_state {
-            let action_area = splitted_layout[1];
-            let text = "[c]ontinue game  [↲]\n\
-                [n]ew game\n\
-                \n\
-                [q]uit";
-            let paragraph =
-                Paragraph::new(text).block(Block::default().title("Actions").borders(Borders::ALL));
-            frame.render_widget(paragraph, action_area);
+            // the actions
+            {
+                let action_area = splitted_layout[1];
+                let text = "[c]ontinue game  [↲]\n\
+                    [n]ew game\n\
+                    \n\
+                    [q]uit";
+                let paragraph = Paragraph::new(text)
+                    .block(Block::default().title("Actions").borders(Borders::ALL));
+                frame.render_widget(paragraph, action_area);
+            }
 
             let [menu_area, help_area] =
                 *Layout::vertical([Constraint::Fill(1), Constraint::Max(7)]).split(menu_area)
             else {
                 unreachable!()
             };
-            let text = render_settings(settings, settings_list, state.menu_index);
-            let paragraph = Paragraph::new(text)
-                .block(Block::default().title("Settings").borders(Borders::ALL));
-            frame.render_widget(paragraph, menu_area);
+            // the settings
+            {
+                let text = render_settings(settings, settings_list, state.menu_index);
+                let paragraph = Paragraph::new(text)
+                    .block(Block::default().title("Settings").borders(Borders::ALL));
+                frame.render_widget(paragraph, menu_area);
+            }
 
-            let text = "This is a TUI version of the Hive board game.";
-            let paragraph =
-                Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
-            frame.render_widget(paragraph, help_area);
+            // the top level help text
+            {
+                let text = "This is a TUI version of the Hive board game.";
+                let paragraph = Paragraph::new(text)
+                    .block(Block::default().title("Help").borders(Borders::ALL));
+                frame.render_widget(paragraph, help_area);
+            }
         } else {
-            let help_text = "press a number to select a move\n   \
-                (two digits: press [Space] or [↲] first)\n\
-                \n\
-                [↑↓←→] or [wasd] to move the screen\n\
-                [+-] or [PageDown PageUp] for zooming\n\
-                \n\
-                [h] to show AI suggested moves\n   \
-                (for human players: AI assistant)\n\
-                [u] or [z] to undo a move\n\
-                [r] or [y] to redo a move\n\
-                [←] or [c] to cancel AI move/animation\n\
-                [n] to let the AI move (if not automatic)\n\
-                \n\
-                [Esc] or [q] to get back to the menu";
-            let help_height = Text::raw(help_text).height() as u16 + 2;
-
+            let help_height = Text::raw(LONG_IN_GAME_HELP).height() as u16 + 2;
             let [piece_area, tooltip_area] =
                 *Layout::vertical([Constraint::Fill(1), Constraint::Max(help_height)])
                     .split(menu_area)
             else {
                 unreachable!()
             };
-            // the pieces
-            let zoom = state.settings.piece_zoom_level.multiplier();
-            let x_len = zoom * f64::from(2 * piece_area.width);
-            let y_len = zoom * 2.1 * f64::from(2 * piece_area.height);
-            let canvas = Canvas::default()
-                .block(
-                    Block::default()
-                        .title("Available Pieces")
-                        .borders(Borders::ALL),
-                )
-                .x_bounds([0.0, x_len])
-                .y_bounds([-y_len, 0.0])
-                .paint(|ctx| draw_pieces(ctx, state, initial_pieces));
-            frame.render_widget(canvas, piece_area);
+            // the available pieces
+            {
+                let zoom = state.settings.piece_zoom_level.multiplier();
+                let x_len = zoom * f64::from(2 * piece_area.width);
+                let y_len = zoom * 2.1 * f64::from(2 * piece_area.height);
+                let canvas = Canvas::default()
+                    .block(
+                        Block::default()
+                            .title("Available Pieces")
+                            .borders(Borders::ALL),
+                    )
+                    .x_bounds([0.0, x_len])
+                    .y_bounds([-y_len, 0.0])
+                    .paint(|ctx| draw_pieces(ctx, state, initial_pieces));
+                frame.render_widget(canvas, piece_area);
+            }
 
-            let paragraph = Paragraph::new(help_text)
-                .block(Block::default().title("Help").borders(Borders::ALL));
-            frame.render_widget(paragraph, tooltip_area);
+            // the in game help text
+            {
+                let paragraph = Paragraph::new(LONG_IN_GAME_HELP)
+                    .block(Block::default().title("Help").borders(Borders::ALL));
+                frame.render_widget(paragraph, tooltip_area);
+            }
 
-            let message_hor = Layout::horizontal(vec![
-                Constraint::Fill(1),
-                Constraint::Max(42),
-                Constraint::Fill(1),
-            ])
-            .split(canvas_area);
-            let message_vert = Layout::vertical(vec![
-                Constraint::Fill(1),
-                Constraint::Max(6),
-                Constraint::Fill(20),
-            ])
-            .split(message_hor[1]);
-            let msg_area = message_vert[1];
-            match state.ui_state {
-                UIState::ShowOptions(true) => {
-                    let player_name = match state.game_state.player() {
-                        Player::White => "white",
-                        Player::Black => "black",
-                    };
-                    let msg = Text::from(vec![
-                        Line::raw(format!("The {} player has no available move", player_name))
-                            .alignment(Alignment::Center),
-                        Line::raw("and must therefore skip its turn.").alignment(Alignment::Center),
-                        Line::raw(""),
-                        Line::raw("continue with [1] or [↲]").alignment(Alignment::Center),
-                    ]);
-                    frame.render_widget(Clear, msg_area);
-                    frame.render_widget(
-                        Paragraph::new(msg).block(Block::default().borders(Borders::ALL)),
-                        msg_area,
-                    );
-                }
-                UIState::GameFinished(result) => {
-                    let primary_color = settings.color_scheme.primary();
-                    let msg;
-                    if let Some(player) = result.to_player() {
-                        let player_name = match player {
-                            Player::White => "white",
-                            Player::Black => "black",
-                        };
-                        msg = Text::from(vec![
-                            Line::raw(""),
-                            Line::styled("Victory!", primary_color).alignment(Alignment::Center),
-                            Line::raw(""),
-                            Line::styled(
-                                format!("The {} player has won!", player_name),
-                                Color::White,
-                            )
-                            .alignment(Alignment::Center),
-                        ]);
-                    } else {
-                        msg = Text::from(vec![
-                            Line::raw(""),
-                            Line::styled("Draw!", primary_color).alignment(Alignment::Center),
-                            Line::raw(""),
-                            Line::styled("None of the players could get on top!", Color::White)
-                                .alignment(Alignment::Center),
-                        ]);
+            // the message that might be shown at the top of the board
+            {
+                let message_hor = Layout::horizontal(vec![
+                    Constraint::Fill(1),
+                    Constraint::Max(42),
+                    Constraint::Fill(1),
+                ])
+                .split(canvas_area);
+                let message_vert = Layout::vertical(vec![
+                    Constraint::Fill(1),
+                    Constraint::Max(6),
+                    Constraint::Fill(20),
+                ])
+                .split(message_hor[1]);
+                let msg_area = message_vert[1];
+                match state.ui_state {
+                    UIState::ShowOptions(true) => {
+                        frame.render_widget(Clear, msg_area);
+                        frame.render_widget(skip_turn_message(state.game_state), msg_area);
                     }
-                    frame.render_widget(Clear, msg_area);
-                    frame.render_widget(
-                        Paragraph::new(msg)
-                            .block(Block::default().borders(Borders::ALL).style(primary_color)),
-                        msg_area,
-                    );
+                    UIState::GameFinished(result) => {
+                        frame.render_widget(Clear, msg_area);
+                        frame.render_widget(game_finished_message(settings, result), msg_area);
+                    }
+                    _ => (),
                 }
-                _ => (),
             }
         }
     })?;
@@ -251,6 +226,48 @@ pub fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
     let x = f64::from(i32::try_from(x).unwrap());
     let y = f64::from(i32::try_from(y).unwrap());
     (x * 21.0, y * 24.0 - x * 12.0)
+}
+
+fn skip_turn_message(game_state: &HiveGameState) -> Paragraph<'static> {
+    let player_name = match game_state.player() {
+        Player::White => "white",
+        Player::Black => "black",
+    };
+    let msg = Text::from(vec![
+        Line::raw(format!("The {} player has no available move", player_name))
+            .alignment(Alignment::Center),
+        Line::raw("and must therefore skip its turn.").alignment(Alignment::Center),
+        Line::raw(""),
+        Line::raw("continue with [1] or [↲]").alignment(Alignment::Center),
+    ]);
+    Paragraph::new(msg).block(Block::default().borders(Borders::ALL))
+}
+
+fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'static> {
+    let primary_color = settings.color_scheme.primary();
+    let msg;
+    if let Some(player) = result.to_player() {
+        let player_name = match player {
+            Player::White => "white",
+            Player::Black => "black",
+        };
+        msg = Text::from(vec![
+            Line::raw(""),
+            Line::styled("Victory!", primary_color).alignment(Alignment::Center),
+            Line::raw(""),
+            Line::styled(format!("The {} player has won!", player_name), Color::White)
+                .alignment(Alignment::Center),
+        ]);
+    } else {
+        msg = Text::from(vec![
+            Line::raw(""),
+            Line::styled("Draw!", primary_color).alignment(Alignment::Center),
+            Line::raw(""),
+            Line::styled("None of the players could get on top!", Color::White)
+                .alignment(Alignment::Center),
+        ]);
+    }
+    Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))
 }
 
 fn draw_level_of_board(
