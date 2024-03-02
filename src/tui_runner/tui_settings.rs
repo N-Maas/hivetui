@@ -404,10 +404,10 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
         create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), |state| {
             &mut state.black_player_type
         }),
-        create_menu_setting("automatic ai moves: ", vec!["on", "off"], |state| {
+        create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
             &mut state.ai_moves
         }),
-        create_menu_setting("ai assistant level: ", vec!["1", "2", "3", "4"], |state| {
+        create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4"], |state| {
             &mut state.ai_assistant
         }),
         create_menu_setting(

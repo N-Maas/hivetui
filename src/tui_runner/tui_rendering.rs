@@ -133,8 +133,25 @@ pub fn render(
                 Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, help_area);
         } else {
+            let help_text = "press a number to select a move\n   \
+                (two digits: press [Space] or [↲] first)\n\
+                \n\
+                [↑↓←→] or [wasd] to move the screen\n\
+                [+-] or [PageDown PageUp] for zooming\n\
+                \n\
+                [h] to show AI suggested moves\n   \
+                (for human players: AI assistant)\n\
+                [u] or [z] to undo a move\n\
+                [r] or [y] to redo a move\n\
+                [←] or [c] to cancel AI move/animation\n\
+                [n] to let the AI move (if not automatic)\n\
+                \n\
+                [Esc] or [q] to get back to the menu";
+            let help_height = Text::raw(help_text).height() as u16 + 2;
+
             let [piece_area, tooltip_area] =
-                *Layout::vertical([Constraint::Fill(1), Constraint::Max(8)]).split(menu_area)
+                *Layout::vertical([Constraint::Fill(1), Constraint::Max(help_height)])
+                    .split(menu_area)
             else {
                 unreachable!()
             };
@@ -153,16 +170,8 @@ pub fn render(
                 .paint(|ctx| draw_pieces(ctx, state, initial_pieces));
             frame.render_widget(canvas, piece_area);
 
-            // TODO: [z] and [y]
-            let text = "press a number to select a move\n   \
-                (two digits: press [Space] or [↲] first)\n\
-                [u]ndo or [r]edo a move\n\
-                [↑↓←→] or [wasd] to move the screen\n\
-                [+-] or [PageDown PageUp] for zooming\n\
-                [Esc] or [q] to get back to the menu\n\
-                [←] or [c] to cancel AI move/animation";
-            let paragraph =
-                Paragraph::new(text).block(Block::default().title("Help").borders(Borders::ALL));
+            let paragraph = Paragraph::new(help_text)
+                .block(Block::default().title("Help").borders(Borders::ALL));
             frame.render_widget(paragraph, tooltip_area);
 
             let message_hor = Layout::horizontal(vec![
