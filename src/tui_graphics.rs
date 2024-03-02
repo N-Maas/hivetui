@@ -50,6 +50,7 @@ pub fn draw_hex_border(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64) {
         &HEX_BORDER_POINTS,
         &HEX_BORDER_ORIENTATIONS,
         Color::DarkGray,
+        1.0,
     );
 }
 
@@ -66,7 +67,24 @@ pub fn draw_restricted_hex_border(
         &HEX_BORDER_POINTS,
         &orientations,
         Color::DarkGray,
+        1.0,
     );
+}
+
+pub fn draw_interior_hex_border_lvl(
+    ctx: &mut Context<'_>,
+    x_mid: f64,
+    y_mid: f64,
+    offset: f64,
+    width: f64,
+    color: Color,
+    level: usize,
+) {
+    match level {
+        0 => draw_interior_hex_border(ctx, x_mid, y_mid, offset, width, color),
+        1 => draw_small_interior_hex_border(ctx, x_mid, y_mid, offset, width, color),
+        _ => draw_tiny_interior_hex_border(ctx, x_mid, y_mid, offset, width, color),
+    };
 }
 
 pub fn draw_interior_hex_border(
@@ -87,6 +105,57 @@ pub fn draw_interior_hex_border(
             &interior_border_points(offset + current),
             &HEX_BORDER_ORIENTATIONS,
             color,
+            1.0,
+        );
+        current += 0.25;
+    }
+}
+
+pub fn draw_small_interior_hex_border(
+    ctx: &mut Context<'_>,
+    x_mid: f64,
+    y_mid: f64,
+    offset: f64,
+    width: f64,
+    color: Color,
+) {
+    assert!(width >= 0.0);
+    let shift = 0.3 * 12.0;
+    let mut current = 0.0;
+    while current <= width {
+        draw_hex_border_impl(
+            ctx,
+            x_mid,
+            y_mid + shift,
+            &interior_border_points(offset + current),
+            &HEX_BORDER_ORIENTATIONS,
+            color,
+            0.7,
+        );
+        current += 0.25;
+    }
+}
+
+pub fn draw_tiny_interior_hex_border(
+    ctx: &mut Context<'_>,
+    x_mid: f64,
+    y_mid: f64,
+    offset: f64,
+    width: f64,
+    color: Color,
+) {
+    assert!(width >= 0.0);
+    let shift = 0.45 * 12.0;
+    let mut current = 0.0;
+    while current <= width {
+        draw_hex_border_impl(
+            ctx,
+            x_mid,
+            y_mid + shift,
+            &interior_border_points(offset + current),
+            &HEX_BORDER_ORIENTATIONS,
+            color,
+            0.55,
         );
         current += 0.25;
     }
@@ -99,16 +168,17 @@ fn draw_hex_border_impl(
     points: &[(f64, f64); 7],
     orientations: &[HexaDirection],
     color: Color,
+    scale: f64,
 ) {
     for i in 0..(points.len() - 1) {
         if orientations.contains(&HEX_BORDER_ORIENTATIONS[i]) {
             let (x1, y1) = points[i];
             let (x2, y2) = points[i + 1];
             ctx.draw(&Line {
-                x1: x_mid + x1,
-                y1: y_mid + y1,
-                x2: x_mid + x2,
-                y2: y_mid + y2,
+                x1: x_mid + scale * x1,
+                y1: y_mid + scale * y1,
+                x2: x_mid + scale * x2,
+                y2: y_mid + scale * y2,
                 color,
             });
         }
@@ -164,6 +234,7 @@ pub fn draw_hex_interior(
     y_mid: f64,
     color: Color,
     leave_circle: bool,
+    scale: f64,
 ) {
     let mut points = Vec::<(f64, f64)>::new();
     get_rectangle_points(&mut points, x_mid, y_mid, -7, 7, -10, 10);
@@ -174,12 +245,7 @@ pub fn draw_hex_interior(
             x * x + y * y > 40.0
         });
     }
-    ctx.draw(&Points {
-        coords: &points,
-        color,
-    });
 
-    let mut points = Vec::<(f64, f64)>::new();
     let orthogonals = [(-12.0, 7.0), (-12.0, -7.0), (12.0, 7.0), (12.0, -7.0)];
     let bases = [(-13.0, 0.0), (-13.0, 0.0), (13.0, 0.0), (13.0, 0.0)];
     let starts = [(-13, 12), (-13, 0), (7, 12), (7, 0)];
@@ -207,6 +273,14 @@ pub fn draw_hex_interior(
             }
         }
     }
+    if scale != 1.0 {
+        for (x, y) in points.iter_mut() {
+            let x_val = *x - x_mid;
+            let y_val = *y - y_mid;
+            *x = x_mid + scale * x_val;
+            *y = y_mid + scale * y_val;
+        }
+    }
     ctx.draw(&Points {
         coords: &points,
         color,
@@ -220,6 +294,42 @@ pub fn draw_piece(ctx: &mut Context<'_>, piece_t: PieceType, x_mid: f64, y_mid: 
         PieceType::Spider => draw_spider(ctx, x_mid, y_mid, zoom),
         PieceType::Grasshopper => draw_grasshopper(ctx, x_mid, y_mid, zoom),
         PieceType::Beetle => draw_beetle(ctx, x_mid, y_mid, zoom),
+    }
+}
+
+pub fn to_bottom_offset(piece_t: PieceType) -> f64 {
+    match piece_t {
+        PieceType::Queen => 2.2,
+        PieceType::Ant => 1.6,
+        PieceType::Spider => 2.4,
+        PieceType::Grasshopper => 1.2,
+        PieceType::Beetle => 1.6,
+    }
+}
+
+pub fn draw_small_piece(
+    ctx: &mut Context<'_>,
+    piece_t: PieceType,
+    x_mid: f64,
+    y_mid: f64,
+    zoom: f64,
+) {
+    match piece_t {
+        PieceType::Beetle => draw_small_beetle(ctx, x_mid, y_mid, zoom),
+        _ => panic!("this piece can not be stacked: {:?}", piece_t),
+    }
+}
+
+pub fn draw_tiny_piece(
+    ctx: &mut Context<'_>,
+    piece_t: PieceType,
+    x_mid: f64,
+    y_mid: f64,
+    zoom: f64,
+) {
+    match piece_t {
+        PieceType::Beetle => draw_tiny_beetle(ctx, x_mid, y_mid, zoom),
+        _ => panic!("this piece can not be stacked: {:?}", piece_t),
     }
 }
 
@@ -366,7 +476,7 @@ pub fn draw_ant(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
 }
 
 pub fn draw_spider(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x00803500);
+    let color = Color::from_u32(0x009A4800);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, -1, 2);
     ctx.draw(&Circle {
         x: x_mid,
@@ -458,7 +568,7 @@ pub fn draw_spider(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
 }
 
 pub fn draw_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x00800080);
+    let color = Color::from_u32(0x009A009A);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 5);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, -1, 2);
     fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -6, -1);
@@ -514,6 +624,127 @@ pub fn draw_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
         y1: y_mid - 3.0,
         x2: x_mid + 6.0,
         y2: y_mid - 6.0,
+        color,
+    });
+}
+
+pub fn draw_small_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
+    let color = Color::from_u32(0x009A009A);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 8);
+    fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, 3, 5);
+    fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -1, 3);
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 0.5,
+        radius: 2.3,
+        color,
+    });
+    // mouth
+    fill_rectangle(ctx, color, x_mid, y_mid, -3, -2, 8, 10);
+    fill_rectangle(ctx, color, x_mid, y_mid, 2, 3, 8, 10);
+    // front feet
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 4.0,
+        x2: x_mid - 4.5,
+        y2: y_mid + 6.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 4.0,
+        x2: x_mid + 5.0,
+        y2: y_mid + 6.5,
+        color,
+    });
+    // middle feet
+    ctx.draw(&Line {
+        x1: x_mid - 3.0,
+        y1: y_mid + 3.5,
+        x2: x_mid - 5.5,
+        y2: y_mid + 1.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.0,
+        y1: y_mid + 3.5,
+        x2: x_mid + 5.5,
+        y2: y_mid + 1.5,
+        color,
+    });
+    // back feet
+    ctx.draw(&Line {
+        x1: x_mid - 3.0,
+        y1: y_mid + 1.0,
+        x2: x_mid - 5.5,
+        y2: y_mid - 1.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.0,
+        y1: y_mid + 1.0,
+        x2: x_mid + 5.5,
+        y2: y_mid - 1.0,
+        color,
+    });
+}
+
+pub fn draw_tiny_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
+    let color = Color::from_u32(0x009A009A);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 8);
+    fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, 3, 6);
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 3.7,
+        radius: 1.5,
+        color,
+    });
+    // mouth
+    fill_rectangle(ctx, color, x_mid, y_mid, -2, -1, 8, 10);
+    fill_rectangle(ctx, color, x_mid, y_mid, 1, 2, 8, 10);
+    // front feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.5,
+        y1: y_mid + 6.5,
+        x2: x_mid - 4.0,
+        y2: y_mid + 7.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.5,
+        y1: y_mid + 6.5,
+        x2: x_mid + 4.0,
+        y2: y_mid + 7.0,
+        color,
+    });
+    // middle feet
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 6.0,
+        x2: x_mid - 4.5,
+        y2: y_mid + 5.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 6.0,
+        x2: x_mid + 4.5,
+        y2: y_mid + 5.0,
+        color,
+    });
+    // back feet
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 4.5,
+        x2: x_mid - 4.5,
+        y2: y_mid + 2.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 4.5,
+        x2: x_mid + 4.5,
+        y2: y_mid + 2.5,
         color,
     });
 }

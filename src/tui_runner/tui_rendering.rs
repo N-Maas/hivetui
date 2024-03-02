@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     pieces::{PieceType, Player},
-    state::{HiveBoard, HiveGameState, HiveResult},
+    state::{HiveBoard, HiveContent, HiveGameState, HiveResult},
     tui_graphics,
 };
 use ratatui::{
@@ -27,7 +27,7 @@ use std::{
     io::{self, Stdout},
 };
 use tgp_board::{
-    open_board::OpenIndex,
+    open_board::{OpenBoard, OpenIndex},
     structures::directions::{DirectionEnumerable, HexaDirection},
     Board,
 };
@@ -248,6 +248,86 @@ pub fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
     (x * 21.0, y * 24.0 - x * 12.0)
 }
 
+fn draw_level_of_board(
+    ctx: &mut Context<'_>,
+    state: AllState<'_>,
+    anim_ctx: AnimationContext<'_>,
+    board: &HiveBoard,
+    level: usize,
+) {
+    assert!(level <= 2);
+    let zoom = state.graphics_state.zoom_level.multiplier();
+    let animation = state.animation_state.animation();
+    let get_piece = |content: &HiveContent| {
+        if level >= 2 {
+            if content.len() > 2 {
+                content.top().copied()
+            } else {
+                None
+            }
+        } else {
+            content.get(level).copied()
+        }
+    };
+    let scale = match level {
+        0 => 1.0,
+        1 => 0.7,
+        _ => 0.5,
+    };
+
+    // draw interiors
+    for field in board.iter_fields() {
+        let (x_mid, y_mid) = translate_index(field.index());
+        field
+            .content_checked()
+            .and_then(|content| get_piece(content))
+            .inspect(|piece| {
+                let is_white = piece.player == Player::White;
+                if is_white || level > 0 {
+                    let color = if is_white {
+                        DARK_WHITE
+                    } else {
+                        Color::from_u32(0)
+                    };
+                    let y_offset = (1.0 - scale) * 10.0 + level as f64 * 0.5;
+                    tui_graphics::draw_hex_interior(
+                        ctx,
+                        x_mid,
+                        y_mid + y_offset,
+                        color,
+                        false,
+                        scale,
+                    );
+                }
+            });
+    }
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Interiors(level)));
+    ctx.layer();
+
+    // draw pieces
+    for field in board.iter_fields() {
+        let (x_mid, mut y_mid) = translate_index(field.index());
+        y_mid += level as f64 * 0.3;
+        field
+            .content_checked()
+            .and_then(|content| get_piece(content).map(|p| (p, content.len())))
+            .inspect(|&(piece, stack_size)| match level {
+                0 => {
+                    let y_mid = if stack_size == 1 {
+                        y_mid
+                    } else {
+                        y_mid - tui_graphics::to_bottom_offset(piece.p_type)
+                    };
+                    tui_graphics::draw_piece(ctx, piece.p_type, x_mid, y_mid, zoom)
+                }
+                1 => tui_graphics::draw_small_piece(ctx, piece.p_type, x_mid, y_mid, zoom),
+                _ => tui_graphics::draw_tiny_piece(ctx, piece.p_type, x_mid, y_mid, zoom),
+            });
+    }
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Pieces(level)));
+    ctx.layer();
+}
+
 pub fn draw_board(
     ctx: &mut Context<'_>,
     state: AllState<'_>,
@@ -297,43 +377,18 @@ pub fn draw_board(
     animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Borders));
     ctx.layer();
 
-    // second round: draw interiors
-    for field in board.iter_fields() {
-        let (x_mid, y_mid) = translate_index(field.index());
-        field
-            .content_checked()
-            .and_then(|content| content.top())
-            .inspect(|piece| {
-                if piece.player == Player::White {
-                    draw_interior(
-                        ctx,
-                        state.settings.white_tiles_style,
-                        x_mid,
-                        y_mid,
-                        DARK_WHITE,
-                    );
-                }
-            });
-    }
-    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Interiors));
-    ctx.layer();
-
-    // third round: draw pieces
-    for field in board.iter_fields() {
-        let (x_mid, y_mid) = translate_index(field.index());
-        field
-            .content_checked()
-            .and_then(|content| content.top())
-            .inspect(|piece| tui_graphics::draw_piece(ctx, piece.p_type, x_mid, y_mid, zoom));
-    }
-    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Pieces));
-    ctx.layer();
+    // draw the three levels (bottom, stacked, top)
+    draw_level_of_board(ctx, state, anim_ctx, board, 0);
+    draw_level_of_board(ctx, state, anim_ctx, board, 1);
+    draw_level_of_board(ctx, state, anim_ctx, board, 2);
 
     // is a specific field selected?
     match state.ui_state {
         UIState::PositionSelected(index) | UIState::PieceSelected(index) => {
             let (x_mid, y_mid) = translate_index(index);
-            tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, RED);
+            let stack_size = board[index].len();
+            let level = if stack_size <= 1 { 0 } else { stack_size - 1 };
+            tui_graphics::draw_interior_hex_border_lvl(ctx, x_mid, y_mid, 0.0, 0.0, RED, level);
         }
         UIState::GameFinished(result) => {
             if let Some((index, _)) = find_losing_queen(board, result) {
@@ -474,11 +529,11 @@ pub fn draw_pieces(
 
 pub fn draw_interior(ctx: &mut Context<'_>, style: WhiteTilesStyle, x: f64, y: f64, color: Color) {
     match style {
-        WhiteTilesStyle::Full => tui_graphics::draw_hex_interior(ctx, x, y, color, false),
+        WhiteTilesStyle::Full => tui_graphics::draw_hex_interior(ctx, x, y, color, false, 1.0),
         WhiteTilesStyle::Border => {
             tui_graphics::draw_interior_hex_border(ctx, x, y, 1.5, 1.5, color)
         }
-        WhiteTilesStyle::Hybrid => tui_graphics::draw_hex_interior(ctx, x, y, color, true),
+        WhiteTilesStyle::Hybrid => tui_graphics::draw_hex_interior(ctx, x, y, color, true, 1.0),
     }
 }
 

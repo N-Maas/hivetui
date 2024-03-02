@@ -1,4 +1,7 @@
-use ratatui::{style::Color, widgets::canvas::Context};
+use ratatui::{
+    style::Color,
+    widgets::canvas::{Context, Points, Rectangle},
+};
 use tgp_board::{open_board::OpenIndex, Board};
 
 use crate::{
@@ -15,8 +18,10 @@ use super::{
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Layer {
     Borders,
-    Interiors,
-    Pieces,
+    /// current level of board
+    Interiors(usize),
+    /// current level of board
+    Pieces(usize),
     Selection,
     Final,
 }
@@ -60,6 +65,28 @@ impl<F: Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> BaseEffect<
 
     pub fn new_static(steps: usize, layer: Layer, x: f64, y: f64, draw_fn: F) -> Self {
         Self::new(steps, layer, (x, y), (x, y), draw_fn)
+    }
+
+    pub fn new_anchored<'a>(
+        steps: usize,
+        layer: Layer,
+        relative_x: f64,
+        relative_y: f64,
+        draw_fn: F,
+    ) -> BaseEffect<impl Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64)) + 'a>
+    where
+        F: 'a,
+    {
+        BaseEffect::new_static(steps, layer, 0.0, 0.0, move |ctx, anim_ctx, ratio, _| {
+            let [x1, x2] = anim_ctx.x_bounds;
+            let [y1, y2] = anim_ctx.y_bounds;
+            draw_fn(
+                ctx,
+                anim_ctx,
+                ratio,
+                (x1 + relative_x * (x2 - x1), y1 + relative_y * (y2 - y1)),
+            )
+        })
     }
 
     fn disabled(mut self) -> Self {
@@ -171,6 +198,10 @@ impl AnimationEffect for Box<dyn AnimationEffect> {
     }
 }
 
+pub fn do_nothing_effect(steps: usize) -> impl AnimationEffect {
+    BaseEffect::new_static(steps, Layer::Final, 0.0, 0.0, |_, _, _, _| ())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AnimationContext<'a> {
     pub graphics_state: &'a GraphicsState,
@@ -238,15 +269,16 @@ pub fn mark_field(
     steps: usize,
     index: OpenIndex,
     color: Color,
+    level: usize,
 ) -> BaseEffect<impl Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> {
     let (x, y) = translate_index(index);
     BaseEffect::new_static(
         steps,
-        Layer::Interiors,
+        Layer::Selection,
         x,
         y,
         move |ctx, _g, _ratio, (x, y)| {
-            tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, 0.0, color)
+            tui_graphics::draw_interior_hex_border_lvl(ctx, x, y, 0.0, 0.0, color, level)
         },
     )
 }
@@ -256,11 +288,12 @@ pub fn blink_field(
     index: OpenIndex,
     color_start: (u8, u8, u8),
     color_end: (u8, u8, u8),
+    level: usize,
 ) -> impl AnimationEffect {
     let (x, y) = translate_index(index);
     BaseEffect::new_static(
         steps,
-        Layer::Interiors,
+        Layer::Interiors(usize::min(level, 2)),
         x,
         y,
         move |ctx, _g, ratio, (x, y)| {
@@ -271,16 +304,21 @@ pub fn blink_field(
             let b = ((1.0 - ratio) * f64::from(color_start.2) + ratio * f64::from(color_end.2))
                 .round() as u32;
             let color = Color::from_u32((r << 16) | (g << 8) | b);
-            tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, ratio * 10.0, color)
+            tui_graphics::draw_interior_hex_border_lvl(ctx, x, y, 0.0, ratio * 10.0, color, level)
         },
     )
 }
 
-pub fn blink_field_default(steps: usize, index: OpenIndex) -> impl AnimationEffect {
-    blink_field(steps, index, (0xFF, 0x30, 0x30), (0x70, 0x70, 0x70))
+pub fn blink_field_default(steps: usize, index: OpenIndex, level: usize) -> impl AnimationEffect {
+    blink_field(steps, index, (0xFF, 0x30, 0x30), (0x70, 0x70, 0x70), level)
 }
 
-pub fn rainbow_field(steps: usize, length: usize, index: OpenIndex) -> impl AnimationEffect {
+pub fn rainbow_field(
+    steps: usize,
+    length: usize,
+    index: OpenIndex,
+    level: usize,
+) -> impl AnimationEffect {
     let colors = [
         Color::from_u32(0x00E00040),
         Color::from_u32(0x00DA9000),
@@ -292,7 +330,7 @@ pub fn rainbow_field(steps: usize, length: usize, index: OpenIndex) -> impl Anim
     let (x, y) = translate_index(index);
     BaseEffect::new_static(
         steps,
-        Layer::Interiors,
+        Layer::Interiors(usize::min(level, 2)),
         x,
         y,
         move |ctx, _g, ratio, (x, y)| {
@@ -302,7 +340,15 @@ pub fn rainbow_field(steps: usize, length: usize, index: OpenIndex) -> impl Anim
                 let local_progress = progress + offset / 3.0;
                 assert!(local_progress >= 0.0);
                 let index = f64::floor(local_progress) as usize % colors.len();
-                tui_graphics::draw_interior_hex_border(ctx, x, y, offset, 0.0, colors[index]);
+                tui_graphics::draw_interior_hex_border_lvl(
+                    ctx,
+                    x,
+                    y,
+                    offset,
+                    0.0,
+                    colors[index],
+                    level,
+                );
             }
         },
     )
@@ -341,21 +387,70 @@ pub fn flying_piece(
     )
 }
 
+pub fn loader(steps: usize) -> impl AnimationEffect {
+    BaseEffect::new_anchored(
+        steps,
+        Layer::Final,
+        0.5,
+        0.05,
+        |ctx, anim_ctx, ratio, (x, y)| {
+            let zoom = anim_ctx.graphics_state.zoom_level.multiplier();
+            let x_range = zoom * 13.5;
+            let y_range = zoom * 2.0;
+            let x_small = zoom * 10.0;
+            let inner_limits = (ratio * 2.0 * x_range, ratio * 2.0 * x_range + x_small);
+
+            let draw_the_points = |ctx: &mut Context<'_>, inner| {
+                let mut points = Vec::new();
+                for x_index in 0..=30 {
+                    let x_diff = x_index as f64 * 2.0 * x_range / 30.0;
+                    let is_inner = (x_diff >= inner_limits.0 && x_diff <= inner_limits.1)
+                        || 2.0 * x_range + x_diff <= inner_limits.1;
+                    if is_inner == inner {
+                        for y_index in 0..=10 {
+                            let y_diff = y_index as f64 * 2.0 * y_range / 10.0;
+                            points.push((x - x_range + x_diff, y - y_range + y_diff));
+                        }
+                    }
+                }
+                ctx.draw(&Points {
+                    coords: &points,
+                    color: if inner {
+                        ORANGE
+                    } else {
+                        Color::from_u32(0x00A0A0A0)
+                    },
+                });
+            };
+            draw_the_points(ctx, false);
+            ctx.layer();
+            draw_the_points(ctx, true);
+        },
+    )
+}
+
 pub fn build_blink_animation(
     settings: &Settings,
     player: Player,
     index: OpenIndex,
     short: bool,
+    level: usize,
 ) -> Animation {
     let base_steps = if short { 20 } else { 30 };
     let steps = settings.get_animation_speed(player).map_steps(base_steps);
     match settings.animation_style {
-        AnimationStyle::Blink => Animation::new(blink_field_default(steps, index)),
-        AnimationStyle::Plain => Animation::new(mark_field((steps + 2) / 3, index, RED)),
-        AnimationStyle::BlinkOnlyAi => todo!(),
+        AnimationStyle::Blink => Animation::new(blink_field_default(steps, index, level)),
+        AnimationStyle::Plain => Animation::new(mark_field((steps + 2) / 3, index, RED, level)),
+        AnimationStyle::BlinkOnlyAi => {
+            if settings.is_ai(player) {
+                Animation::new(blink_field_default(steps, index, level))
+            } else {
+                Animation::new(mark_field((steps + 1) / 2, index, RED, level))
+            }
+        }
         AnimationStyle::Rainbow => {
             let length = if short { 6 } else { 9 };
-            Animation::new(rainbow_field(3 * steps / 2 + 2, length, index))
+            Animation::new(rainbow_field(3 * steps / 2 + 2, length, index, level))
         }
     }
 }
@@ -366,6 +461,7 @@ pub fn build_complete_piece_move_animation(
     player: Player,
     start: OpenIndex,
     target: OpenIndex,
+    target_level: usize,
 ) -> Animation {
     let speed = settings.get_animation_speed(player);
     let (x1, y1) = translate_index(start);
@@ -389,8 +485,8 @@ pub fn build_complete_piece_move_animation(
         settings.moving_tile_style == MovingTileStyle::Filled,
         settings.white_tiles_style,
     );
-    let mark = mark_field(fly_steps, target, ORANGE);
-    let blink = build_blink_animation(settings, player, target, true);
+    let mark = mark_field(fly_steps, target, ORANGE, 0);
+    let blink = build_blink_animation(settings, player, target, true, target_level);
     Animation::with_state(
         ChainedEffect::new(CombinedEffect::new(flying, mark), blink.into_effect()),
         move |state, step| {

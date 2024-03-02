@@ -50,6 +50,10 @@ impl HiveContent {
         self.pieces.first()
     }
 
+    pub fn get(&self, index: usize) -> Option<&Piece> {
+        self.pieces.get(index)
+    }
+
     pub fn push(&mut self, piece: Piece) {
         self.pieces.push(piece);
     }

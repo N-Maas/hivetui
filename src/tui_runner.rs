@@ -20,7 +20,7 @@ use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
-    tui_runner::tui_settings::AIMoves,
+    tui_runner::{tui_animations::loader, tui_settings::AIMoves},
 };
 
 use self::{
@@ -212,11 +212,13 @@ impl AIState {
                 self.result = Some(*result);
             }
         }
-        if self.should_use_ai && (self.animation_progress > 0 || !animation.runs()) {
+        if self.should_show_animation && (self.animation_progress > 0 || !animation.runs()) {
             self.animation_progress += 1;
         }
-        if self.should_show_animation && !animation.runs() {
-            // TODO: animaton = ...
+        if self.should_show_animation && self.animation_progress < Self::AI_DELAY {
+            animation
+                .try_set()
+                .map(|s| s.set_animation(Animation::new(loader(30))));
         }
     }
 
@@ -406,6 +408,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             .is_some_and(|a| !a.is_finished())
             && ui_state.show_game()
             && !matches!(ui_state, UIState::GameFinished(_))
+            && !ai_state.animation_has_started()
         {
             // TODO: interaction with AI?!
             ui_state = UIState::PlaysAnimation(false);
@@ -614,6 +617,7 @@ fn update_game_state_and_fill_input_mapping(
                 };
 
                 if let Some(result) = ai_state.result() {
+                    animation_state.stop();
                     assert!(result.player == Player::from(decision.player()));
                     let best = result.best_move;
 
@@ -698,6 +702,7 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PositionSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                            animation_state.stop();
                             handle_placed_piece(d, index, b_index, settings, animation_state);
                         } else {
                             // fill the annotation mapping
@@ -715,6 +720,7 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
+                            animation_state.stop();
                             handle_moved_piece(
                                 d,
                                 board_indizes,
@@ -761,8 +767,9 @@ fn update_game_state_and_fill_input_mapping(
                     if let Some((index, player)) =
                         find_losing_queen(finished.data().board(), result)
                     {
-                        set_animation
-                            .set_animation(build_blink_animation(settings, player, index, false));
+                        set_animation.set_animation(build_blink_animation(
+                            settings, player, index, false, 0,
+                        ));
                     }
                 }
             }
@@ -785,7 +792,7 @@ fn handle_placed_piece(
         animation
             .try_set()
             .unwrap()
-            .set_animation(build_blink_animation(settings, player, pos, false));
+            .set_animation(build_blink_animation(settings, player, pos, false, 0));
     }
     dec.select_option(index);
 }
@@ -803,11 +810,17 @@ fn handle_moved_piece(
         let board = dec.data().board();
         let piece_t = board.get(pos).and_then(|c| c.top()).unwrap().p_type;
         let target = context[index];
+        let target_level = board[target].len();
         animation
             .try_set()
             .unwrap()
             .set_animation(build_complete_piece_move_animation(
-                settings, piece_t, player, pos, target,
+                settings,
+                piece_t,
+                player,
+                pos,
+                target,
+                target_level,
             ));
     }
     dec.select_option(index);
