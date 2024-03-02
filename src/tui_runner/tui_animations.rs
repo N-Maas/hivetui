@@ -27,13 +27,13 @@ pub trait AnimationEffect {
     fn draw(
         &self,
         ctx: &mut Context<'_>,
-        graphics_state: &GraphicsState,
+        anim_ctx: AnimationContext<'_>,
         step: usize,
         layer: Layer,
     );
 }
 
-pub struct BaseEffect<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> {
+pub struct BaseEffect<F: Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> {
     x_start: f64,
     y_start: f64,
     x_end: f64,
@@ -44,7 +44,7 @@ pub struct BaseEffect<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> 
     draw_fn: F,
 }
 
-impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> BaseEffect<F> {
+impl<F: Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> BaseEffect<F> {
     pub fn new(steps: usize, layer: Layer, start: (f64, f64), end: (f64, f64), draw_fn: F) -> Self {
         Self {
             x_start: start.0,
@@ -59,16 +59,7 @@ impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> BaseEffect<F> {
     }
 
     pub fn new_static(steps: usize, layer: Layer, x: f64, y: f64, draw_fn: F) -> Self {
-        Self {
-            x_start: x,
-            y_start: y,
-            x_end: x,
-            y_end: y,
-            layer,
-            total_steps: steps,
-            disabled: false,
-            draw_fn,
-        }
+        Self::new(steps, layer, (x, y), (x, y), draw_fn)
     }
 
     fn disabled(mut self) -> Self {
@@ -78,7 +69,9 @@ impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> BaseEffect<F> {
     }
 }
 
-impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> AnimationEffect for BaseEffect<F> {
+impl<F: Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> AnimationEffect
+    for BaseEffect<F>
+{
     fn total_steps(&self) -> usize {
         self.total_steps
     }
@@ -86,7 +79,7 @@ impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> AnimationEffect f
     fn draw(
         &self,
         ctx: &mut Context<'_>,
-        graphics_state: &GraphicsState,
+        anim_ctx: AnimationContext<'_>,
         step: usize,
         layer: Layer,
     ) {
@@ -95,7 +88,7 @@ impl<F: Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> AnimationEffect f
             let ratio = step as f64 / self.total_steps as f64;
             let x = (1.0 - ratio) * self.x_start + ratio * self.x_end;
             let y = (1.0 - ratio) * self.y_start + ratio * self.y_end;
-            (self.draw_fn)(ctx, graphics_state, ratio, (x, y));
+            (self.draw_fn)(ctx, anim_ctx, ratio, (x, y));
         }
     }
 }
@@ -119,13 +112,13 @@ impl<A: AnimationEffect, B: AnimationEffect> AnimationEffect for CombinedEffect<
     fn draw(
         &self,
         ctx: &mut Context<'_>,
-        graphics_state: &GraphicsState,
+        anim_ctx: AnimationContext<'_>,
         step: usize,
         layer: Layer,
     ) {
-        self.a.draw(ctx, graphics_state, step, layer);
+        self.a.draw(ctx, anim_ctx, step, layer);
         ctx.layer();
-        self.b.draw(ctx, graphics_state, step, layer);
+        self.b.draw(ctx, anim_ctx, step, layer);
     }
 }
 
@@ -148,16 +141,16 @@ impl<A: AnimationEffect, B: AnimationEffect> AnimationEffect for ChainedEffect<A
     fn draw(
         &self,
         ctx: &mut Context<'_>,
-        graphics_state: &GraphicsState,
+        anim_ctx: AnimationContext<'_>,
         step: usize,
         layer: Layer,
     ) {
         if step <= self.a.total_steps() {
-            self.a.draw(ctx, graphics_state, step, layer);
+            self.a.draw(ctx, anim_ctx, step, layer);
         }
         if step > self.a.total_steps() {
             self.b
-                .draw(ctx, graphics_state, step - self.a.total_steps(), layer);
+                .draw(ctx, anim_ctx, step - self.a.total_steps(), layer);
         }
     }
 }
@@ -170,12 +163,19 @@ impl AnimationEffect for Box<dyn AnimationEffect> {
     fn draw(
         &self,
         ctx: &mut Context<'_>,
-        graphics_state: &GraphicsState,
+        anim_ctx: AnimationContext<'_>,
         step: usize,
         layer: Layer,
     ) {
-        self.as_ref().draw(ctx, graphics_state, step, layer)
+        self.as_ref().draw(ctx, anim_ctx, step, layer)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AnimationContext<'a> {
+    pub graphics_state: &'a GraphicsState,
+    pub x_bounds: [f64; 2],
+    pub y_bounds: [f64; 2],
 }
 
 pub struct Animation {
@@ -228,10 +228,9 @@ impl Animation {
         (self.temporary_state)(state, self.current_step)
     }
 
-    pub fn draw(&self, ctx: &mut Context<'_>, graphics_state: &GraphicsState, layer: Layer) {
+    pub fn draw(&self, ctx: &mut Context<'_>, anim_ctx: AnimationContext<'_>, layer: Layer) {
         ctx.layer();
-        self.effect
-            .draw(ctx, graphics_state, self.current_step, layer);
+        self.effect.draw(ctx, anim_ctx, self.current_step, layer);
     }
 }
 
@@ -239,7 +238,7 @@ pub fn mark_field(
     steps: usize,
     index: OpenIndex,
     color: Color,
-) -> BaseEffect<impl Fn(&mut Context<'_>, &GraphicsState, f64, (f64, f64))> {
+) -> BaseEffect<impl Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> {
     let (x, y) = translate_index(index);
     BaseEffect::new_static(
         steps,
@@ -327,12 +326,13 @@ pub fn flying_piece(
         Layer::Final,
         start,
         end,
-        move |ctx, g, _ratio, (x, y)| {
+        move |ctx, anim_ctx, _ratio, (x, y)| {
+            let zoom = anim_ctx.graphics_state.zoom_level.multiplier();
             if draw_interior {
                 tui_rendering::draw_interior(ctx, style, x, y, color_interior);
                 ctx.layer();
             }
-            tui_graphics::draw_piece(ctx, piece_t, x, y, g.zoom_level.multiplier());
+            tui_graphics::draw_piece(ctx, piece_t, x, y, zoom);
             if draw_border {
                 ctx.layer();
                 tui_graphics::draw_interior_hex_border(ctx, x, y, 0.0, 0.0, color_border);

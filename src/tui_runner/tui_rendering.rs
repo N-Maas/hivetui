@@ -1,5 +1,5 @@
 use super::{
-    tui_animations::Layer,
+    tui_animations::{AnimationContext, Layer},
     tui_settings::{
         render_settings, BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, Settings,
         WhiteTilesStyle,
@@ -103,11 +103,13 @@ pub fn render(
                 let diff = x_len - alt_x_len;
                 center_x += diff;
             }
+            let x_bounds = [center_x - x_len, center_x + x_len];
+            let y_bounds = [center_y - y_len, center_y + y_len];
             let canvas = Canvas::default()
                 .block(Block::default().borders(Borders::ALL))
-                .x_bounds([center_x - x_len, center_x + x_len])
-                .y_bounds([center_y - y_len, center_y + y_len])
-                .paint(|ctx| draw_board(ctx, state));
+                .x_bounds(x_bounds)
+                .y_bounds(y_bounds)
+                .paint(|ctx| draw_board(ctx, state, x_bounds, y_bounds));
             frame.render_widget(canvas, canvas_area);
         }
 
@@ -246,12 +248,20 @@ pub fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
     (x * 21.0, y * 24.0 - x * 12.0)
 }
 
-pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
+pub fn draw_board(
+    ctx: &mut Context<'_>,
+    state: AllState<'_>,
+    x_bounds: [f64; 2],
+    y_bounds: [f64; 2],
+) {
     let zoom = state.graphics_state.zoom_level.multiplier();
-    let temporary_state = state
-        .animation_state
-        .animation()
-        .and_then(|a| a.get_temporary_state(state.game_state));
+    let animation = state.animation_state.animation();
+    let anim_ctx = AnimationContext {
+        graphics_state: &state.graphics_state,
+        x_bounds,
+        y_bounds,
+    };
+    let temporary_state = animation.and_then(|a| a.get_temporary_state(state.game_state));
     let board = temporary_state
         .as_ref()
         .map_or(state.game_state.board(), |s| s.board());
@@ -284,10 +294,7 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             // which sides should be drawn?
         }
     }
-    state
-        .animation_state
-        .animation()
-        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Borders));
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Borders));
     ctx.layer();
 
     // second round: draw interiors
@@ -308,10 +315,7 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
                 }
             });
     }
-    state
-        .animation_state
-        .animation()
-        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Interiors));
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Interiors));
     ctx.layer();
 
     // third round: draw pieces
@@ -322,10 +326,7 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
             .and_then(|content| content.top())
             .inspect(|piece| tui_graphics::draw_piece(ctx, piece.p_type, x_mid, y_mid, zoom));
     }
-    state
-        .animation_state
-        .animation()
-        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Pieces));
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Pieces));
     ctx.layer();
 
     // is a specific field selected?
@@ -342,16 +343,10 @@ pub fn draw_board(ctx: &mut Context<'_>, state: AllState<'_>) {
         }
         _ => (),
     }
-    state
-        .animation_state
-        .animation()
-        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Selection));
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Selection));
     ctx.layer();
 
-    state
-        .animation_state
-        .animation()
-        .inspect(|a| a.draw(ctx, &state.graphics_state, Layer::Final));
+    animation.inspect(|a| a.draw(ctx, anim_ctx, Layer::Final));
 
     // print indizes
     if matches!(
