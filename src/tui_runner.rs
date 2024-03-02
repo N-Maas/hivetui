@@ -4,7 +4,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
-use std::io::stdout;
+use std::{backtrace::Backtrace, cell::RefCell, io::stdout, panic, process};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -378,10 +378,51 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     }))
 }
 
-/// this implements the main event loop
+thread_local! {
+    static MSG: RefCell<Option<String>> = RefCell::new(None);
+    static BACKTRACE: RefCell<Option<Backtrace>> = RefCell::new(None);
+}
+
 pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
+
+    // do some panic reporting
+    panic::set_hook(Box::new(|info| {
+        let payload = info.payload();
+        let msg = payload.downcast_ref::<String>().cloned().or_else(|| {
+            payload
+                .downcast_ref::<&'static str>()
+                .map(|s| s.to_string())
+        });
+        msg.map(|value| {
+            MSG.with(|b| b.borrow_mut().replace(value));
+        });
+        let trace = Backtrace::force_capture();
+        BACKTRACE.with(move |b| b.borrow_mut().replace(trace));
+    }));
+    let result = panic::catch_unwind(|| run_in_tui_impl(pieces));
+
+    stdout().execute(LeaveAlternateScreen)?;
+    disable_raw_mode()?;
+
+    match result {
+        Ok(val) => val, // just propagate I/O error
+        Err(_) => {
+            let msg = MSG
+                .with(|b| b.borrow_mut().take())
+                .map_or(String::new(), |m| m + "\n");
+            let trace = BACKTRACE
+                .with(|b| b.borrow_mut().take())
+                .map_or(String::new(), |b| b.to_string());
+            eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
+            process::exit(1);
+        }
+    }
+}
+
+/// this implements the main event loop
+pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.hide_cursor()?;
     terminal.clear()?;
@@ -561,9 +602,6 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         // update animation state
         animation_state.next_step();
     }
-
-    stdout().execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
     Ok(())
 }
 
