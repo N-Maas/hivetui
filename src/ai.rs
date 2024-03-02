@@ -135,12 +135,13 @@ impl HiveAI {
                 Params::new(2, sliding)
             }
             _ => {
+                // TODO: make this AI easier??
                 let sliding = SlidingParams::new(
-                    vec![8, 5],
-                    vec![40, 20],
-                    vec![12, 8],
-                    vec![14, 7],
-                    vec![50, 3],
+                    vec![3, 2],
+                    vec![20, 10],
+                    vec![6, 3],
+                    vec![8, 4],
+                    vec![3, 2],
                 );
                 Params::new(1, sliding)
             }
