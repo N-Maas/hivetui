@@ -536,13 +536,13 @@ impl GameData for HiveGameState {
         }
 
         let mut base_dec = MappedDecision::new(self.player_usize());
+        for field in self.get_all_movables() {
+            base_dec.add_option(field.index());
+        }
         if self.total_num_pieces(self.player()) > 0 {
             for field in self.get_all_placement_targets() {
                 base_dec.add_option(field.index());
             }
-        }
-        for field in self.get_all_movables() {
-            base_dec.add_option(field.index());
         }
         if base_dec.is_empty() {
             let mut dec = PlainDecision::with_context(self.player_usize(), HiveContext::SkipPlayer);
