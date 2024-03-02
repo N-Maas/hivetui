@@ -23,11 +23,10 @@ use ratatui::{
 };
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::format,
     io::{self, Stdout},
 };
 use tgp_board::{
-    open_board::{OpenBoard, OpenIndex},
+    open_board::OpenIndex,
     structures::directions::{DirectionEnumerable, HexaDirection},
     Board,
 };

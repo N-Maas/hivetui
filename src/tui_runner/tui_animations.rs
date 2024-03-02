@@ -1,6 +1,6 @@
 use ratatui::{
     style::Color,
-    widgets::canvas::{Context, Points, Rectangle},
+    widgets::canvas::{Context, Points},
 };
 use tgp_board::{open_board::OpenIndex, Board};
 

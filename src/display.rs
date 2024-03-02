@@ -6,8 +6,8 @@ use crate::{
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
-use tgp::engine::{Engine, GameEngine, GameState};
-use tgp_ai::{rater::Rater, RatingType};
+use tgp::engine::Engine;
+use tgp_ai::{add_context_to_ratings, rater::Rater, RatingType};
 use tgp_board::open_board::OpenIndex;
 use tgp_board::{prelude::*, structures::directions::HexaDirection};
 type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
@@ -15,9 +15,10 @@ type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
 pub fn print_move_ratings(
     state: &HiveGameState,
     rater: &HiveRater,
-) -> Vec<(RatingType, Box<[usize]>)> {
+) -> Vec<(RatingType, Box<[usize]>, HiveContext)> {
     let mut engine = Engine::new(2, state.clone());
     let ratings = Rater::create_rating(&mut engine, rater);
+    let ratings = add_context_to_ratings(&engine, ratings).unwrap();
     print_ratings_for_moves(state, &ratings);
     ratings
 }
@@ -28,30 +29,13 @@ pub fn print_ai_ratings(state: &HiveGameState, ai: &HiveAI) {
     print_ratings_for_moves(state, &ratings);
 }
 
-fn print_ratings_for_moves(state: &HiveGameState, ratings: &[(RatingType, Box<[usize]>)]) {
-    let mut engine = Engine::new(2, state.clone());
+fn print_ratings_for_moves(
+    state: &HiveGameState,
+    ratings: &[(RatingType, Box<[usize]>, HiveContext)],
+) {
     let ratings = ratings
         .iter()
-        .map(|(r, indizes)| match engine.pull() {
-            GameState::PendingDecision(dec) => {
-                if let HiveContext::BaseField(_) = dec.context() {
-                    dec.select_option(indizes[0]);
-                    match engine.pull() {
-                        GameState::PendingDecision(subdec) => {
-                            let result = (r, indizes[1], subdec.context());
-                            subdec.into_follow_up_decision().unwrap().retract_all();
-                            result
-                        }
-                        _ => unreachable!(),
-                    }
-                } else if let HiveContext::SkipPlayer = dec.context() {
-                    (r, 0, HiveContext::SkipPlayer)
-                } else {
-                    unreachable!()
-                }
-            }
-            _ => unreachable!(),
-        })
+        .map(|(r, indizes, ctx)| (r, *indizes.last().unwrap(), ctx))
         .collect::<Vec<_>>();
     for (r, index, context) in ratings {
         let context = context.clone();

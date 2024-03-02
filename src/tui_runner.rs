@@ -128,7 +128,7 @@ impl AnimationState {
 struct AIResult {
     player: Player,
     best_move: Box<[usize]>,
-    all_ratings: Vec<(RatingType, Box<[usize]>)>,
+    all_ratings: Vec<(RatingType, Box<[usize]>, HiveContext)>,
 }
 
 #[derive(Debug)]

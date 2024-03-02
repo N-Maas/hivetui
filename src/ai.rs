@@ -1,5 +1,6 @@
 use tgp::engine::{Engine, EventListener, GameEngine, GameState};
 use tgp_ai::{
+    add_context_to_ratings,
     rater::{DecisionType, Rater},
     MinMaxAlgorithm, MinMaxError, Params, RateAndMap, RatingType, SlidingParams,
 };
@@ -153,32 +154,16 @@ impl HiveAI {
         }
     }
 
-    pub fn apply<L: EventListener<HiveGameState>, F: Fn() -> bool>(
-        &self,
-        engine: &mut Engine<HiveGameState, L>,
-        should_cancel: F,
-    ) {
-        let indizes = self.run(engine, should_cancel);
-        if let Some(indizes) = indizes {
-            for &i in indizes.iter() {
-                match engine.pull() {
-                    GameState::PendingDecision(dec) => {
-                        dec.select_option(i);
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-
     pub fn run_all_ratings<L: EventListener<HiveGameState>, F: Fn() -> bool>(
         &self,
         engine: &Engine<HiveGameState, L>,
         should_cancel: F,
-    ) -> Option<Vec<(RatingType, Box<[usize]>)>> {
+    ) -> Option<Vec<(RatingType, Box<[usize]>, HiveContext)>> {
         if self.use_direct_move {
             let mut engine = Engine::new(2, engine.data().clone());
-            Some(Rater::create_rating(&mut engine, &HiveRater {}))
+            let ratings = Rater::create_rating(&mut engine, &HiveRater {});
+            let ratings = add_context_to_ratings(&engine, ratings).unwrap();
+            Some(ratings)
         } else {
             match self
                 .alg
@@ -196,13 +181,8 @@ impl HiveAI {
         engine: &Engine<HiveGameState, L>,
         should_cancel: F,
     ) -> Option<Box<[usize]>> {
-        self.run_all_ratings(engine, should_cancel).map(|ratings| {
-            ratings
-                .into_iter()
-                .max_by(|(a, _), (b, _)| a.cmp(b))
-                .unwrap()
-                .1
-        })
+        self.run_all_ratings(engine, should_cancel)
+            .map(|ratings| ratings.into_iter().max_by_key(|&(r, _, _)| r).unwrap().1)
     }
 }
 
