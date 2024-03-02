@@ -212,13 +212,15 @@ impl AIState {
                 self.result = Some(*result);
             }
         }
-        if self.should_show_animation && (self.animation_progress > 0 || !animation.runs()) {
-            self.animation_progress += 1;
-        }
-        if self.should_show_animation && self.animation_progress < Self::AI_DELAY {
-            animation
-                .try_set()
-                .map(|s| s.set_animation(Animation::new(loader(settings, 30))));
+        if self.should_show_animation {
+            if self.animation_progress > 0 || !animation.runs() {
+                self.animation_progress += 1;
+            }
+            if self.animation_progress < Self::AI_DELAY || self.result.is_none() {
+                animation
+                    .try_set()
+                    .map(|s| s.set_animation(Animation::new(loader(settings, 30))));
+            }
         }
     }
 
