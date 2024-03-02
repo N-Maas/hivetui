@@ -1,7 +1,7 @@
 use tgp::engine::{Engine, EventListener, GameEngine, GameState};
 use tgp_ai::{
     rater::{DecisionType, Rater},
-    MinMaxAlgorithm, Params, RateAndMap, RatingType, SlidingParams,
+    MinMaxAlgorithm, MinMaxError, Params, RateAndMap, RatingType, SlidingParams,
 };
 use tgp_board::{
     hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
@@ -152,13 +152,13 @@ impl HiveAI {
         }
     }
 
-    pub fn apply<L: EventListener<HiveGameState>>(&self, engine: &mut Engine<HiveGameState, L>) {
-        if self.use_direct_move {
-            let rating = Rater::create_rating(engine, &HiveRater {});
-            let (_, indizes) = rating
-                .into_iter()
-                .max_by(|(val1, _), (val2, _)| val1.cmp(val2))
-                .unwrap();
+    pub fn apply<L: EventListener<HiveGameState>, F: Fn() -> bool>(
+        &self,
+        engine: &mut Engine<HiveGameState, L>,
+        should_cancel: F,
+    ) {
+        let indizes = self.run(engine, should_cancel);
+        if let Some(indizes) = indizes {
             for &i in indizes.iter() {
                 match engine.pull() {
                     GameState::PendingDecision(dec) => {
@@ -167,37 +167,41 @@ impl HiveAI {
                     _ => unreachable!(),
                 }
             }
-        } else {
-            self.alg.apply(engine);
         }
     }
 
-    pub fn run_all_ratings<L: EventListener<HiveGameState>>(
+    pub fn run_all_ratings<L: EventListener<HiveGameState>, F: Fn() -> bool>(
         &self,
         engine: &Engine<HiveGameState, L>,
-    ) -> Vec<(RatingType, Box<[usize]>)> {
+        should_cancel: F,
+    ) -> Option<Vec<(RatingType, Box<[usize]>)>> {
         if self.use_direct_move {
             let mut engine = Engine::new(2, engine.data().clone());
-            Rater::create_rating(&mut engine, &HiveRater {})
+            Some(Rater::create_rating(&mut engine, &HiveRater {}))
         } else {
-            self.alg.run_all_ratings(engine).unwrap()
+            match self
+                .alg
+                .run_all_ratings_with_cancellation(engine, should_cancel)
+            {
+                Ok(ratings) => Some(ratings),
+                Err(MinMaxError::Cancelled) => None,
+                Err(e) => panic!("invalid engine state: {:?}", e),
+            }
         }
     }
 
-    pub fn run<L: EventListener<HiveGameState>>(
+    pub fn run<L: EventListener<HiveGameState>, F: Fn() -> bool>(
         &self,
         engine: &Engine<HiveGameState, L>,
-    ) -> Box<[usize]> {
-        if self.use_direct_move {
-            let mut engine = Engine::new(2, engine.data().clone());
-            Rater::create_rating(&mut engine, &HiveRater {})
+        should_cancel: F,
+    ) -> Option<Box<[usize]>> {
+        self.run_all_ratings(engine, should_cancel).map(|ratings| {
+            ratings
                 .into_iter()
                 .max_by(|(a, _), (b, _)| a.cmp(b))
                 .unwrap()
                 .1
-        } else {
-            self.alg.run(engine).unwrap().1
-        }
+        })
     }
 }
 

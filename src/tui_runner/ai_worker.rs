@@ -31,7 +31,11 @@ pub fn start_ai_worker_thread(exchange_point: Arc<Mutex<AIExchange>>) {
         let player = state.player();
         let ai = &ais[usize::from(u8::from(level))];
         let engine = Engine::new(2, *state);
-        let ratings = ai.run_all_ratings(&engine);
+        let Some(ratings) = ai.run_all_ratings(&engine, || {
+            exchange_point.lock().unwrap().for_worker.is_some()
+        }) else {
+            continue;
+        };
         let (_, best_move) = ratings.iter().max_by_key(|(r, _)| r).unwrap();
 
         let mut exchange = exchange_point.lock().unwrap();

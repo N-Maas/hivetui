@@ -137,7 +137,7 @@ pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
                     }
                     Input::AI => {
                         let ai = &ais[usize::from(engine.data().player())];
-                        let path = ai.run(&engine);
+                        let path = ai.run(&engine, || false).unwrap();
                         pull_decision(&mut engine).select_option(path[0]);
                         let subdec = pull_decision(&mut engine);
                         let (from_field, to_field) = match subdec.context() {

@@ -24,7 +24,7 @@ pub fn print_move_ratings(
 
 pub fn print_ai_ratings(state: &HiveGameState, ai: &HiveAI) {
     let engine = Engine::new(2, state.clone());
-    let ratings = ai.run_all_ratings(&engine);
+    let ratings = ai.run_all_ratings(&engine, || false).unwrap();
     print_ratings_for_moves(state, &ratings);
 }
 
