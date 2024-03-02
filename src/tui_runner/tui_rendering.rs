@@ -43,10 +43,6 @@ pub struct AllState<'a> {
     pub graphics_state: GraphicsState,
 }
 
-pub const RED: Color = Color::from_u32(0x00E05959);
-
-pub const ORANGE: Color = Color::from_u32(0x00D89040);
-
 pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
 pub fn render(
@@ -202,6 +198,7 @@ pub fn render(
                     );
                 }
                 UIState::GameFinished(result) => {
+                    let primary_color = settings.color_scheme.primary();
                     let msg;
                     if let Some(player) = result.to_player() {
                         let player_name = match player {
@@ -210,7 +207,7 @@ pub fn render(
                         };
                         msg = Text::from(vec![
                             Line::raw(""),
-                            Line::styled("Victory!", RED).alignment(Alignment::Center),
+                            Line::styled("Victory!", primary_color).alignment(Alignment::Center),
                             Line::raw(""),
                             Line::styled(
                                 format!("The {} player has won!", player_name),
@@ -221,7 +218,7 @@ pub fn render(
                     } else {
                         msg = Text::from(vec![
                             Line::raw(""),
-                            Line::styled("Draw!", RED).alignment(Alignment::Center),
+                            Line::styled("Draw!", primary_color).alignment(Alignment::Center),
                             Line::raw(""),
                             Line::styled("None of the players could get on top!", Color::White)
                                 .alignment(Alignment::Center),
@@ -230,7 +227,7 @@ pub fn render(
                     frame.render_widget(Clear, msg_area);
                     frame.render_widget(
                         Paragraph::new(msg)
-                            .block(Block::default().borders(Borders::ALL).style(RED)),
+                            .block(Block::default().borders(Borders::ALL).style(primary_color)),
                         msg_area,
                     );
                 }
@@ -382,17 +379,26 @@ pub fn draw_board(
     draw_level_of_board(ctx, state, anim_ctx, board, 2);
 
     // is a specific field selected?
+    let primary_color = state.settings.color_scheme.primary();
     match state.ui_state {
         UIState::PositionSelected(index) | UIState::PieceSelected(index) => {
             let (x_mid, y_mid) = translate_index(index);
             let stack_size = board[index].len();
             let level = if stack_size <= 1 { 0 } else { stack_size - 1 };
-            tui_graphics::draw_interior_hex_border_lvl(ctx, x_mid, y_mid, 0.0, 0.0, RED, level);
+            tui_graphics::draw_interior_hex_border_lvl(
+                ctx,
+                x_mid,
+                y_mid,
+                0.0,
+                0.0,
+                primary_color,
+                level,
+            );
         }
         UIState::GameFinished(result) => {
             if let Some((index, _)) = find_losing_queen(board, result) {
                 let (x_mid, y_mid) = translate_index(index);
-                tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, RED);
+                tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, primary_color);
             }
         }
         _ => (),
@@ -408,9 +414,9 @@ pub fn draw_board(
         UIState::ShowOptions(false) | UIState::PieceSelected(_)
     ) {
         let color = if state.ui_state == UIState::ShowOptions(false) {
-            RED
+            state.settings.color_scheme.primary()
         } else {
-            ORANGE
+            state.settings.color_scheme.secondary()
         };
         for (&board_index, &number) in state.board_annotations.iter() {
             let (x, y) = translate_index(board_index);
@@ -488,6 +494,7 @@ pub fn draw_pieces(
         }
         ctx.layer();
         // draw the pieces themselves
+        let secondary_color = state.settings.color_scheme.secondary();
         for (i, (piece_t, count)) in it {
             if count > 3 - depth {
                 let (x, y) = get_coords(i, depth);
@@ -500,7 +507,7 @@ pub fn draw_pieces(
                         ctx.print(
                             x - zoom * 3.5 - 2.5,
                             -2.0,
-                            Line::styled(format!("[{number}]"), ORANGE),
+                            Line::styled(format!("[{number}]"), secondary_color),
                         );
                         ctx.print(
                             x + zoom * 1.0 + 1.2,

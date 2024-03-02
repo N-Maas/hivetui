@@ -1,4 +1,4 @@
-use tgp::engine::{Engine, EventListener, GameEngine, GameState};
+use tgp::engine::{Engine, EventListener, GameEngine};
 use tgp_ai::{
     add_context_to_ratings,
     rater::{DecisionType, Rater},

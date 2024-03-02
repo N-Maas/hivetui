@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::{
-    tui_rendering::{self, translate_index, DARK_WHITE, ORANGE, RED},
+    tui_rendering::{self, translate_index, DARK_WHITE},
     tui_settings::{AnimationStyle, GraphicsState, MovingTileStyle, Settings, WhiteTilesStyle},
 };
 
@@ -198,10 +198,6 @@ impl AnimationEffect for Box<dyn AnimationEffect> {
     }
 }
 
-pub fn do_nothing_effect(steps: usize) -> impl AnimationEffect {
-    BaseEffect::new_static(steps, Layer::Final, 0.0, 0.0, |_, _, _, _| ())
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct AnimationContext<'a> {
     pub graphics_state: &'a GraphicsState,
@@ -297,11 +293,13 @@ pub fn blink_field(
         x,
         y,
         move |ctx, _g, ratio, (x, y)| {
-            let r = ((1.0 - ratio) * f64::from(color_start.0) + ratio * f64::from(color_end.0))
+            // make it a bit less gray
+            let c_ratio = ratio - f64::min(ratio, 0.1);
+            let r = ((1.0 - c_ratio) * f64::from(color_start.0) + c_ratio * f64::from(color_end.0))
                 .round() as u32;
-            let g = ((1.0 - ratio) * f64::from(color_start.1) + ratio * f64::from(color_end.1))
+            let g = ((1.0 - c_ratio) * f64::from(color_start.1) + c_ratio * f64::from(color_end.1))
                 .round() as u32;
-            let b = ((1.0 - ratio) * f64::from(color_start.2) + ratio * f64::from(color_end.2))
+            let b = ((1.0 - c_ratio) * f64::from(color_start.2) + c_ratio * f64::from(color_end.2))
                 .round() as u32;
             let color = Color::from_u32((r << 16) | (g << 8) | b);
             tui_graphics::draw_interior_hex_border_lvl(ctx, x, y, 0.0, ratio * 10.0, color, level)
@@ -309,8 +307,14 @@ pub fn blink_field(
     )
 }
 
-pub fn blink_field_default(steps: usize, index: OpenIndex, level: usize) -> impl AnimationEffect {
-    blink_field(steps, index, (0xFF, 0x30, 0x30), (0x70, 0x70, 0x70), level)
+pub fn blink_field_default(
+    settings: &Settings,
+    steps: usize,
+    index: OpenIndex,
+    level: usize,
+) -> impl AnimationEffect {
+    let start = settings.color_scheme.extreme_values();
+    blink_field(steps, index, start, (0x70, 0x70, 0x70), level)
 }
 
 pub fn rainbow_field(
@@ -387,13 +391,14 @@ pub fn flying_piece(
     )
 }
 
-pub fn loader(steps: usize) -> impl AnimationEffect {
+pub fn loader(settings: &Settings, steps: usize) -> impl AnimationEffect {
+    let secondary_color = settings.color_scheme.secondary();
     BaseEffect::new_anchored(
         steps,
         Layer::Final,
         0.5,
         0.05,
-        |ctx, anim_ctx, ratio, (x, y)| {
+        move |ctx, anim_ctx, ratio, (x, y)| {
             let zoom = anim_ctx.graphics_state.zoom_level.multiplier();
             let x_range = zoom * 13.5;
             let y_range = zoom * 2.0;
@@ -416,7 +421,7 @@ pub fn loader(steps: usize) -> impl AnimationEffect {
                 ctx.draw(&Points {
                     coords: &points,
                     color: if inner {
-                        ORANGE
+                        secondary_color
                     } else {
                         Color::from_u32(0x00A0A0A0)
                     },
@@ -436,16 +441,19 @@ pub fn build_blink_animation(
     short: bool,
     level: usize,
 ) -> Animation {
+    let primary_color = settings.color_scheme.primary();
     let base_steps = if short { 20 } else { 30 };
     let steps = settings.get_animation_speed(player).map_steps(base_steps);
     match settings.animation_style {
-        AnimationStyle::Blink => Animation::new(blink_field_default(steps, index, level)),
-        AnimationStyle::Plain => Animation::new(mark_field((steps + 2) / 3, index, RED, level)),
+        AnimationStyle::Blink => Animation::new(blink_field_default(settings, steps, index, level)),
+        AnimationStyle::Plain => {
+            Animation::new(mark_field((steps + 2) / 3, index, primary_color, level))
+        }
         AnimationStyle::BlinkOnlyAi => {
             if settings.is_ai(player) {
-                Animation::new(blink_field_default(steps, index, level))
+                Animation::new(blink_field_default(settings, steps, index, level))
             } else {
-                Animation::new(mark_field((steps + 1) / 2, index, RED, level))
+                Animation::new(mark_field((steps + 1) / 2, index, primary_color, level))
             }
         }
         AnimationStyle::Rainbow => {
@@ -479,13 +487,13 @@ pub fn build_complete_piece_move_animation(
         piece_t,
         start,
         target,
-        RED,
+        settings.color_scheme.primary(),
         settings.moving_tile_style != MovingTileStyle::Minimal,
         color,
         settings.moving_tile_style == MovingTileStyle::Filled,
         settings.white_tiles_style,
     );
-    let mark = mark_field(fly_steps, target, ORANGE, 0);
+    let mark = mark_field(fly_steps, target, settings.color_scheme.secondary(), 0);
     let blink = build_blink_animation(settings, player, target, true, target_level);
     Animation::with_state(
         ChainedEffect::new(CombinedEffect::new(flying, mark), blink.into_effect()),

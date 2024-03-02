@@ -218,7 +218,7 @@ impl AIState {
         if self.should_show_animation && self.animation_progress < Self::AI_DELAY {
             animation
                 .try_set()
-                .map(|s| s.set_animation(Animation::new(loader(30))));
+                .map(|s| s.set_animation(Animation::new(loader(settings, 30))));
         }
     }
 

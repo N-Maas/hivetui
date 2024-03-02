@@ -7,8 +7,6 @@ use std::fmt::Debug;
 
 use crate::pieces::Player;
 
-use super::tui_rendering::RED;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum ZoomLevel {
@@ -186,6 +184,54 @@ pub enum AnimationStyle {
     Rainbow = 3,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum ColorScheme {
+    #[default]
+    Red = 0,
+    Blue = 1,
+    Green = 2,
+    Purple = 3,
+}
+
+impl ColorScheme {
+    pub const RED: Color = Color::from_u32(0x00E03030);
+    pub const ORANGE: Color = Color::from_u32(0x00D89030);
+    pub const BLUE: Color = Color::from_u32(0x00308AEA);
+    pub const TURQUOISE: Color = Color::from_u32(0x0030D0D0);
+    pub const GREEN: Color = Color::from_u32(0x0010D050);
+    pub const YELLOW_GREEN: Color = Color::from_u32(0x00A0D030);
+    pub const PURPLE: Color = Color::from_u32(0x009030DA);
+    pub const PINK: Color = Color::from_u32(0x00D830B0);
+
+    pub fn primary(&self) -> Color {
+        match self {
+            ColorScheme::Red => Self::RED,
+            ColorScheme::Blue => Self::BLUE,
+            ColorScheme::Green => Self::GREEN,
+            ColorScheme::Purple => Self::PURPLE,
+        }
+    }
+
+    pub fn secondary(&self) -> Color {
+        match self {
+            ColorScheme::Red => Self::ORANGE,
+            ColorScheme::Blue => Self::TURQUOISE,
+            ColorScheme::Green => Self::YELLOW_GREEN,
+            ColorScheme::Purple => Self::PINK,
+        }
+    }
+
+    pub fn extreme_values(&self) -> (u8, u8, u8) {
+        match self {
+            ColorScheme::Red => (0xFF, 0x30, 0x30),
+            ColorScheme::Blue => (0x30, 0x90, 0xEA),
+            ColorScheme::Green => (0x30, 0xFF, 0x30),
+            ColorScheme::Purple => (0x90, 0x30, 0xEA),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct GraphicsState {
     pub center_x: f64,
@@ -240,6 +286,7 @@ pub struct Settings {
     pub animation_speed: AnimationSpeed,
     pub animation_style: AnimationStyle,
     pub moving_tile_style: MovingTileStyle,
+    pub color_scheme: ColorScheme,
 }
 
 impl Settings {
@@ -333,7 +380,7 @@ where
         let current_val = self.val(state);
         let str = self.texts[at];
         if usize::from(current_val) == at && highlight {
-            Span::styled(format!("<{str}>"), RED)
+            Span::styled(format!("<{str}>"), state.color_scheme.primary())
         } else if usize::from(current_val) == at {
             Span::raw(format!("<{str}>"))
         } else {
@@ -398,6 +445,11 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
             vec!["filled", "transparent", "minimal"],
             |state| &mut state.moving_tile_style,
         ),
+        create_menu_setting(
+            "color scheme: ",
+            vec!["red", "blue", "green", "purple"],
+            |state| &mut state.color_scheme,
+        ),
     ]
 }
 
@@ -408,7 +460,11 @@ pub fn render_settings(
 ) -> Text<'static> {
     let mut lines = Vec::<Line>::new();
     for (i, option) in settings_list.iter().enumerate() {
-        let color = if menu_index == i { RED } else { Color::White };
+        let color = if menu_index == i {
+            settings.color_scheme.primary()
+        } else {
+            Color::White
+        };
         let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
         if i <= 1 {
             spans.push(Span::raw(PLAYER_PREFIXES[i]));
