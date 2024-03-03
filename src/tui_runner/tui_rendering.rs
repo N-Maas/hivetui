@@ -86,10 +86,23 @@ const LONG_IN_GAME_HELP: &'static str = "\
     (for human players: AI assistant)\n\
     [u/z] to undo a move\n\
     [r/y] to redo a move\n\
-    [⌫/c] to cancel AI move/animation\n\
-    [n] to let the AI move (if not automatic)\n\
+    [c/BackSp] to cancel AI moves/animations\n\
+    [n] to start the AI move (if not automatic)\n\
     \n\
-    [a/Esc] to get back to the menu\
+    [q/Esc] to get back to the menu\
+";
+
+const SHORT_IN_GAME_HELP: &'static str = "\
+    press a number to select a move\n   \
+    (two digits: press [Space] or [↲] first)\n\
+    \n\
+    [↑↓←→] or [wasd] to move the screen\n\
+    [+-] or [PageDown PageUp] for zooming\n\
+    [h] to show AI suggested moves\n\
+    [u]ndo or [r]edo a move\n\
+    [c/BackSp] to cancel AI moves/animations\n\
+    [n] to start the AI move (if not automatic)\n\
+    [q/Esc] to get back to the menu\
 ";
 
 pub fn render(
@@ -102,22 +115,23 @@ pub fn render(
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.size();
-        let percentage_left = match state.settings.splitting {
-            ScreenSplitting::FarLeft => 55,
-            ScreenSplitting::Left => 60,
-            ScreenSplitting::Normal => 65,
-            ScreenSplitting::Right => 70,
-            ScreenSplitting::FarRight => 75,
+        let menu_contraint = match state.settings.splitting {
+            ScreenSplitting::Auto => Constraint::Max(62),
+            ScreenSplitting::FarLeft => Constraint::Percentage(50),
+            ScreenSplitting::Left => Constraint::Percentage(42),
+            ScreenSplitting::Normal => Constraint::Percentage(36),
+            ScreenSplitting::Right => Constraint::Percentage(30),
+            ScreenSplitting::FarRight => Constraint::Percentage(25),
         };
         let splitted_top_level = Layout::horizontal(vec![
             Constraint::Fill(1),
             Constraint::Max(25),
-            Constraint::Percentage(100 - percentage_left),
+            menu_contraint,
         ])
         .split(area);
         let splitted_in_game = Layout::horizontal(vec![
-            Constraint::Percentage(percentage_left),
-            Constraint::Percentage(100 - percentage_left),
+            Constraint::Fill(1),
+            menu_contraint,
         ])
         .split(area);
 
@@ -168,10 +182,10 @@ pub fn render(
                 frame.render_widget(paragraph, action_area);
             }
 
-            let (player_size, menu_size, mut help_size) = (5, 10, 15);
+            let (player_size, mut menu_size, mut help_size) = (5, 10, 15);
             let small_help = menu_area.height < player_size + menu_size + help_size;
             if small_help {
-                help_size = 8;
+                (menu_size, help_size) = (8, 8);
             }
             let [player_area, menu_area, help_area] = *Layout::vertical([
                 Constraint::Max(player_size),
@@ -210,11 +224,16 @@ pub fn render(
                 frame.render_widget(paragraph, help_area);
             }
         } else {
+            let piece_height = 10;
             let help_height = Text::raw(LONG_IN_GAME_HELP).height() as u16 + 2;
-            let [piece_area, tooltip_area] =
-                *Layout::vertical([Constraint::Fill(1), Constraint::Max(help_height)])
-                    .split(menu_area)
-            else {
+            let small_in_game_help = menu_area.height < piece_height + help_height;
+            let constraints = if small_in_game_help {
+                let small_height = Text::raw(SHORT_IN_GAME_HELP).height() as u16 + 2;
+                [Constraint::Min(piece_height - 3), Constraint::Max(small_height)]
+            } else {
+                [Constraint::Min(piece_height), Constraint::Max(help_height)]
+            };
+            let [piece_area, tooltip_area] = *Layout::vertical(constraints).split(menu_area) else {
                 unreachable!()
             };
 
@@ -252,7 +271,12 @@ pub fn render(
 
             // the in game help text
             {
-                let paragraph = Paragraph::new(LONG_IN_GAME_HELP)
+                let text = if small_in_game_help {
+                    SHORT_IN_GAME_HELP
+                } else {
+                    LONG_IN_GAME_HELP
+                };
+                let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Help").borders(Borders::ALL));
                 frame.render_widget(paragraph, tooltip_area);
             }
@@ -406,7 +430,7 @@ pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings)
 }
 
 pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<'static> {
-    let desired_width = 40;
+    let desired_width = 45;
     let mut text = Text::raw(format!("    {:<36}{}", "Move Description", "Rating"));
     for (i, (rating, indizes, ctx)) in ai_result.all_ratings.iter().enumerate() {
         let mut line = match ctx {

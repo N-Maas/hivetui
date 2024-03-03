@@ -119,12 +119,13 @@ pub enum BordersStyle {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum ScreenSplitting {
-    FarLeft = 0,
-    Left = 1,
     #[default]
-    Normal = 2,
-    Right = 3,
-    FarRight = 4,
+    Auto = 0,
+    FarLeft = 1,
+    Left = 2,
+    Normal = 3,
+    Right = 4,
+    FarRight = 5,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
@@ -423,14 +424,14 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
             &mut state.filter_ai_suggestions
         }),
         create_menu_setting(
-            "screen splitting: ",
-            vec!["1", "2", "3", "4", "5"],
-            |state| &mut state.splitting,
-        ),
-        create_menu_setting(
             "available pieces display size: ",
             vec!["1", "2", "3", "4", "5"],
             |state| &mut state.piece_zoom_level,
+        ),
+        create_menu_setting(
+            "screen splitting: ",
+            vec!["auto", "1", "2", "3", "4", "5"],
+            |state| &mut state.splitting,
         ),
         create_menu_setting(
             "white tiles filling style: ",
