@@ -78,6 +78,16 @@ pub enum PieceType {
 
 // note that both get_moves and is_movable do not consider the OHR yet
 impl PieceType {
+    pub fn name(&self) -> &'static str {
+        match self {
+            PieceType::Queen => "Queen",
+            PieceType::Ant => "Ant",
+            PieceType::Spider => "Spider",
+            PieceType::Grasshopper => "Grasshopper",
+            PieceType::Beetle => "Beetle",
+        }
+    }
+
     fn feasible_steps<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,

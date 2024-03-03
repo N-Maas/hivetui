@@ -1,21 +1,21 @@
 use super::{
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
-        render_settings, BordersStyle, GraphicsState, MenuSetting, ScreenSplitting, Settings,
-        WhiteTilesStyle,
+        render_settings, BordersStyle, ColorScheme, GraphicsState, MenuSetting, ScreenSplitting,
+        Settings, WhiteTilesStyle,
     },
-    AnimationState, UIState,
+    AIResult, AIState, AnimationState, UIState,
 };
 use crate::{
     pieces::{PieceType, Player},
-    state::{HiveBoard, HiveContent, HiveGameState, HiveResult},
+    state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
     tui_graphics,
 };
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
     style::Color,
-    text::{Line, Text},
+    text::{Line, Span, Text},
     widgets::{
         canvas::{Canvas, Context},
         Block, Borders, Clear, Paragraph, Widget,
@@ -24,6 +24,7 @@ use ratatui::{
 use std::{
     collections::{BTreeMap, HashMap},
     io::{self, Stdout},
+    iter,
 };
 use tgp_board::{
     open_board::OpenIndex,
@@ -39,6 +40,7 @@ pub struct AllState<'a> {
     pub piece_annotations: &'a HashMap<PieceType, usize>,
     pub ui_state: UIState,
     pub animation_state: &'a AnimationState,
+    pub ai_state: &'a AIState,
     pub menu_index: usize,
     pub graphics_state: GraphicsState,
 }
@@ -166,8 +168,24 @@ pub fn render(
             else {
                 unreachable!()
             };
+
+            // the AI suggested moves
+            if state.ui_state == UIState::ShowAIMoves {
+                let text;
+                if let Some(ai_result) = state.ai_state.actual_result() {
+                    text = ai_suggestions(ai_result, state.game_state);
+                } else {
+                    text = Text::raw("Waiting for AI calculation...");
+                }
+                let paragraph = Paragraph::new(text).block(
+                    Block::default()
+                        .title("Suggested Moves")
+                        .borders(Borders::ALL),
+                );
+                frame.render_widget(paragraph, piece_area);
+            }
             // the available pieces
-            {
+            else {
                 let zoom = state.settings.piece_zoom_level.multiplier();
                 let x_len = zoom * f64::from(2 * piece_area.width);
                 let y_len = zoom * 2.1 * f64::from(2 * piece_area.height);
@@ -228,6 +246,20 @@ pub fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
     (x * 21.0, y * 24.0 - x * 12.0)
 }
 
+pub fn color_palette(index: usize) -> Color {
+    match index {
+        0 => ColorScheme::RED,
+        1 => ColorScheme::BLUE,
+        2 => ColorScheme::GREEN,
+        3 => ColorScheme::PURPLE,
+        4 => ColorScheme::ORANGE,
+        5 => ColorScheme::TURQUOISE,
+        6 => ColorScheme::YELLOW_GREEN,
+        7 => ColorScheme::PINK,
+        _ => panic!("invalid color index"),
+    }
+}
+
 fn skip_turn_message(game_state: &HiveGameState) -> Paragraph<'static> {
     let player_name = match game_state.player() {
         Player::White => "white",
@@ -268,6 +300,55 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
         ]);
     }
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))
+}
+
+pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<'static> {
+    let mut text = Text::raw("");
+    let desired_width = 40;
+    for (i, (rating, indizes, ctx)) in ai_result.all_ratings.iter().enumerate() {
+        match ctx {
+            HiveContext::TargetField(ctx) => {
+                let &from = ctx.inner();
+                let piece = game_state.board()[from].top().unwrap();
+                let p_color = tui_graphics::piece_color(piece.p_type);
+                let mut line = Line::from(vec![
+                    Span::raw(format!("[{}] ", i + 1)),
+                    Span::raw("move "),
+                    Span::styled(piece.p_type.name(), p_color),
+                    Span::styled(format!(" ({}) ", i + 1), color_palette(i)),
+                    Span::raw("to field "),
+                    Span::styled(format!("({})", i + 1), color_palette(i)),
+                ]);
+                let offset = desired_width - line.width();
+                let placeholder = iter::repeat(" ").take(offset).collect::<String>();
+                line.spans.extend([
+                    Span::raw(placeholder),
+                    Span::styled(format!("{}", rating), color_palette(i)),
+                ]);
+                text.lines.push(line);
+            }
+            HiveContext::Piece(ctx) => {
+                let (p_type, _) = ctx[*indizes.last().unwrap()];
+                let p_color = tui_graphics::piece_color(p_type);
+                let mut line = Line::from(vec![
+                    Span::raw(format!("[{}] ", i + 1)),
+                    Span::raw("place "),
+                    Span::styled(p_type.name(), p_color),
+                    Span::raw(" at field "),
+                    Span::styled(format!("({})", i + 1), color_palette(i)),
+                ]);
+                let offset = desired_width - line.width();
+                let placeholder = iter::repeat(" ").take(offset).collect::<String>();
+                line.spans.extend([
+                    Span::raw(placeholder),
+                    Span::styled(format!("{}", rating), color_palette(i)),
+                ]);
+                text.lines.push(line);
+            }
+            _ => unreachable!("this context should not be possible here"),
+        }
+    }
+    text
 }
 
 fn draw_level_of_board(
@@ -458,6 +539,25 @@ pub fn draw_board(
                     y - zoom * 2.0,
                     Line::styled(format!("[{}]", number + 1), color),
                 );
+            }
+        }
+    } else if state.ui_state == UIState::ShowAIMoves {
+        if let Some(ai_result) = state.ai_state.actual_result() {
+            for (i, (_, indizes, context)) in ai_result.all_ratings.iter().enumerate() {
+                let annot = Line::styled(format!("({})", i + 1), color_palette(i));
+                match context {
+                    HiveContext::TargetField(context) => {
+                        let (x, y) = translate_index(*context.inner());
+                        ctx.print(x - zoom * 1.0, y - zoom * 2.0, annot.clone());
+                        let (x, y) = translate_index(context[*indizes.last().unwrap()]);
+                        ctx.print(x - zoom * 1.0, y - zoom * 2.0, annot);
+                    }
+                    HiveContext::Piece(context) => {
+                        let (x, y) = translate_index(*context.inner());
+                        ctx.print(x - zoom * 1.0, y - zoom * 2.0, annot.clone());
+                    }
+                    _ => unreachable!("this context should not be possible here"),
+                }
             }
         }
     }

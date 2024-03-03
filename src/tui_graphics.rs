@@ -287,6 +287,16 @@ pub fn draw_hex_interior(
     });
 }
 
+pub fn piece_color(piece_t: PieceType) -> Color {
+    match piece_t {
+        PieceType::Queen => Color::from_u32(0x00D0D010),
+        PieceType::Ant => Color::from_u32(0x0062A2F4),
+        PieceType::Spider => Color::from_u32(0x009A4800),
+        PieceType::Grasshopper => Color::from_u32(0x000DD084),
+        PieceType::Beetle => Color::from_u32(0x009A009A),
+    }
+}
+
 pub fn draw_piece(ctx: &mut Context<'_>, piece_t: PieceType, x_mid: f64, y_mid: f64, zoom: f64) {
     match piece_t {
         PieceType::Queen => draw_queen(ctx, x_mid, y_mid, zoom),
@@ -334,7 +344,7 @@ pub fn draw_tiny_piece(
 }
 
 pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
-    let color = Color::from_u32(0x00D0D010);
+    let color = piece_color(PieceType::Queen);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 4);
     if zoom <= 0.65 {
         ctx.draw(&Points {
@@ -423,7 +433,7 @@ pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
 }
 
 pub fn draw_ant(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x0062A2F4);
+    let color = piece_color(PieceType::Ant);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 5, 7);
     fill_rectangle(ctx, color, x_mid, y_mid, 0, 0, 4, 4);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 0, 3);
@@ -476,7 +486,7 @@ pub fn draw_ant(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
 }
 
 pub fn draw_spider(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x009A4800);
+    let color = piece_color(PieceType::Spider);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, -1, 2);
     ctx.draw(&Circle {
         x: x_mid,
@@ -568,7 +578,7 @@ pub fn draw_spider(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
 }
 
 pub fn draw_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x009A009A);
+    let color = piece_color(PieceType::Beetle);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 5);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, -1, 2);
     fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -6, -1);
@@ -629,7 +639,7 @@ pub fn draw_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
 }
 
 pub fn draw_small_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x009A009A);
+    let color = piece_color(PieceType::Beetle);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 8);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, 3, 5);
     fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -1, 3);
@@ -690,7 +700,7 @@ pub fn draw_small_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f
 }
 
 pub fn draw_tiny_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x009A009A);
+    let color = piece_color(PieceType::Beetle);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 8);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, 3, 6);
     ctx.draw(&Circle {
@@ -750,7 +760,7 @@ pub fn draw_tiny_beetle(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f6
 }
 
 pub fn draw_grasshopper(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
-    let color = Color::from_u32(0x000DD084);
+    let color = piece_color(PieceType::Grasshopper);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 8);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, -7, 6);
     ctx.draw(&Circle {

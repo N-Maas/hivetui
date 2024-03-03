@@ -48,6 +48,7 @@ enum UIState {
     GameFinished(HiveResult),
     /// true if the animation is waiting for ai
     PlaysAnimation(bool),
+    ShowAIMoves,
 }
 
 impl UIState {
@@ -59,6 +60,7 @@ impl UIState {
             UIState::PieceSelected(_) => true,
             UIState::GameFinished(_) => true,
             UIState::PlaysAnimation(_) => true,
+            UIState::ShowAIMoves => false,
         }
     }
 }
@@ -237,12 +239,16 @@ impl AIState {
         self.animation_progress = 0;
     }
 
-    fn result(&mut self) -> Option<AIResult> {
+    fn result(&self) -> Option<&AIResult> {
         if self.animation_progress >= Self::AI_DELAY {
-            self.result.take()
+            self.result.as_ref()
         } else {
             None
         }
+    }
+
+    fn actual_result(&self) -> Option<&AIResult> {
+        self.result.as_ref()
     }
 
     fn animation_has_started(&self) -> bool {
@@ -280,6 +286,7 @@ enum Event {
     Undo,
     Redo,
     LetAIMove,
+    Help,
     ZoomIn,
     ZoomOut,
     MoveLeft,
@@ -300,6 +307,7 @@ impl Event {
 
 /// pull event in internal represenation: handles mapping of raw key event
 fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result<Option<Event>> {
+    // TODO: AI help screen
     let top_level = ui_state == UIState::Toplevel;
     let is_skip = ui_state == UIState::ShowOptions(true);
     Ok(pull_key_event()?.and_then(|key| match key {
@@ -321,6 +329,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         } else {
             Event::LetAIMove
         }),
+        KeyCode::Char('h') => Some(Event::Help),
         KeyCode::Char('+') => Some(Event::ZoomIn),
         KeyCode::Char('-') => Some(Event::ZoomOut),
         KeyCode::Char('w') => Some(Event::MoveUp),
@@ -488,6 +497,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false),
                     UIState::GameFinished(_) => ui_state = UIState::Toplevel,
                     UIState::PlaysAnimation(_) => ui_state = UIState::Toplevel,
+                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false),
                 },
                 Event::Cancel => {
                     animation_state.stop();
@@ -522,6 +532,14 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                         ai_state.reset();
                     }
                 }
+                Event::Help => match ui_state {
+                    UIState::Toplevel => todo!("show rules summary"),
+                    UIState::ShowOptions(false)
+                    | UIState::PositionSelected(_)
+                    | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
+                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false),
+                    _ => (),
+                },
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
                 Event::MoveLeft => {
@@ -596,6 +614,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             board_annotations: &board_annotations,
             piece_annotations: &piece_annotations,
             ui_state,
+            ai_state: &ai_state,
             animation_state: &animation_state,
             menu_index,
             graphics_state,
@@ -659,7 +678,7 @@ fn update_game_state_and_fill_input_mapping(
                 if let Some(result) = ai_state.result() {
                     animation_state.stop();
                     assert!(result.player == Player::from(decision.player()));
-                    let best = result.best_move;
+                    let best = &result.best_move;
 
                     let context = match decision.context() {
                         HiveContext::BaseField(context) => context,
@@ -793,6 +812,14 @@ fn update_game_state_and_fill_input_mapping(
                     d.retract_all();
                 }
                 (UIState::PlaysAnimation(_), Err(_)) => (),
+                (UIState::ShowAIMoves, Ok(d)) => {
+                    d.retract_all();
+                }
+                (UIState::ShowAIMoves, Err(d)) => {
+                    if let Some(_index) = input.filter(|&index| index < d.option_count()) {
+                        todo!("handle input")
+                    }
+                }
             }
         }
         GameState::Finished(finished) => {
