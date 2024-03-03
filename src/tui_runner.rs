@@ -41,10 +41,10 @@ mod tui_settings;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum UIState {
-    /// selected menu option
     Toplevel,
-    /// true if the current turn must be skipped
-    ShowOptions(bool),
+    /// 1. true if the current turn must be skipped
+    /// 2. true if pieces are switched
+    ShowOptions(bool, bool),
     /// selected base field
     PositionSelected(OpenIndex),
     /// selected base field
@@ -59,7 +59,7 @@ impl UIState {
     fn top_level(&self) -> bool {
         match self {
             UIState::Toplevel => true,
-            UIState::ShowOptions(_) => false,
+            UIState::ShowOptions(_, _) => false,
             UIState::PositionSelected(_) => false,
             UIState::PieceSelected(_) => false,
             UIState::GameFinished(_) => false,
@@ -71,7 +71,7 @@ impl UIState {
     fn show_game(&self) -> bool {
         match self {
             UIState::Toplevel => false,
-            UIState::ShowOptions(_) => true,
+            UIState::ShowOptions(_, _) => true,
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
             UIState::GameFinished(_) => true,
@@ -82,9 +82,9 @@ impl UIState {
 
     fn state_changed(&mut self) {
         match self {
-            UIState::PositionSelected(_) => *self = UIState::ShowOptions(false),
-            UIState::PieceSelected(_) => *self = UIState::ShowOptions(false),
-            UIState::ShowAIMoves => *self = UIState::ShowOptions(false),
+            UIState::PositionSelected(_) => *self = UIState::ShowOptions(false, false),
+            UIState::PieceSelected(_) => *self = UIState::ShowOptions(false, false),
+            UIState::ShowAIMoves => *self = UIState::ShowOptions(false, false),
             _ => (),
         };
     }
@@ -337,7 +337,7 @@ impl Event {
 fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result<Option<Event>> {
     let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
-    let is_skip = ui_state == UIState::ShowOptions(true);
+    let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
         KeyCode::Char('q') => Some(Event::Exit),
@@ -507,12 +507,12 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             match e {
                 Event::Exit => match ui_state {
                     UIState::Toplevel => break,
-                    UIState::ShowOptions(_) => ui_state = UIState::Toplevel,
-                    UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false),
-                    UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false),
+                    UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
+                    UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
+                    UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::GameFinished(_) => ui_state = UIState::Toplevel,
                     UIState::PlaysAnimation(_) => ui_state = UIState::Toplevel,
-                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false),
+                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
                 },
                 Event::Switch => {
                     if ui_state.top_level() {
@@ -521,6 +521,8 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                         if menu_selection.index() >= max_index {
                             *menu_selection.index_mut() = max_index - 1;
                         }
+                    } else if let UIState::ShowOptions(is_skip, switch) = ui_state {
+                        ui_state = UIState::ShowOptions(is_skip, !switch);
                     }
                 }
                 Event::Cancel => {
@@ -530,14 +532,14 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 Event::SoftCancel => {
                     animation_state.stop();
                     if ui_state == UIState::ShowAIMoves {
-                        ui_state = UIState::ShowOptions(false);
+                        ui_state = UIState::ShowOptions(false, false);
                     }
                 }
                 Event::LetAIMove => {
                     ai_state.use_ai(&settings);
                 }
                 Event::ContinueGame => {
-                    ui_state = UIState::ShowOptions(false);
+                    ui_state = UIState::ShowOptions(false, false);
                 }
                 Event::NewGame => {
                     engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
@@ -545,7 +547,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     graphics_state.center_y = 0.0;
                     animation_state.reset();
                     ai_state.reset();
-                    ui_state = UIState::ShowOptions(false);
+                    ui_state = UIState::ShowOptions(false, false);
                 }
                 Event::Undo => {
                     if engine.undo_last_decision() {
@@ -563,10 +565,10 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 }
                 Event::Help => match ui_state {
                     UIState::Toplevel => todo!("show rules summary"),
-                    UIState::ShowOptions(false)
+                    UIState::ShowOptions(false, _)
                     | UIState::PositionSelected(_)
                     | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
-                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false),
+                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
                     _ => (),
                 },
                 Event::ZoomIn => graphics_state.zoom_in(),
@@ -619,7 +621,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         board_annotations.clear();
         piece_annotations.clear();
         let input = event.and_then(|e| {
-            if ui_state == UIState::ShowOptions(true) && e == Event::SoftCancel {
+            if matches!(ui_state, UIState::ShowOptions(true, _)) && e == Event::SoftCancel {
                 Some(0)
             } else {
                 e.as_selection()
@@ -646,7 +648,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         {
             ui_state = UIState::PlaysAnimation(false);
         } else if matches!(ui_state, UIState::PlaysAnimation(_)) {
-            ui_state = UIState::ShowOptions(false);
+            ui_state = UIState::ShowOptions(false, false);
         }
         // finally we render the UI
         let state = tui_rendering::AllState {
@@ -736,8 +738,8 @@ fn update_game_state_and_fill_input_mapping(
             match (*ui_state, follow_up) {
                 (UIState::Toplevel, Ok(d)) => d.retract_all(),
                 (UIState::Toplevel, Err(_)) => (),
-                (UIState::ShowOptions(_), Ok(d)) => d.retract_all(),
-                (UIState::ShowOptions(is_skip), Err(d)) => {
+                (UIState::ShowOptions(_, _), Ok(d)) => d.retract_all(),
+                (UIState::ShowOptions(is_skip, switch), Err(d)) => {
                     match d.context() {
                         HiveContext::BaseField(board_indizes) => {
                             if let Some(index) = input.filter(|&index| index < d.option_count()) {
@@ -757,14 +759,14 @@ fn update_game_state_and_fill_input_mapping(
                                 for (i, &board_index) in board_indizes.into_iter().enumerate() {
                                     board_annotations.insert(board_index, i);
                                 }
-                                *ui_state = UIState::ShowOptions(false);
+                                *ui_state = UIState::ShowOptions(false, switch);
                             }
                         }
                         HiveContext::SkipPlayer => {
                             if is_skip && input == Some(0) {
                                 d.select_option(0);
                             } else {
-                                *ui_state = UIState::ShowOptions(true);
+                                *ui_state = UIState::ShowOptions(true, switch);
                             }
                         }
                         _ => unreachable!("this can not be a follow-up decision"),
@@ -786,7 +788,7 @@ fn update_game_state_and_fill_input_mapping(
                     _ => unreachable!("this must be a follow-up decision"),
                 },
                 (UIState::PositionSelected(_), Err(_)) => {
-                    *ui_state = UIState::ShowOptions(false);
+                    *ui_state = UIState::ShowOptions(false, false);
                 }
                 (UIState::PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
@@ -811,10 +813,10 @@ fn update_game_state_and_fill_input_mapping(
                     _ => unreachable!("this must be a follow-up decision"),
                 },
                 (UIState::PieceSelected(_), Err(_)) => {
-                    *ui_state = UIState::ShowOptions(false);
+                    *ui_state = UIState::ShowOptions(false, false);
                 }
                 (UIState::GameFinished(_), follow_up) => {
-                    *ui_state = UIState::ShowOptions(false);
+                    *ui_state = UIState::ShowOptions(false, false);
                     if let Ok(d) = follow_up {
                         d.retract_all();
                     }

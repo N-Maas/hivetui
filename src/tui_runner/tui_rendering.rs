@@ -81,6 +81,7 @@ const IN_GAME_HELP_LONG: &'static str = "\
     \n\
     [↑↓←→] or [wasd] to move the screen\n\
     [+-] or [PageDown PageUp] for zooming\n\
+    [⇆] to switch the displayed pieces\n\
     \n\
     [h] to show AI suggested moves\n   \
     (for human players: AI assistant)\n\
@@ -98,6 +99,7 @@ const IN_GAME_HELP_SHORT: &'static str = "\
     \n\
     [↑↓←→] or [wasd] to move the screen\n\
     [+-] or [PageDown PageUp] for zooming\n\
+    [⇆] to switch the displayed pieces\n\
     [h] to show AI suggested moves\n\
     [u]ndo or [r]edo a move\n\
     [c/BackSp] to cancel AI moves/animations\n\
@@ -319,7 +321,7 @@ pub fn render(
                 .split(message_hor[1]);
                 let msg_area = message_vert[1];
                 match state.ui_state {
-                    UIState::ShowOptions(true) => {
+                    UIState::ShowOptions(true, _) => {
                         frame.render_widget(Clear, msg_area);
                         frame.render_widget(skip_turn_message(state.game_state), msg_area);
                     }
@@ -670,9 +672,9 @@ pub fn draw_board(
     // print indizes
     if matches!(
         state.ui_state,
-        UIState::ShowOptions(false) | UIState::PieceSelected(_)
+        UIState::ShowOptions(false, _) | UIState::PieceSelected(_)
     ) {
-        let color = if state.ui_state == UIState::ShowOptions(false) {
+        let color = if matches!(state.ui_state, UIState::ShowOptions(false, _)) {
             state.settings.color_scheme.primary()
         } else {
             state.settings.color_scheme.secondary()
@@ -744,7 +746,10 @@ pub fn draw_pieces(
     initial_pieces: &BTreeMap<PieceType, u32>,
 ) {
     let zoom = state.settings.piece_zoom_level.multiplier();
-    let player = if state.ui_state == UIState::PlaysAnimation(false) {
+    let player = if matches!(
+        state.ui_state,
+        UIState::PlaysAnimation(false) | UIState::ShowOptions(_, true)
+    ) {
         state.game_state.player().switched()
     } else {
         state.game_state.player()
