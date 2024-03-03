@@ -5,13 +5,9 @@ use std::{
 };
 
 use tgp::engine::Engine;
-use tgp_ai::RatingType;
-
-use crate::ai::{Difficulty, HiveAI};
 
 use super::{AIExchange, AIMessage, AIResult};
-
-const MOVES_CUTOFF: RatingType = 15;
+use crate::ai::{Difficulty, HiveAI};
 
 pub fn start_ai_worker_thread(exchange_point: Arc<Mutex<AIExchange>>) {
     let ais = [
@@ -40,8 +36,7 @@ pub fn start_ai_worker_thread(exchange_point: Arc<Mutex<AIExchange>>) {
             continue;
         };
         ratings.sort_by_key(|(r, _, _)| -r);
-        let (best_rating, best_move, _) = ratings.first().unwrap().clone();
-        ratings.retain(|(r, _, _)| best_rating - r <= MOVES_CUTOFF);
+        let (_, best_move, _) = ratings.first().unwrap().clone();
 
         let mut exchange = exchange_point.lock().unwrap();
         let return_result = match exchange.for_worker.as_ref() {
@@ -53,6 +48,7 @@ pub fn start_ai_worker_thread(exchange_point: Arc<Mutex<AIExchange>>) {
                 player,
                 best_move: best_move,
                 all_ratings: ratings,
+                annotations: Default::default(),
             }));
         }
     });

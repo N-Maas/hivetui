@@ -75,19 +75,27 @@ impl PlayerType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum AILevel {
-    BEGINNER = 0,
-    EASY = 1,
+    Beginner = 0,
+    Easy = 1,
     #[default]
-    NORMAL = 2,
-    HARD = 3,
+    Normal = 2,
+    Hard = 3,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum AIMoves {
     #[default]
-    AUTOMATIC = 0,
-    MANUAL = 1,
+    Automatic = 0,
+    Manual = 1,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum FilterAISuggestions {
+    #[default]
+    Yes = 0,
+    No = 1,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
@@ -279,6 +287,7 @@ pub struct Settings {
     pub black_player_type: PlayerType,
     pub ai_moves: AIMoves,
     pub ai_assistant: AILevel,
+    pub filter_ai_suggestions: FilterAISuggestions,
     pub piece_zoom_level: ZoomLevel,
     pub white_tiles_style: WhiteTilesStyle,
     pub borders_style: BordersStyle,
@@ -393,7 +402,7 @@ const PLAYER_PREFIXES: [&'static str; 2] = ["white player: ", "black player: "];
 const PLAYER_TYPES: [&'static str; 5] = ["human", "beginner", "easy", "normal", "hard"];
 
 pub fn is_ai_setting(menu_index: usize) -> bool {
-    [0, 1, 2, 3].contains(&menu_index)
+    [0, 1, 2, 3, 4].contains(&menu_index)
 }
 
 pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
@@ -409,6 +418,9 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
         }),
         create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4"], |state| {
             &mut state.ai_assistant
+        }),
+        create_menu_setting("filter suggested moves: ", vec!["yes", "no"], |state| {
+            &mut state.filter_ai_suggestions
         }),
         create_menu_setting(
             "screen splitting: ",

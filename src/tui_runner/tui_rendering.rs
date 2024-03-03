@@ -10,6 +10,7 @@ use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
     tui_graphics,
+    tui_runner::tui_settings::FilterAISuggestions,
 };
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
@@ -18,14 +19,16 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{
         canvas::{Canvas, Context},
-        Block, Borders, Clear, Paragraph, Widget,
+        Block, Borders, Clear, Paragraph,
     },
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt::format,
     io::{self, Stdout},
     iter,
 };
+use tgp_ai::RatingType;
 use tgp_board::{
     open_board::OpenIndex,
     structures::directions::{DirectionEnumerable, HexaDirection},
@@ -302,52 +305,105 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))
 }
 
-pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<'static> {
-    let mut text = Text::raw("");
-    let desired_width = 40;
-    for (i, (rating, indizes, ctx)) in ai_result.all_ratings.iter().enumerate() {
+pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings) {
+    const MOVES_CUTOFF: RatingType = 20;
+    const MAX_PER_FIELD: usize = 2;
+    const MAX_SHOWN: usize = 8;
+
+    let ratings = &mut ai_result.all_ratings;
+    let annotations = &mut ai_result.annotations;
+    let mut seen_pieces = HashSet::new();
+    let (best_rating, _, _) = ratings[0];
+    ratings.retain(|(r, _, _)| best_rating - r <= MOVES_CUTOFF);
+
+    let filter_moves = settings.filter_ai_suggestions == FilterAISuggestions::Yes;
+    annotations.clear();
+    let mut index = 0;
+    while index < ratings.len() {
+        let (_, path, ctx) = &ratings[index];
+        let keep_entry;
         match ctx {
+            HiveContext::TargetField(ctx) => {
+                let &from = ctx.inner();
+                let to = ctx[*path.last().unwrap()];
+                let from_len = annotations.entry(from).or_default().len();
+                let to_len = annotations.entry(to).or_default().len();
+                keep_entry = !filter_moves || (from_len < MAX_PER_FIELD && to_len < MAX_PER_FIELD);
+                if keep_entry {
+                    // unwrap: the entries already exist due to the previous entry calls
+                    annotations.get_mut(&from).unwrap().push((index, None));
+                    annotations.get_mut(&to).unwrap().push((index, None));
+                }
+            }
+            HiveContext::Piece(ctx) => {
+                let &field = ctx.inner();
+                let (piece_t, _) = ctx[*path.last().unwrap()];
+                let entry = annotations.entry(field).or_default();
+                keep_entry = !filter_moves
+                    || (entry.len() < MAX_PER_FIELD && !seen_pieces.contains(&piece_t));
+                if keep_entry {
+                    entry.push((index, Some(piece_t)));
+                    seen_pieces.insert(piece_t);
+                }
+            }
+            _ => unreachable!("this context should not be possible here"),
+        };
+        if keep_entry {
+            index += 1;
+        } else {
+            ratings.remove(index);
+        }
+    }
+    while ratings.len() > MAX_SHOWN {
+        ratings.pop();
+    }
+}
+
+pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<'static> {
+    let desired_width = 40;
+    let mut text = Text::raw(format!("    {:<36}{}", "Move Description", "Rating"));
+    for (i, (rating, indizes, ctx)) in ai_result.all_ratings.iter().enumerate() {
+        let mut line = match ctx {
             HiveContext::TargetField(ctx) => {
                 let &from = ctx.inner();
                 let piece = game_state.board()[from].top().unwrap();
                 let p_color = tui_graphics::piece_color(piece.p_type);
-                let mut line = Line::from(vec![
-                    Span::raw(format!("[{}] ", i + 1)),
+                let line = Line::from(vec![
+                    Span::styled(format!("[{}] ", i + 1), color_palette(i)),
                     Span::raw("move "),
                     Span::styled(piece.p_type.name(), p_color),
-                    Span::styled(format!(" ({}) ", i + 1), color_palette(i)),
-                    Span::raw("to field "),
+                    Span::raw(" according to "),
                     Span::styled(format!("({})", i + 1), color_palette(i)),
                 ]);
-                let offset = desired_width - line.width();
-                let placeholder = iter::repeat(" ").take(offset).collect::<String>();
-                line.spans.extend([
-                    Span::raw(placeholder),
-                    Span::styled(format!("{}", rating), color_palette(i)),
-                ]);
-                text.lines.push(line);
+                line
             }
             HiveContext::Piece(ctx) => {
                 let (p_type, _) = ctx[*indizes.last().unwrap()];
                 let p_color = tui_graphics::piece_color(p_type);
-                let mut line = Line::from(vec![
-                    Span::raw(format!("[{}] ", i + 1)),
+                let line = Line::from(vec![
+                    Span::styled(format!("[{}] ", i + 1), color_palette(i)),
                     Span::raw("place "),
                     Span::styled(p_type.name(), p_color),
                     Span::raw(" at field "),
-                    Span::styled(format!("({})", i + 1), color_palette(i)),
+                    Span::styled(format!("({}{})", p_type.letter(), i + 1), color_palette(i)),
                 ]);
-                let offset = desired_width - line.width();
-                let placeholder = iter::repeat(" ").take(offset).collect::<String>();
-                line.spans.extend([
-                    Span::raw(placeholder),
-                    Span::styled(format!("{}", rating), color_palette(i)),
-                ]);
-                text.lines.push(line);
+                line
             }
             _ => unreachable!("this context should not be possible here"),
-        }
+        };
+        let offset = desired_width - usize::min(line.width(), desired_width - 1);
+        let placeholder = iter::repeat(" ").take(offset).collect::<String>();
+        line.spans.extend([
+            Span::raw(placeholder),
+            Span::styled(format!("{:>3}", rating), color_palette(i)),
+        ]);
+        text.lines.push(line);
     }
+    text.extend([
+        Line::raw(""),
+        Line::raw("press a number to apply the according move"),
+        Line::raw("[Esc] or [h] to return"),
+    ]);
     text
 }
 
@@ -392,15 +448,19 @@ fn draw_level_of_board(
                     } else {
                         Color::from_u32(0)
                     };
-                    let y_offset = (1.0 - scale) * 10.0 + level as f64 * 0.5;
-                    tui_graphics::draw_hex_interior(
-                        ctx,
-                        x_mid,
-                        y_mid + y_offset,
-                        color,
-                        false,
-                        scale,
-                    );
+                    if level == 0 {
+                        draw_interior(ctx, state.settings.white_tiles_style, x_mid, y_mid, color);
+                    } else {
+                        let y_offset = (1.0 - scale) * 10.0 + level as f64 * 0.5;
+                        tui_graphics::draw_hex_interior(
+                            ctx,
+                            x_mid,
+                            y_mid + y_offset,
+                            color,
+                            false,
+                            scale,
+                        );
+                    }
                 }
             });
     }
@@ -543,20 +603,43 @@ pub fn draw_board(
         }
     } else if state.ui_state == UIState::ShowAIMoves {
         if let Some(ai_result) = state.ai_state.actual_result() {
-            for (i, (_, indizes, context)) in ai_result.all_ratings.iter().enumerate() {
-                let annot = Line::styled(format!("({})", i + 1), color_palette(i));
-                match context {
-                    HiveContext::TargetField(context) => {
-                        let (x, y) = translate_index(*context.inner());
-                        ctx.print(x - zoom * 1.0, y - zoom * 2.0, annot.clone());
-                        let (x, y) = translate_index(context[*indizes.last().unwrap()]);
-                        ctx.print(x - zoom * 1.0, y - zoom * 2.0, annot);
+            let annot_to_str = |(i, piece_t): (usize, Option<PieceType>)| {
+                let str = if let Some(piece_t) = piece_t {
+                    format!("({}{})", piece_t.letter(), i + 1)
+                } else {
+                    format!("({})", i + 1)
+                };
+                Line::styled(str, color_palette(i))
+            };
+
+            for (&field, annots) in ai_result.annotations.iter().filter(|(_, a)| !a.is_empty()) {
+                let pair_up = annots.len() > 2;
+                let rows = if pair_up {
+                    (annots.len() + 1) / 2
+                } else {
+                    annots.len()
+                };
+                let y_diff_per_row = 4.3;
+                let y_start_offset = 0.5 * y_diff_per_row * ((rows - 1) as f64) - 2.0;
+                for row_index in 0..rows {
+                    let y_offset = zoom * (y_start_offset - row_index as f64 * y_diff_per_row);
+                    let (x, y) = translate_index(field);
+                    if pair_up && 2 * row_index + 1 < annots.len() {
+                        ctx.print(
+                            x - zoom * 6.0,
+                            y + y_offset,
+                            annot_to_str(annots[2 * row_index]),
+                        );
+                        ctx.print(
+                            x + zoom * 2.0,
+                            y + y_offset,
+                            annot_to_str(annots[2 * row_index + 1]),
+                        );
+                    } else {
+                        let a = annots[if pair_up { 2 * row_index } else { row_index }];
+                        let x_shift = if a.1.is_some() { 2.0 } else { 1.0 };
+                        ctx.print(x - zoom * x_shift, y + y_offset, annot_to_str(a));
                     }
-                    HiveContext::Piece(context) => {
-                        let (x, y) = translate_index(*context.inner());
-                        ctx.print(x - zoom * 1.0, y - zoom * 2.0, annot.clone());
-                    }
-                    _ => unreachable!("this context should not be possible here"),
                 }
             }
         }

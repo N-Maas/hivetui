@@ -88,6 +88,10 @@ impl PieceType {
         }
     }
 
+    pub fn letter(&self) -> &'static str {
+        &self.name()[0..1]
+    }
+
     fn feasible_steps<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,

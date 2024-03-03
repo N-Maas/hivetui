@@ -20,7 +20,9 @@ use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
-    tui_runner::{tui_animations::loader, tui_settings::AIMoves},
+    tui_runner::{
+        tui_animations::loader, tui_rendering::postprocess_ai_suggestions, tui_settings::AIMoves,
+    },
 };
 
 use self::{
@@ -62,6 +64,15 @@ impl UIState {
             UIState::PlaysAnimation(_) => true,
             UIState::ShowAIMoves => false,
         }
+    }
+
+    fn state_changed(&mut self) {
+        match self {
+            UIState::PositionSelected(_) => *self = UIState::ShowOptions(false),
+            UIState::PieceSelected(_) => *self = UIState::ShowOptions(false),
+            UIState::ShowAIMoves => *self = UIState::ShowOptions(false),
+            _ => (),
+        };
     }
 }
 
@@ -131,6 +142,7 @@ struct AIResult {
     player: Player,
     best_move: Box<[usize]>,
     all_ratings: Vec<(RatingType, Box<[usize]>, HiveContext)>,
+    annotations: HashMap<OpenIndex, Vec<(usize, Option<PieceType>)>>,
 }
 
 #[derive(Debug)]
@@ -203,14 +215,15 @@ impl AIState {
             self.exchange_point.lock().unwrap().for_worker =
                 Some(AIMessage::Start(level, Box::new(state.clone())));
             self.current_player = player;
-            self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::AUTOMATIC;
+            self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::Automatic;
             self.should_show_animation = settings.is_ai(player);
             self.is_started = true;
         }
 
         {
             let mut exchange = self.exchange_point.lock().unwrap();
-            if let Some(result) = exchange.for_runner.take() {
+            if let Some(mut result) = exchange.for_runner.take() {
+                postprocess_ai_suggestions(result.as_mut(), settings);
                 self.result = Some(*result);
             }
         }
@@ -307,7 +320,7 @@ impl Event {
 
 /// pull event in internal represenation: handles mapping of raw key event
 fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result<Option<Event>> {
-    // TODO: AI help screen
+    let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state == UIState::Toplevel;
     let is_skip = ui_state == UIState::ShowOptions(true);
     Ok(pull_key_event()?.and_then(|key| match key {
@@ -339,7 +352,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         KeyCode::Enter | KeyCode::Char(' ') => {
             if top_level {
                 Some(Event::ContinueGame)
-            } else if !animation && !two_digit && !is_skip {
+            } else if !animation && !two_digit && !is_skip && !show_suggestions {
                 Some(Event::TwoDigitInit)
             } else if key == KeyCode::Enter {
                 Some(Event::SoftCancel)
@@ -455,18 +468,6 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     loop {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
-        if animation_state
-            .animation()
-            .is_some_and(|a| !a.is_finished())
-            && ui_state.show_game()
-            && !matches!(ui_state, UIState::GameFinished(_))
-            && !ai_state.animation_has_started()
-        {
-            // TODO: interaction with AI?!
-            ui_state = UIState::PlaysAnimation(false);
-        } else if matches!(ui_state, UIState::PlaysAnimation(_)) {
-            ui_state = UIState::ShowOptions(false);
-        }
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
         let mut event = pull_event(ui_state, digits.is_some(), animation_state.runs())?;
         if let Some(e) = event {
@@ -505,6 +506,9 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 }
                 Event::SoftCancel => {
                     animation_state.stop();
+                    if ui_state == UIState::ShowAIMoves {
+                        ui_state = UIState::ShowOptions(false);
+                    }
                 }
                 Event::LetAIMove => {
                     ai_state.use_ai(&settings);
@@ -524,12 +528,14 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     if engine.undo_last_decision() {
                         animation_state.reset();
                         ai_state.reset();
+                        ui_state.state_changed();
                     }
                 }
                 Event::Redo => {
                     if engine.redo_decision() {
                         animation_state.reset();
                         ai_state.reset();
+                        ui_state.state_changed();
                     }
                 }
                 Event::Help => match ui_state {
@@ -607,6 +613,18 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             input,
         );
 
+        // update ui state if an animation was started
+        if animation_state
+            .animation()
+            .is_some_and(|a| !a.is_finished())
+            && ui_state.show_game()
+            && !matches!(ui_state, UIState::GameFinished(_))
+            && !ai_state.animation_has_started()
+        {
+            ui_state = UIState::PlaysAnimation(false);
+        } else if matches!(ui_state, UIState::PlaysAnimation(_)) {
+            ui_state = UIState::ShowOptions(false);
+        }
         // finally we render the UI
         let state = tui_rendering::AllState {
             game_state: engine.data(),
@@ -653,10 +671,10 @@ fn update_game_state_and_fill_input_mapping(
 ) {
     match engine.pull() {
         GameState::PendingEffect(pe) => {
-            // TODO: start animations here?!
             ai_state.reset();
             animation_state.reset_count();
-            pe.next_effect()
+            pe.next_effect();
+            ui_state.state_changed();
         }
         GameState::PendingDecision(decision) => {
             ai_state.update(
@@ -679,42 +697,7 @@ fn update_game_state_and_fill_input_mapping(
                     animation_state.stop();
                     assert!(result.player == Player::from(decision.player()));
                     let best = &result.best_move;
-
-                    let context = match decision.context() {
-                        HiveContext::BaseField(context) => context,
-                        HiveContext::SkipPlayer => {
-                            decision.select_option(0);
-                            return;
-                        }
-                        _ => unreachable!(""),
-                    };
-                    let position = context[best[0]];
-                    decision.select_option(best[0]);
-
-                    if let GameState::PendingDecision(next) = engine.pull() {
-                        next.into_follow_up_decision().map(|d| match d.context() {
-                            HiveContext::TargetField(targets) => {
-                                handle_moved_piece(
-                                    d,
-                                    targets,
-                                    best[1],
-                                    position,
-                                    settings,
-                                    animation_state,
-                                );
-                            }
-                            HiveContext::Piece(_) => {
-                                handle_placed_piece(
-                                    d,
-                                    best[1],
-                                    position,
-                                    settings,
-                                    animation_state,
-                                );
-                            }
-                            _ => unreachable!(""),
-                        });
-                    }
+                    apply_computed_move(engine, best, settings, animation_state);
                 } else {
                     *ui_state = UIState::PlaysAnimation(ai_state.animation_has_started());
                 }
@@ -815,9 +798,14 @@ fn update_game_state_and_fill_input_mapping(
                 (UIState::ShowAIMoves, Ok(d)) => {
                     d.retract_all();
                 }
-                (UIState::ShowAIMoves, Err(d)) => {
-                    if let Some(_index) = input.filter(|&index| index < d.option_count()) {
-                        todo!("handle input")
+                (UIState::ShowAIMoves, Err(_)) => {
+                    if let Some(index) = input {
+                        let choice = ai_state
+                            .actual_result()
+                            .and_then(|result| result.all_ratings.get(index));
+                        if let Some((_, path, _)) = choice {
+                            apply_computed_move(engine, path, settings, animation_state);
+                        }
                     }
                 }
             }
@@ -840,10 +828,43 @@ fn update_game_state_and_fill_input_mapping(
                     }
                 }
             }
-            if ui_state.show_game() && !animation_state.runs() {
+            if *ui_state != UIState::Toplevel && !animation_state.runs() {
                 *ui_state = UIState::GameFinished(result);
             }
         }
+    }
+}
+
+fn apply_computed_move(
+    engine: &mut Engine<HiveGameState, EventLog<HiveGameState>>,
+    path: &[usize],
+    settings: &Settings,
+    animation_state: &mut AnimationState,
+) {
+    let GameState::PendingDecision(decision) = engine.pull() else {
+        panic!("invalid engine state for this call");
+    };
+    let context = match decision.context() {
+        HiveContext::BaseField(context) => context,
+        HiveContext::SkipPlayer => {
+            decision.select_option(0);
+            return;
+        }
+        _ => panic!("invalid engine state for this call"),
+    };
+    let position = context[path[0]];
+    decision.select_option(path[0]);
+
+    if let GameState::PendingDecision(next) = engine.pull() {
+        next.into_follow_up_decision().map(|d| match d.context() {
+            HiveContext::TargetField(targets) => {
+                handle_moved_piece(d, targets, path[1], position, settings, animation_state);
+            }
+            HiveContext::Piece(_) => {
+                handle_placed_piece(d, path[1], position, settings, animation_state);
+            }
+            _ => unreachable!(""),
+        });
     }
 }
 
