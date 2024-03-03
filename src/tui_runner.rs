@@ -29,7 +29,9 @@ use self::{
     ai_worker::start_ai_worker_thread,
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
     tui_rendering::find_losing_queen,
-    tui_settings::{is_ai_setting, AILevel, GraphicsState, PlayerType, Settings},
+    tui_settings::{
+        AILevel, GraphicsState, PlayerType, SettingRenderer, SettingSelection, Settings,
+    },
 };
 
 mod ai_worker;
@@ -304,6 +306,7 @@ enum Event {
     TwoDigitInit,
     TwoDigitAdd(usize),
     Exit,
+    Switch,
     Cancel,
     SoftCancel,
     ContinueGame,
@@ -360,6 +363,8 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         KeyCode::Enter | KeyCode::Char(' ') => {
             if ui_state == UIState::Toplevel {
                 Some(Event::ContinueGame)
+            } else if top_level {
+                Some(Event::Exit)
             } else if !animation && !two_digit && !is_skip && !show_suggestions {
                 Some(Event::TwoDigitInit)
             } else if key == KeyCode::Enter {
@@ -368,6 +373,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
                 None
             }
         }
+        KeyCode::Tab => Some(Event::Switch),
         KeyCode::Backspace => Some(Event::Cancel),
         KeyCode::Char(c) => {
             let to_index = c.to_string().parse::<usize>();
@@ -459,7 +465,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     terminal.hide_cursor()?;
     terminal.clear()?;
 
-    let settings_list = tui_settings::build_settings();
+    let setting_renderer = SettingRenderer::build();
     let mut settings = Settings::default();
     settings.black_player_type = PlayerType::AI2;
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
@@ -468,7 +474,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::Toplevel;
     let mut ai_state = AIState::new();
-    let mut menu_index = 2;
+    let mut menu_selection = SettingSelection::General(2);
     let mut animation_state: AnimationState = AnimationState::default();
     let mut digits: Option<Vec<usize>> = None;
     start_ai_worker_thread(ai_state.exchange_point.clone());
@@ -508,6 +514,15 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     UIState::PlaysAnimation(_) => ui_state = UIState::Toplevel,
                     UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false),
                 },
+                Event::Switch => {
+                    if ui_state.top_level() {
+                        menu_selection = menu_selection.switched();
+                        let max_index = setting_renderer.max_index(menu_selection);
+                        if menu_selection.index() >= max_index {
+                            *menu_selection.index_mut() = max_index - 1;
+                        }
+                    }
+                }
                 Event::Cancel => {
                     animation_state.stop();
                     ai_state.dont_use_ai();
@@ -569,29 +584,29 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
                 }
                 Event::MenuOption(new_index) => {
-                    if new_index < settings_list.len() {
-                        menu_index = new_index;
+                    if new_index < setting_renderer.max_index(menu_selection) {
+                        *menu_selection.index_mut() = new_index;
                     }
                 }
                 Event::MenuUp => {
-                    if menu_index > 0 {
-                        menu_index -= 1;
+                    if menu_selection.index() > 0 {
+                        *menu_selection.index_mut() -= 1;
                     }
                 }
                 Event::MenuDown => {
-                    if menu_index + 1 < settings_list.len() {
-                        menu_index += 1;
+                    if menu_selection.index() + 1 < setting_renderer.max_index(menu_selection) {
+                        *menu_selection.index_mut() += 1;
                     }
                 }
                 Event::MenuIncrease => {
-                    settings_list[menu_index].increase(&mut settings);
-                    if is_ai_setting(menu_index) {
+                    setting_renderer.get(menu_selection).increase(&mut settings);
+                    if setting_renderer.is_ai_setting(menu_selection) {
                         ai_state.reset();
                     }
                 }
                 Event::MenuDecrease => {
-                    settings_list[menu_index].decrease(&mut settings);
-                    if is_ai_setting(menu_index) {
+                    setting_renderer.get(menu_selection).decrease(&mut settings);
+                    if setting_renderer.is_ai_setting(menu_selection) {
                         ai_state.reset();
                     }
                 }
@@ -642,10 +657,16 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             ui_state,
             ai_state: &ai_state,
             animation_state: &animation_state,
-            menu_index,
+            menu_selection,
             graphics_state,
         };
-        tui_rendering::render(&mut terminal, &settings_list, state, &mut settings, &pieces)?;
+        tui_rendering::render(
+            &mut terminal,
+            &setting_renderer,
+            state,
+            &mut settings,
+            &pieces,
+        )?;
         // update animation state
         animation_state.next_step();
     }

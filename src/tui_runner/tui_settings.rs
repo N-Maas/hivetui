@@ -2,6 +2,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use ratatui::{
     style::Color,
     text::{Line, Span, Text},
+    widgets::{Block, Borders, Paragraph},
 };
 use std::fmt::Debug;
 
@@ -402,124 +403,250 @@ where
 const PLAYER_PREFIXES: [&'static str; 2] = ["white player: ", "black player: "];
 const PLAYER_TYPES: [&'static str; 5] = ["human", "beginner", "easy", "normal", "hard"];
 
-pub fn is_ai_setting(menu_index: usize) -> bool {
-    [0, 1, 2, 3, 4].contains(&menu_index)
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SettingSelection {
+    General(usize),
+    Graphics(usize),
 }
 
-pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
-    vec![
-        create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), |state| {
-            &mut state.white_player_type
-        }),
-        create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), |state| {
-            &mut state.black_player_type
-        }),
-        create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
-            &mut state.ai_moves
-        }),
-        create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4"], |state| {
-            &mut state.ai_assistant
-        }),
-        create_menu_setting("filter suggested moves: ", vec!["yes", "no"], |state| {
-            &mut state.filter_ai_suggestions
-        }),
-        create_menu_setting(
-            "available pieces display size: ",
-            vec!["1", "2", "3", "4", "5"],
-            |state| &mut state.piece_zoom_level,
-        ),
-        create_menu_setting(
-            "screen splitting: ",
-            vec!["auto", "1", "2", "3", "4", "5"],
-            |state| &mut state.splitting,
-        ),
-        create_menu_setting(
-            "white tiles filling style: ",
-            vec!["full", "border", "hybrid"],
-            |state| &mut state.white_tiles_style,
-        ),
-        create_menu_setting(
-            "border drawing style: ",
-            vec!["complete", "partial", "none"],
-            |state| &mut state.borders_style,
-        ),
-        create_menu_setting(
-            "animation speed: ",
-            vec!["1", "2", "3", "4", "5", "6", "off"],
-            |state| &mut state.animation_speed,
-        ),
-        create_menu_setting(
-            "animation style: ",
-            vec!["blink", "only-ai", "plain", "rainbow"],
-            |state| &mut state.animation_style,
-        ),
-        create_menu_setting(
-            "moving tile style: ",
-            vec!["filled", "transparent", "minimal"],
-            |state| &mut state.moving_tile_style,
-        ),
-        create_menu_setting(
-            "color scheme: ",
-            vec!["red", "blue", "green", "purple"],
-            |state| &mut state.color_scheme,
-        ),
-    ]
-}
-
-pub fn render_player_settings(
-    settings: &mut Settings,
-    settings_list: &[Box<dyn MenuSetting>],
-    menu_index: usize,
-) -> Text<'static> {
-    let mut lines = Vec::new();
-    for (i, option) in settings_list[0..2].iter().enumerate() {
-        let color = if menu_index == i {
-            settings.color_scheme.primary()
-        } else {
-            Color::White
-        };
-        let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
-        spans.push(Span::raw(PLAYER_PREFIXES[i]));
-        let position: u8 = if i == 0 {
-            settings.white_player_type.into()
-        } else {
-            settings.black_player_type.into()
-        };
-        spans.push(Span::raw(PLAYER_TYPES[position as usize]));
-        if position > 0 {
-            spans.push(Span::raw(" AI"));
+impl SettingSelection {
+    pub fn index(&self) -> usize {
+        match *self {
+            SettingSelection::General(i) => i,
+            SettingSelection::Graphics(i) => i,
         }
-        lines.push(Line::from(spans));
+    }
 
-        spans = Vec::new();
-        if menu_index == i {
-            spans.push(Span::raw("    "));
-            spans.push(option.get_entry(settings, menu_index == i, 0));
-            spans.push(Span::raw(" or AI: "));
-            for level in 1..PLAYER_TYPES.len() {
-                spans.push(option.get_entry(settings, menu_index == i, level));
+    pub fn index_mut(&mut self) -> &mut usize {
+        match self {
+            SettingSelection::General(i) => i,
+            SettingSelection::Graphics(i) => i,
+        }
+    }
+
+    pub fn switched(self) -> SettingSelection {
+        match self {
+            SettingSelection::General(i) => SettingSelection::Graphics(i),
+            SettingSelection::Graphics(i) => SettingSelection::General(i),
+        }
+    }
+}
+
+pub struct SettingRenderer {
+    players: [Box<dyn MenuSetting>; 2],
+    general: Vec<Box<dyn MenuSetting>>,
+    graphic: Vec<Box<dyn MenuSetting>>,
+}
+
+impl SettingRenderer {
+    pub fn get(&self, selection: SettingSelection) -> &dyn MenuSetting {
+        match selection {
+            SettingSelection::General(index) => {
+                if index < 2 {
+                    self.players[index].as_ref()
+                } else {
+                    self.general[index - 2].as_ref()
+                }
+            }
+            SettingSelection::Graphics(index) => {
+                if index < 2 {
+                    self.players[index].as_ref()
+                } else {
+                    self.graphic[index - 2].as_ref()
+                }
             }
         }
-        lines.push(Line::from(spans));
     }
-    Text::from(lines)
-}
 
-pub fn render_settings(
-    settings: &mut Settings,
-    settings_list: &[Box<dyn MenuSetting>],
-    menu_index: usize,
-) -> Text<'static> {
-    let mut lines = Vec::new();
-    for (i, option) in settings_list.iter().enumerate().skip(2) {
-        let color = if menu_index == i {
-            settings.color_scheme.primary()
-        } else {
-            Color::White
-        };
-        let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
-        spans.extend(option.get_line(settings, menu_index == i));
-        lines.push(Line::from(spans));
+    pub fn max_index(&self, selection: SettingSelection) -> usize {
+        match selection {
+            SettingSelection::General(_) => self.general.len() + 2,
+            SettingSelection::Graphics(_) => self.graphic.len() + 2,
+        }
     }
-    Text::from(lines)
+
+    pub fn is_ai_setting(&self, selection: SettingSelection) -> bool {
+        if let SettingSelection::General(index) = selection {
+            index <= 4
+        } else {
+            selection.index() <= 1
+        }
+    }
+
+    pub fn build() -> Self {
+        Self {
+            players: [
+                create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), |state| {
+                    &mut state.white_player_type
+                }),
+                create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), |state| {
+                    &mut state.black_player_type
+                }),
+            ],
+            general: vec![
+                create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
+                    &mut state.ai_moves
+                }),
+                create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4"], |state| {
+                    &mut state.ai_assistant
+                }),
+                create_menu_setting("filter suggested moves: ", vec!["yes", "no"], |state| {
+                    &mut state.filter_ai_suggestions
+                }),
+                create_menu_setting(
+                    "available pieces display size: ",
+                    vec!["1", "2", "3", "4", "5"],
+                    |state| &mut state.piece_zoom_level,
+                ),
+                create_menu_setting(
+                    "screen splitting: ",
+                    vec!["auto", "1", "2", "3", "4", "5"],
+                    |state| &mut state.splitting,
+                ),
+            ],
+            graphic: vec![
+                create_menu_setting(
+                    "color scheme: ",
+                    vec!["red", "blue", "green", "purple"],
+                    |state| &mut state.color_scheme,
+                ),
+                create_menu_setting(
+                    "animation speed: ",
+                    vec!["1", "2", "3", "4", "5", "6", "off"],
+                    |state| &mut state.animation_speed,
+                ),
+                create_menu_setting(
+                    "animation style: ",
+                    vec!["blink", "only-ai", "plain", "rainbow"],
+                    |state| &mut state.animation_style,
+                ),
+                create_menu_setting(
+                    "border drawing style: ",
+                    vec!["complete", "partial", "none"],
+                    |state| &mut state.borders_style,
+                ),
+                create_menu_setting(
+                    "moving tile style: ",
+                    vec!["filled", "transparent", "minimal"],
+                    |state| &mut state.moving_tile_style,
+                ),
+                create_menu_setting(
+                    "white tiles filling style: ",
+                    vec!["full", "border", "hybrid"],
+                    |state| &mut state.white_tiles_style,
+                ),
+            ],
+        }
+    }
+
+    pub fn render_player_settings(
+        &self,
+        settings: &mut Settings,
+        selection: SettingSelection,
+    ) -> Text<'static> {
+        let mut lines = Vec::new();
+        for (i, option) in self.players.iter().enumerate() {
+            let color = if selection.index() == i {
+                settings.color_scheme.primary()
+            } else {
+                Color::White
+            };
+            let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
+            spans.push(Span::raw(PLAYER_PREFIXES[i]));
+            let position: u8 = if i == 0 {
+                settings.white_player_type.into()
+            } else {
+                settings.black_player_type.into()
+            };
+            spans.push(Span::raw(PLAYER_TYPES[position as usize]));
+            if position > 0 {
+                spans.push(Span::raw(" AI"));
+            }
+            lines.push(Line::from(spans));
+
+            spans = Vec::new();
+            if selection.index() == i {
+                spans.push(Span::raw("    "));
+                spans.push(option.get_entry(settings, selection.index() == i, 0));
+                spans.push(Span::raw(" or AI: "));
+                for level in 1..PLAYER_TYPES.len() {
+                    spans.push(option.get_entry(settings, selection.index() == i, level));
+                }
+            }
+            lines.push(Line::from(spans));
+        }
+        Text::from(lines)
+    }
+
+    pub fn render_current_settings(
+        &self,
+        settings: &mut Settings,
+        selection: SettingSelection,
+    ) -> Paragraph<'static> {
+        match selection {
+            SettingSelection::General(_) => self.render_general_settings(settings, selection),
+            SettingSelection::Graphics(_) => self.render_graphic_settings(settings, selection),
+        }
+    }
+
+    pub fn render_general_settings(
+        &self,
+        settings: &mut Settings,
+        selection: SettingSelection,
+    ) -> Paragraph<'static> {
+        let index = match selection {
+            SettingSelection::General(index) => index,
+            SettingSelection::Graphics(_) => 0,
+        };
+        let mut text = self.render_settings(settings, &self.general, index);
+        text.lines.push(Line::raw(""));
+        text.lines
+            .push(Line::raw("[⇆] to switch to graphic settings"));
+        Paragraph::new(text).block(
+            Block::default()
+                .title("General Settings")
+                .borders(Borders::ALL),
+        )
+    }
+
+    pub fn render_graphic_settings(
+        &self,
+        settings: &mut Settings,
+        selection: SettingSelection,
+    ) -> Paragraph<'static> {
+        let index = match selection {
+            SettingSelection::General(_) => 0,
+            SettingSelection::Graphics(index) => index,
+        };
+        let mut text = self.render_settings(settings, &self.graphic, index);
+        text.lines.push(Line::raw(""));
+        text.lines
+            .push(Line::raw("[⇆] to switch to general settings"));
+        Paragraph::new(text).block(
+            Block::default()
+                .title("Graphic Settings")
+                .borders(Borders::ALL),
+        )
+    }
+
+    fn render_settings(
+        &self,
+        settings: &mut Settings,
+        list: &[Box<dyn MenuSetting>],
+        index: usize,
+    ) -> Text<'static> {
+        let mut lines = Vec::new();
+        for (i, option) in list.iter().enumerate() {
+            let i = i + 2;
+            let color = if index == i {
+                settings.color_scheme.primary()
+            } else {
+                Color::White
+            };
+            let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
+            spans.extend(option.get_line(settings, index == i));
+            lines.push(Line::from(spans));
+        }
+        Text::from(lines)
+    }
 }

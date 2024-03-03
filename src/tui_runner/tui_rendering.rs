@@ -1,8 +1,8 @@
 use super::{
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
-        render_player_settings, render_settings, BordersStyle, ColorScheme, GraphicsState,
-        MenuSetting, ScreenSplitting, Settings, WhiteTilesStyle,
+        BordersStyle, ColorScheme, GraphicsState, ScreenSplitting, SettingRenderer,
+        SettingSelection, Settings, WhiteTilesStyle,
     },
     AIResult, AIState, AnimationState, UIState,
 };
@@ -43,7 +43,7 @@ pub struct AllState<'a> {
     pub ui_state: UIState,
     pub animation_state: &'a AnimationState,
     pub ai_state: &'a AIState,
-    pub menu_index: usize,
+    pub menu_selection: SettingSelection,
     pub graphics_state: GraphicsState,
 }
 
@@ -75,7 +75,7 @@ const MENU_HELP_SHORT: &'static str = "\
     [←→] to change the current setting
 ";
 
-const LONG_IN_GAME_HELP: &'static str = "\
+const IN_GAME_HELP_LONG: &'static str = "\
     press a number to select a move\n   \
     (two digits: press [Space] or [↲] first)\n\
     \n\
@@ -92,7 +92,7 @@ const LONG_IN_GAME_HELP: &'static str = "\
     [q/Esc] to get back to the menu\
 ";
 
-const SHORT_IN_GAME_HELP: &'static str = "\
+const IN_GAME_HELP_SHORT: &'static str = "\
     press a number to select a move\n   \
     (two digits: press [Space] or [↲] first)\n\
     \n\
@@ -107,7 +107,7 @@ const SHORT_IN_GAME_HELP: &'static str = "\
 
 pub fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    settings_list: &[Box<dyn MenuSetting>],
+    setting_renderer: &SettingRenderer,
     state: AllState<'_>,
     // we don't actually mutate anything, this is just an API limitation
     settings: &mut Settings,
@@ -129,11 +129,8 @@ pub fn render(
             menu_contraint,
         ])
         .split(area);
-        let splitted_in_game = Layout::horizontal(vec![
-            Constraint::Fill(1),
-            menu_contraint,
-        ])
-        .split(area);
+        let splitted_in_game =
+            Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).split(area);
 
         let splitted_layout = if state.ui_state.top_level() {
             splitted_top_level
@@ -182,33 +179,55 @@ pub fn render(
                 frame.render_widget(paragraph, action_area);
             }
 
-            let (player_size, mut menu_size, mut help_size) = (5, 10, 15);
-            let small_help = menu_area.height < player_size + menu_size + help_size;
-            if small_help {
-                (menu_size, help_size) = (8, 8);
+            let (player_size, mut settings_size, mut help_size) = (5, 10, 15);
+            let both_settings = menu_area.height >= 27 + help_size;
+            let small_help = menu_area.height < player_size + settings_size + help_size;
+            assert!(!(both_settings && small_help));
+            if both_settings {
+                settings_size = 22;
             }
-            let [player_area, menu_area, help_area] = *Layout::vertical([
+            if small_help {
+                (settings_size, help_size) = (8, 8);
+            }
+            let [player_area, settings_area, help_area] = *Layout::vertical([
                 Constraint::Max(player_size),
-                Constraint::Min(menu_size),
+                Constraint::Min(settings_size),
                 Constraint::Min(help_size),
             ])
             .split(menu_area) else {
                 unreachable!()
             };
-            // the players/settings
+            // the players
             {
-                let text = render_player_settings(settings, settings_list, state.menu_index);
+                let text = setting_renderer.render_player_settings(settings, state.menu_selection);
                 let paragraph = Paragraph::new(text).block(
                     Block::default()
                         .title("Players")
                         .borders(Borders::BOTTOM.complement()),
                 );
                 frame.render_widget(paragraph, player_area);
+            }
 
-                let text = render_settings(settings, settings_list, state.menu_index);
-                let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Settings").borders(Borders::ALL));
-                frame.render_widget(paragraph, menu_area);
+            // the settings
+            {
+                if both_settings {
+                    let [general, graphic] =
+                        *Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)])
+                            .split(settings_area)
+                    else {
+                        unreachable!()
+                    };
+                    let par =
+                        setting_renderer.render_general_settings(settings, state.menu_selection);
+                    frame.render_widget(par, general);
+                    let par =
+                        setting_renderer.render_graphic_settings(settings, state.menu_selection);
+                    frame.render_widget(par, graphic);
+                } else {
+                    let par =
+                        setting_renderer.render_current_settings(settings, state.menu_selection);
+                    frame.render_widget(par, settings_area);
+                }
             }
 
             // the top level help text
@@ -225,11 +244,14 @@ pub fn render(
             }
         } else {
             let piece_height = 10;
-            let help_height = Text::raw(LONG_IN_GAME_HELP).height() as u16 + 2;
+            let help_height = Text::raw(IN_GAME_HELP_LONG).height() as u16 + 2;
             let small_in_game_help = menu_area.height < piece_height + help_height;
             let constraints = if small_in_game_help {
-                let small_height = Text::raw(SHORT_IN_GAME_HELP).height() as u16 + 2;
-                [Constraint::Min(piece_height - 3), Constraint::Max(small_height)]
+                let small_height = Text::raw(IN_GAME_HELP_SHORT).height() as u16 + 2;
+                [
+                    Constraint::Min(piece_height - 3),
+                    Constraint::Max(small_height),
+                ]
             } else {
                 [Constraint::Min(piece_height), Constraint::Max(help_height)]
             };
@@ -272,9 +294,9 @@ pub fn render(
             // the in game help text
             {
                 let text = if small_in_game_help {
-                    SHORT_IN_GAME_HELP
+                    IN_GAME_HELP_SHORT
                 } else {
-                    LONG_IN_GAME_HELP
+                    IN_GAME_HELP_LONG
                 };
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Help").borders(Borders::ALL));
@@ -431,7 +453,7 @@ pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings)
 
 pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<'static> {
     let desired_width = 45;
-    let mut text = Text::raw(format!("    {:<36}{}", "Move Description", "Rating"));
+    let mut text = Text::raw(format!("    {:<40}{}", "Move Description", "Rating"));
     for (i, (rating, indizes, ctx)) in ai_result.all_ratings.iter().enumerate() {
         let mut line = match ctx {
             HiveContext::TargetField(ctx) => {
