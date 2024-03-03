@@ -85,6 +85,14 @@ pub enum AILevel {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
+pub enum AutomaticCameraMoves {
+    #[default]
+    On = 0,
+    Off = 1,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
 pub enum AIMoves {
     #[default]
     Automatic = 0,
@@ -287,6 +295,7 @@ impl GraphicsState {
 pub struct Settings {
     pub white_player_type: PlayerType,
     pub black_player_type: PlayerType,
+    pub automatic_camera_moves: AutomaticCameraMoves,
     pub ai_moves: AIMoves,
     pub ai_assistant: AILevel,
     pub filter_ai_suggestions: FilterAISuggestions,
@@ -484,6 +493,9 @@ impl SettingRenderer {
                 }),
             ],
             general: vec![
+                create_menu_setting("automatic camera moves: ", vec!["on", "off"], |state| {
+                    &mut state.automatic_camera_moves
+                }),
                 create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
                     &mut state.ai_moves
                 }),

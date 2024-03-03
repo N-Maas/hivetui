@@ -28,9 +28,10 @@ use crate::{
 use self::{
     ai_worker::start_ai_worker_thread,
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
-    tui_rendering::find_losing_queen,
+    tui_rendering::{find_losing_queen, translate_index},
     tui_settings::{
-        AILevel, GraphicsState, PlayerType, SettingRenderer, SettingSelection, Settings,
+        AILevel, AutomaticCameraMoves, GraphicsState, PlayerType, SettingRenderer,
+        SettingSelection, Settings,
     },
 };
 
@@ -90,21 +91,68 @@ impl UIState {
     }
 }
 
+struct CameraMove {
+    current_step: usize,
+    max_steps: usize,
+    from: (f64, f64),
+    to: (f64, f64),
+}
+
+impl CameraMove {
+    fn build(steps: usize, from: (f64, f64), to: (f64, f64)) -> Self {
+        Self {
+            current_step: 0,
+            max_steps: steps,
+            from,
+            to,
+        }
+    }
+
+    fn make_step(&mut self) -> Option<(f64, f64)> {
+        if self.current_step >= self.max_steps {
+            return None;
+        }
+
+        let pos_from_frac = |fraction| {
+            let progress = 2.0
+                * if fraction <= 0.5 {
+                    fraction * fraction
+                } else {
+                    0.5 - (1.0 - fraction) * (1.0 - fraction)
+                };
+            (
+                (1.0 - progress) * self.from.0 + progress * self.to.0,
+                (1.0 - progress) * self.from.1 + progress * self.to.1,
+            )
+        };
+
+        let frac_old = self.current_step as f64 / self.max_steps as f64;
+        self.current_step += 1;
+        let frac = self.current_step as f64 / self.max_steps as f64;
+        let (x_old, y_old) = pos_from_frac(frac_old);
+        let (x_new, y_new) = pos_from_frac(frac);
+        Some((x_new - x_old, y_new - y_old))
+    }
+}
+
 #[derive(Default)]
 struct AnimationState {
     animation: Option<Animation>,
     count: usize,
+    center: Option<(f64, f64)>,
 }
 
 struct AnimationStateSetter<'a> {
     animation: &'a mut Option<Animation>,
     count: &'a mut usize,
+    center: &'a mut Option<(f64, f64)>,
 }
 
 impl AnimationStateSetter<'_> {
-    fn set_animation(self, a: Animation) {
+    fn set_animation(self, a: Animation, center: Option<(f64, f64)>) {
         *self.animation = Some(a);
         *self.count += 1;
+        *self.center = center;
     }
 }
 
@@ -120,7 +168,7 @@ impl AnimationState {
     fn next_step(&mut self) {
         if let Some(animation) = self.animation.as_mut() {
             if animation.is_finished() {
-                self.animation = None;
+                self.stop();
             } else {
                 animation.next_step();
             }
@@ -133,16 +181,18 @@ impl AnimationState {
             None => Some(AnimationStateSetter {
                 animation: &mut self.animation,
                 count: &mut self.count,
+                center: &mut self.center,
             }),
         }
     }
 
     fn stop(&mut self) {
         self.animation = None;
+        self.center = None;
     }
 
     fn reset(&mut self) {
-        self.animation = None;
+        self.stop();
         self.count = 0;
     }
 
@@ -248,7 +298,7 @@ impl AIState {
             if self.animation_progress < Self::AI_DELAY || self.result.is_none() {
                 animation
                     .try_set()
-                    .map(|s| s.set_animation(Animation::new(loader(settings, 30))));
+                    .map(|s| s.set_animation(Animation::new(loader(settings, 30)), None));
             }
         }
     }
@@ -476,6 +526,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     let mut ai_state = AIState::new();
     let mut menu_selection = SettingSelection::General(2);
     let mut animation_state: AnimationState = AnimationState::default();
+    let mut camera_move: Option<CameraMove> = None;
     let mut digits: Option<Vec<usize>> = None;
     start_ai_worker_thread(ai_state.exchange_point.clone());
 
@@ -650,6 +701,19 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         } else if matches!(ui_state, UIState::PlaysAnimation(_)) {
             ui_state = UIState::ShowOptions(false, false);
         }
+        // do we need to update the camera position?
+        if let Some(c_move) = camera_move.as_mut() {
+            let active = c_move
+                .make_step()
+                .map(|(x_diff, y_diff)| {
+                    graphics_state.center_x += x_diff;
+                    graphics_state.center_y += y_diff;
+                })
+                .is_some();
+            if !active {
+                camera_move = None;
+            }
+        }
         // finally we render the UI
         let state = tui_rendering::AllState {
             game_state: engine.data(),
@@ -662,15 +726,41 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             menu_selection,
             graphics_state,
         };
-        tui_rendering::render(
+        let (x_bounds, y_bounds) = tui_rendering::render(
             &mut terminal,
             &setting_renderer,
             state,
             &mut settings,
             &pieces,
         )?;
+
         // update animation state
         animation_state.next_step();
+        // should we move the camera?
+        let Some(animation) = animation_state.animation() else {
+            continue;
+        };
+        if ui_state.top_level()
+            || settings.automatic_camera_moves == AutomaticCameraMoves::Off
+            || animation.current_step > 1
+        {
+            continue;
+        }
+        if let Some((x_to, y_to)) = animation_state.center {
+            let x_range = (x_bounds[1] - x_bounds[0]).abs();
+            let y_range = (y_bounds[1] - y_bounds[0]).abs();
+            let x_mid = graphics_state.center_x;
+            let y_mid = graphics_state.center_y;
+            if (x_to - x_mid).abs() > 0.33 * x_range || (y_to - y_mid).abs() > 0.33 * y_range {
+                let new_x = x_mid.max(x_to - 0.15 * x_range).min(x_to + 0.15 * x_range);
+                let new_y = y_mid.max(y_to - 0.15 * y_range).min(y_to + 0.15 * y_range);
+                camera_move = Some(CameraMove::build(
+                    animation.total_steps / 2,
+                    (x_mid, y_mid),
+                    (new_x, new_y),
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -853,9 +943,11 @@ fn update_game_state_and_fill_input_mapping(
                     if let Some((index, player)) =
                         find_losing_queen(finished.data().board(), result)
                     {
-                        set_animation.set_animation(build_blink_animation(
-                            settings, player, index, false, 0,
-                        ));
+                        let center = translate_index(index);
+                        set_animation.set_animation(
+                            build_blink_animation(settings, player, index, false, 0),
+                            Some(center),
+                        );
                     }
                 }
             }
@@ -908,10 +1000,11 @@ fn handle_placed_piece(
 ) {
     let player = Player::from(dec.player());
     if settings.should_play_animation(player) {
-        animation
-            .try_set()
-            .unwrap()
-            .set_animation(build_blink_animation(settings, player, pos, false, 0));
+        let center = translate_index(pos);
+        animation.try_set().unwrap().set_animation(
+            build_blink_animation(settings, player, pos, false, 0),
+            Some(center),
+        );
     }
     dec.select_option(index);
 }
@@ -930,17 +1023,19 @@ fn handle_moved_piece(
         let piece_t = board.get(pos).and_then(|c| c.top()).unwrap().p_type;
         let target = context[index];
         let target_level = board[target].len();
-        animation
-            .try_set()
-            .unwrap()
-            .set_animation(build_complete_piece_move_animation(
+        let (x1, y1) = translate_index(pos);
+        let (x2, y2) = translate_index(target);
+        animation.try_set().unwrap().set_animation(
+            build_complete_piece_move_animation(
                 settings,
                 piece_t,
                 player,
                 pos,
                 target,
                 target_level,
-            ));
+            ),
+            Some(((0.25 * x1 + 0.75 * x2), (0.25 * y1 + 0.75 * y2))),
+        );
     }
     dec.select_option(index);
 }

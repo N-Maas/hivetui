@@ -208,8 +208,8 @@ pub struct AnimationContext<'a> {
 pub struct Animation {
     effect: Box<dyn AnimationEffect>,
     temporary_state: Box<dyn Fn(&HiveGameState, usize) -> Option<HiveGameState>>,
-    current_step: usize,
-    total_steps: usize,
+    pub current_step: usize,
+    pub total_steps: usize,
 }
 
 impl Animation {

@@ -114,7 +114,8 @@ pub fn render(
     // we don't actually mutate anything, this is just an API limitation
     settings: &mut Settings,
     initial_pieces: &BTreeMap<PieceType, u32>,
-) -> io::Result<()> {
+) -> io::Result<([f64; 2], [f64; 2])> {
+    let mut output_bound = ([0.0, 0.0], [0.0, 0.0]);
     terminal.draw(|frame| {
         let area = frame.size();
         let menu_contraint = match state.settings.splitting {
@@ -165,6 +166,7 @@ pub fn render(
                 .y_bounds(y_bounds)
                 .paint(|ctx| draw_board(ctx, state, x_bounds, y_bounds));
             frame.render_widget(canvas, canvas_area);
+            output_bound = (x_bounds, y_bounds);
         }
 
         if state.ui_state.top_level() {
@@ -334,7 +336,7 @@ pub fn render(
             }
         }
     })?;
-    Ok(())
+    Ok(output_bound)
 }
 
 pub fn translate_index(OpenIndex { x, y }: OpenIndex) -> (f64, f64) {
@@ -713,19 +715,19 @@ pub fn draw_board(
                 } else {
                     annots.len()
                 };
-                let y_diff_per_row = 4.3;
+                let y_diff_per_row = 4.26;
                 let y_start_offset = 0.5 * y_diff_per_row * ((rows - 1) as f64) - 2.0;
                 for row_index in 0..rows {
                     let y_offset = zoom * (y_start_offset - row_index as f64 * y_diff_per_row);
                     let (x, y) = translate_index(field);
                     if pair_up && 2 * row_index + 1 < annots.len() {
                         ctx.print(
-                            x - zoom * 6.0,
+                            x - zoom * 5.97,
                             y + y_offset,
                             annot_to_str(annots[2 * row_index]),
                         );
                         ctx.print(
-                            x + zoom * 2.0,
+                            x + zoom * 2.1,
                             y + y_offset,
                             annot_to_str(annots[2 * row_index + 1]),
                         );
