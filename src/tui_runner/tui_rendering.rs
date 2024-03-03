@@ -97,7 +97,7 @@ pub fn render(
         ])
         .split(area);
 
-        let splitted_layout = if let UIState::Toplevel = state.ui_state {
+        let splitted_layout = if state.ui_state.top_level() {
             splitted_top_level
         } else {
             splitted_in_game.clone()
@@ -115,7 +115,7 @@ pub fn render(
             let y_len = zoom * y_factor * (f64::from(canvas_area.height) - 2.5);
 
             // use same center with the top level layout
-            if let UIState::Toplevel = state.ui_state {
+            if state.ui_state.top_level() {
                 let alt_x_len = zoom * (f64::from(splitted_in_game[0].width) - 2.5);
                 let diff = x_len - alt_x_len;
                 center_x += diff;
@@ -130,7 +130,7 @@ pub fn render(
             frame.render_widget(canvas, canvas_area);
         }
 
-        if let UIState::Toplevel = state.ui_state {
+        if state.ui_state.top_level() {
             // the actions
             {
                 let action_area = splitted_layout[1];

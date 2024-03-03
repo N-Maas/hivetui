@@ -54,6 +54,18 @@ enum UIState {
 }
 
 impl UIState {
+    fn top_level(&self) -> bool {
+        match self {
+            UIState::Toplevel => true,
+            UIState::ShowOptions(_) => false,
+            UIState::PositionSelected(_) => false,
+            UIState::PieceSelected(_) => false,
+            UIState::GameFinished(_) => false,
+            UIState::PlaysAnimation(_) => false,
+            UIState::ShowAIMoves => false,
+        }
+    }
+
     fn show_game(&self) -> bool {
         match self {
             UIState::Toplevel => false,
@@ -321,7 +333,7 @@ impl Event {
 /// pull event in internal represenation: handles mapping of raw key event
 fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result<Option<Event>> {
     let show_suggestions = ui_state == UIState::ShowAIMoves;
-    let top_level = ui_state == UIState::Toplevel;
+    let top_level = ui_state.top_level();
     let is_skip = ui_state == UIState::ShowOptions(true);
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(if top_level {
@@ -350,7 +362,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         KeyCode::Char('s') => Some(Event::MoveDown),
         KeyCode::Char('d') => Some(Event::MoveRight),
         KeyCode::Enter | KeyCode::Char(' ') => {
-            if top_level {
+            if ui_state == UIState::Toplevel {
                 Some(Event::ContinueGame)
             } else if !animation && !two_digit && !is_skip && !show_suggestions {
                 Some(Event::TwoDigitInit)
@@ -828,7 +840,7 @@ fn update_game_state_and_fill_input_mapping(
                     }
                 }
             }
-            if *ui_state != UIState::Toplevel && !animation_state.runs() {
+            if !ui_state.top_level() && !animation_state.runs() {
                 *ui_state = UIState::GameFinished(result);
             }
         }
