@@ -107,7 +107,8 @@ pub fn draw_interior_hex_border(
             color,
             1.0,
         );
-        current += 0.25;
+        // TODO for some reason this approach needs massive oversampling
+        current += 0.05;
     }
 }
 
@@ -132,7 +133,7 @@ pub fn draw_small_interior_hex_border(
             color,
             0.7,
         );
-        current += 0.25;
+        current += 0.07;
     }
 }
 
@@ -157,7 +158,7 @@ pub fn draw_tiny_interior_hex_border(
             color,
             0.55,
         );
-        current += 0.25;
+        current += 0.07;
     }
 }
 
