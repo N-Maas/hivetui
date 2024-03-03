@@ -187,8 +187,8 @@ pub enum MovingTileStyle {
 pub enum AnimationStyle {
     #[default]
     Blink = 0,
-    Plain = 1,
-    BlinkOnlyAi = 2,
+    BlinkOnlyAi = 1,
+    Plain = 2,
     Rainbow = 3,
 }
 
@@ -449,7 +449,7 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
         ),
         create_menu_setting(
             "animation style: ",
-            vec!["blink", "plain", "blink-only-ai", "rainbow"],
+            vec!["blink", "only-ai", "plain", "rainbow"],
             |state| &mut state.animation_style,
         ),
         create_menu_setting(
@@ -465,49 +465,60 @@ pub fn build_settings() -> Vec<Box<dyn MenuSetting>> {
     ]
 }
 
-pub fn render_settings(
+pub fn render_player_settings(
     settings: &mut Settings,
     settings_list: &[Box<dyn MenuSetting>],
     menu_index: usize,
 ) -> Text<'static> {
-    let mut lines = Vec::<Line>::new();
-    for (i, option) in settings_list.iter().enumerate() {
+    let mut lines = Vec::new();
+    for (i, option) in settings_list[0..2].iter().enumerate() {
         let color = if menu_index == i {
             settings.color_scheme.primary()
         } else {
             Color::White
         };
         let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
-        if i <= 1 {
-            spans.push(Span::raw(PLAYER_PREFIXES[i]));
-            let position: u8 = if i == 0 {
-                settings.white_player_type.into()
-            } else {
-                settings.black_player_type.into()
-            };
-            spans.push(Span::raw(PLAYER_TYPES[position as usize]));
-            if position > 0 {
-                spans.push(Span::raw(" AI"));
-            }
-            lines.push(Line::from(spans));
-
-            spans = Vec::new();
-            if menu_index == i {
-                spans.push(Span::raw("    "));
-                spans.push(option.get_entry(settings, menu_index == i, 0));
-                spans.push(Span::raw(" or AI: "));
-                for level in 1..PLAYER_TYPES.len() {
-                    spans.push(option.get_entry(settings, menu_index == i, level));
-                }
-            }
-            lines.push(Line::from(spans));
+        spans.push(Span::raw(PLAYER_PREFIXES[i]));
+        let position: u8 = if i == 0 {
+            settings.white_player_type.into()
         } else {
-            spans.extend(option.get_line(settings, menu_index == i));
-            lines.push(Line::from(spans));
+            settings.black_player_type.into()
+        };
+        spans.push(Span::raw(PLAYER_TYPES[position as usize]));
+        if position > 0 {
+            spans.push(Span::raw(" AI"));
         }
-        if i == 1 {
-            lines.push(Line::raw(""));
+        lines.push(Line::from(spans));
+
+        spans = Vec::new();
+        if menu_index == i {
+            spans.push(Span::raw("    "));
+            spans.push(option.get_entry(settings, menu_index == i, 0));
+            spans.push(Span::raw(" or AI: "));
+            for level in 1..PLAYER_TYPES.len() {
+                spans.push(option.get_entry(settings, menu_index == i, level));
+            }
         }
+        lines.push(Line::from(spans));
+    }
+    Text::from(lines)
+}
+
+pub fn render_settings(
+    settings: &mut Settings,
+    settings_list: &[Box<dyn MenuSetting>],
+    menu_index: usize,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    for (i, option) in settings_list.iter().enumerate().skip(2) {
+        let color = if menu_index == i {
+            settings.color_scheme.primary()
+        } else {
+            Color::White
+        };
+        let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
+        spans.extend(option.get_line(settings, menu_index == i));
+        lines.push(Line::from(spans));
     }
     Text::from(lines)
 }

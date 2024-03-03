@@ -336,11 +336,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     let top_level = ui_state.top_level();
     let is_skip = ui_state == UIState::ShowOptions(true);
     Ok(pull_key_event()?.and_then(|key| match key {
-        KeyCode::Esc => Some(if top_level {
-            Event::ContinueGame
-        } else {
-            Event::Exit
-        }),
+        KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
         KeyCode::Char('q') => Some(Event::Exit),
         KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
         KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),

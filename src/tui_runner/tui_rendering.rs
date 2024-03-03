@@ -1,8 +1,8 @@
 use super::{
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
-        render_settings, BordersStyle, ColorScheme, GraphicsState, MenuSetting, ScreenSplitting,
-        Settings, WhiteTilesStyle,
+        render_player_settings, render_settings, BordersStyle, ColorScheme, GraphicsState,
+        MenuSetting, ScreenSplitting, Settings, WhiteTilesStyle,
     },
     AIResult, AIState, AnimationState, UIState,
 };
@@ -19,12 +19,11 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{
         canvas::{Canvas, Context},
-        Block, Borders, Clear, Paragraph,
+        Block, Borders, Clear, Paragraph, Wrap,
     },
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    fmt::format,
     io::{self, Stdout},
     iter,
 };
@@ -50,6 +49,32 @@ pub struct AllState<'a> {
 
 pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
+const MENU_HELP_LONG: &'static str = "\
+    This is a TUI version of the board game Hive. \
+    Hive is a chess-like game where both players place and move pieces \
+    that correspond to insect. More information is available in the \
+    rules summary (press [h] or [r]).\n\
+    \n\
+    Everything is controlled with the keyboard. Keys are mapped to \
+    specific actions (which one depends on whether you are in the menu or \
+    in-game). The general rule is: an action marked with [x] is selected by \
+    pressing x. In addition, [Esc] and [↲/Space] are used for general menu \
+    navigation.\n\
+    \n\
+    [↑↓] or [1-9] to select a specific setting\n\
+    [←→] to change the current setting
+";
+
+const MENU_HELP_SHORT: &'static str = "\
+    This is a TUI version of the board game Hive \
+    (press [h] or [r] for rules).\
+    Everything is controlled with the keyboard. The general rule is: \
+    an action marked with [x] is selected by pressing x.\n\
+    \n\
+    [↑↓] or [1-9] to select a specific setting\n\
+    [←→] to change the current setting
+";
+
 const LONG_IN_GAME_HELP: &'static str = "\
     press a number to select a move\n   \
     (two digits: press [Space] or [↲] first)\n\
@@ -59,12 +84,12 @@ const LONG_IN_GAME_HELP: &'static str = "\
     \n\
     [h] to show AI suggested moves\n   \
     (for human players: AI assistant)\n\
-    [u] or [z] to undo a move\n\
-    [r] or [y] to redo a move\n\
-    [←] or [c] to cancel AI move/animation\n\
+    [u/z] to undo a move\n\
+    [r/y] to redo a move\n\
+    [⌫/c] to cancel AI move/animation\n\
     [n] to let the AI move (if not automatic)\n\
     \n\
-    [Esc] or [q] to get back to the menu\
+    [a/Esc] to get back to the menu\
 ";
 
 pub fn render(
@@ -84,10 +109,9 @@ pub fn render(
             ScreenSplitting::Right => 70,
             ScreenSplitting::FarRight => 75,
         };
-        let diff = 15;
         let splitted_top_level = Layout::horizontal(vec![
-            Constraint::Percentage(percentage_left - diff),
-            Constraint::Percentage(diff),
+            Constraint::Fill(1),
+            Constraint::Max(25),
             Constraint::Percentage(100 - percentage_left),
         ])
         .split(area);
@@ -136,6 +160,7 @@ pub fn render(
                 let action_area = splitted_layout[1];
                 let text = "[c]ontinue game  [↲]\n\
                     [n]ew game\n\
+                    [r]ules summary  [h]\n\
                     \n\
                     [q]uit";
                 let paragraph = Paragraph::new(text)
@@ -143,13 +168,29 @@ pub fn render(
                 frame.render_widget(paragraph, action_area);
             }
 
-            let [menu_area, help_area] =
-                *Layout::vertical([Constraint::Fill(1), Constraint::Max(7)]).split(menu_area)
-            else {
+            let (player_size, menu_size, mut help_size) = (5, 10, 15);
+            let small_help = menu_area.height < player_size + menu_size + help_size;
+            if small_help {
+                help_size = 8;
+            }
+            let [player_area, menu_area, help_area] = *Layout::vertical([
+                Constraint::Max(player_size),
+                Constraint::Min(menu_size),
+                Constraint::Min(help_size),
+            ])
+            .split(menu_area) else {
                 unreachable!()
             };
-            // the settings
+            // the players/settings
             {
+                let text = render_player_settings(settings, settings_list, state.menu_index);
+                let paragraph = Paragraph::new(text).block(
+                    Block::default()
+                        .title("Players")
+                        .borders(Borders::BOTTOM.complement()),
+                );
+                frame.render_widget(paragraph, player_area);
+
                 let text = render_settings(settings, settings_list, state.menu_index);
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Settings").borders(Borders::ALL));
@@ -158,9 +199,14 @@ pub fn render(
 
             // the top level help text
             {
-                let text = "This is a TUI version of the Hive board game.";
+                let text = if small_help {
+                    MENU_HELP_SHORT
+                } else {
+                    MENU_HELP_LONG
+                };
                 let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Help").borders(Borders::ALL));
+                    .block(Block::default().title("Help").borders(Borders::ALL))
+                    .wrap(Wrap { trim: true });
                 frame.render_widget(paragraph, help_area);
             }
         } else {
