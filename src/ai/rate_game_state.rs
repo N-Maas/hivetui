@@ -329,7 +329,14 @@ fn single_piece_rating(
             }
             MovabilityType::Blocked(_) => 10,
             MovabilityType::AtQueen => 5,
-            MovabilityType::Unmovable => 3,
+            MovabilityType::Unmovable => {
+                // grasshoppers are more likely to escape
+                if piece.p_type == PieceType::Grasshopper {
+                    4
+                } else {
+                    3
+                }
+            }
         },
         PieceType::Beetle => match movability {
             MovabilityType::Movable => {
@@ -412,8 +419,8 @@ fn single_piece_rating(
             }
             MovabilityType::Blocked(_) => 12,
             MovabilityType::AtQueen => 5,
-            // a beetle near the queen is still a danger
-            MovabilityType::Unmovable => 3,
+            // beetles are somewhat likely to escape
+            MovabilityType::Unmovable => 4,
         },
     };
 
