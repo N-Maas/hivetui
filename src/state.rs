@@ -426,6 +426,10 @@ impl HiveGameState {
     fn check_piece_is_movable(&self, field: Field<HiveBoard>) -> bool {
         assert!(!field.is_empty());
         let p_type = field.content().top().unwrap().p_type;
+        if self.black_pieces_on_board == 0 {
+            // of course we need a special case for the start of the game...
+            return p_type == PieceType::Queen;
+        }
         p_type.is_movable(field) && !move_violates_ohr(field)
     }
 
