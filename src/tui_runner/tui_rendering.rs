@@ -442,7 +442,8 @@ pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings)
                     seen_pieces.insert(piece_t);
                 }
             }
-            _ => unreachable!("this context should not be possible here"),
+            HiveContext::SkipPlayer => return,
+            HiveContext::BaseField(_) => unreachable!("this context should not be possible here"),
         };
         if keep_entry {
             index += 1;
