@@ -263,6 +263,17 @@ pub fn render(
                 unreachable!()
             };
 
+            let suggestion_height = 14;
+            let render_both = state.ui_state == UIState::ShowAIMoves
+                && piece_area.height >= suggestion_height + piece_height;
+            let (piece_area, suggestion_area) = if render_both {
+                let split =
+                    Layout::vertical([Constraint::Fill(1), Constraint::Max(suggestion_height)])
+                        .split(piece_area);
+                (split[0], split[1])
+            } else {
+                (piece_area, piece_area)
+            };
             // the AI suggested moves
             if state.ui_state == UIState::ShowAIMoves {
                 let text;
@@ -276,13 +287,13 @@ pub fn render(
                         .title("Suggested Moves")
                         .borders(Borders::ALL),
                 );
-                frame.render_widget(paragraph, piece_area);
+                frame.render_widget(paragraph, suggestion_area);
             }
             // the available pieces
-            else {
+            if render_both || state.ui_state != UIState::ShowAIMoves {
                 let zoom = state.settings.piece_zoom_level.multiplier();
-                let x_len = zoom * f64::from(2 * piece_area.width);
-                let y_len = zoom * 2.1 * f64::from(2 * piece_area.height);
+                let x_len = zoom * (f64::from(2 * piece_area.width) - 4.5);
+                let y_len = zoom * 2.1 * (f64::from(2 * piece_area.height) - 4.48);
                 let canvas = Canvas::default()
                     .block(
                         Block::default()
