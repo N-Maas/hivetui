@@ -1034,7 +1034,7 @@ fn handle_moved_piece(
                 target,
                 target_level,
             ),
-            Some(((0.25 * x1 + 0.75 * x2), (0.25 * y1 + 0.75 * y2))),
+            Some(((0.2 * x1 + 0.8 * x2), (0.2 * y1 + 0.8 * y2))),
         );
     }
     dec.select_option(index);
