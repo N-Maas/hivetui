@@ -210,15 +210,21 @@ struct AIResult {
 }
 
 #[derive(Debug)]
-enum AIMessage {
+enum AIMessageForWorker {
     Start(AILevel, Box<HiveGameState>),
     Cancel,
 }
 
+#[derive(Debug)]
+enum AIMessageForRunner {
+    Result(Box<AIResult>),
+    Killed(String, String),
+}
+
 #[derive(Default)]
 struct AIExchange {
-    for_runner: Option<Box<AIResult>>,
-    for_worker: Option<AIMessage>,
+    for_runner: Option<AIMessageForRunner>,
+    for_worker: Option<AIMessageForWorker>,
 }
 
 struct AIState {
@@ -252,7 +258,7 @@ impl AIState {
             let mut exchange = self.exchange_point.lock().unwrap();
             exchange.for_runner = None;
             if self.is_started {
-                exchange.for_worker = Some(AIMessage::Cancel);
+                exchange.for_worker = Some(AIMessageForWorker::Cancel);
             }
         }
         self.is_started = false;
@@ -277,7 +283,7 @@ impl AIState {
                 settings.ai_assistant
             };
             self.exchange_point.lock().unwrap().for_worker =
-                Some(AIMessage::Start(level, Box::new(state.clone())));
+                Some(AIMessageForWorker::Start(level, Box::new(state.clone())));
             self.current_player = player;
             self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::Automatic;
             self.should_show_animation = settings.is_ai(player);
@@ -286,9 +292,19 @@ impl AIState {
 
         {
             let mut exchange = self.exchange_point.lock().unwrap();
-            if let Some(mut result) = exchange.for_runner.take() {
-                postprocess_ai_suggestions(result.as_mut(), settings);
-                self.result = Some(*result);
+            match exchange.for_runner.take() {
+                Some(AIMessageForRunner::Result(mut result)) => {
+                    postprocess_ai_suggestions(result.as_mut(), settings);
+                    self.result = Some(*result);
+                }
+                Some(AIMessageForRunner::Killed(msg, trace)) => {
+                    // try to print the ai error
+                    stdout().execute(LeaveAlternateScreen).unwrap();
+                    disable_raw_mode().unwrap();
+                    eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
+                    process::exit(1);
+                }
+                None => (),
             }
         }
         if self.should_show_animation {
@@ -471,11 +487,7 @@ thread_local! {
     static BACKTRACE: RefCell<Option<Backtrace>> = RefCell::new(None);
 }
 
-pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
-    stdout().execute(EnterAlternateScreen)?;
-    enable_raw_mode()?;
-
-    // do some panic reporting
+pub fn setup_panic_reporting() {
     panic::set_hook(Box::new(|info| {
         let payload = info.payload();
         let msg = payload.downcast_ref::<String>().cloned().or_else(|| {
@@ -489,6 +501,23 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
         let trace = Backtrace::force_capture();
         BACKTRACE.with(move |b| b.borrow_mut().replace(trace));
     }));
+}
+
+pub fn get_panic_data() -> (String, String) {
+    let msg = MSG
+        .with(|b| b.borrow_mut().take())
+        .map_or(String::new(), |m| m + "\n");
+    let trace = BACKTRACE
+        .with(|b| b.borrow_mut().take())
+        .map_or(String::new(), |b| b.to_string());
+    (msg, trace)
+}
+
+pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
+    stdout().execute(EnterAlternateScreen)?;
+    enable_raw_mode()?;
+    setup_panic_reporting();
+
     let result = panic::catch_unwind(|| run_in_tui_impl(pieces));
 
     stdout().execute(LeaveAlternateScreen)?;
@@ -497,12 +526,7 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
     match result {
         Ok(val) => val, // just propagate I/O error
         Err(_) => {
-            let msg = MSG
-                .with(|b| b.borrow_mut().take())
-                .map_or(String::new(), |m| m + "\n");
-            let trace = BACKTRACE
-                .with(|b| b.borrow_mut().take())
-                .map_or(String::new(), |b| b.to_string());
+            let (msg, trace) = get_panic_data();
             eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
             process::exit(1);
         }
