@@ -476,7 +476,7 @@ impl SettingRenderer {
 
     pub fn is_ai_setting(&self, selection: SettingSelection) -> bool {
         if let SettingSelection::General(index) = selection {
-            index <= 4
+            [0, 1, 3, 4, 5].contains(&index)
         } else {
             selection.index() <= 1
         }
