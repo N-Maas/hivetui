@@ -53,7 +53,7 @@ pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 const MENU_HELP_LONG: &'static str = "\
     This is a TUI version of the board game Hive. \
     Hive is a chess-like game where both players place and move pieces \
-    that correspond to insect. More information is available in the \
+    that correspond to insects. More information is available in the \
     rules summary (press [h] or [r]).\n\
     \n\
     Everything is controlled with the keyboard. Keys are mapped to \
@@ -173,13 +173,95 @@ const BEETLE: [&'static str; 5] = [
     " is blocked and unable to move. Also, the position now counts as \
     belonging to the ",
     " player for the purpose of placing new pieces (i.e., you can place \
-    a piece next to it even if the piece below is not yours)."
+    a piece next to it even if the piece below is not yours).",
 ];
 
 const REMARKS: &'static str = "\
     Notes: This is a summary, not a comprehensive explanation of the \
     rules. Please refer to the official rules of Hive instead.\
 ";
+
+fn build_help_text(settings: &Settings) -> Text<'static> {
+    // first a few helpers
+    let insert = |start, val, end, color| {
+        Line::from(vec![
+            Span::raw(start),
+            Span::styled(val, color),
+            Span::raw(end),
+        ])
+    };
+    let combine = |left: Line<'static>, right: Line<'static>| {
+        let mut spans = left.spans;
+        spans.extend(right.spans);
+        Line::from(spans)
+    };
+    let piece_text = |mut string_iter: slice::Iter<&'static str>, p_type: PieceType| {
+        let name = p_type.name();
+        let mut line = insert(
+            "",
+            format!("{}: ", name),
+            *string_iter.next().unwrap(),
+            piece_color(p_type),
+        );
+        for str in string_iter {
+            line = combine(
+                line,
+                insert("", String::from(name), str, piece_color(p_type)),
+            );
+        }
+        line
+    };
+
+    // construct the text
+    let primary = settings.color_scheme.primary();
+    let spider = piece_color(PieceType::Spider);
+    let ant = piece_color(PieceType::Ant);
+    let lines = vec![
+        Line::styled("Summary of Rules", primary).alignment(Alignment::Center),
+        Line::raw(""),
+        insert(
+            INTRODUCTION_BEFORE_QUEEN,
+            String::from("Bee Queen"),
+            INTRODUCTION_AFTER_QUEEN,
+            piece_color(PieceType::Queen),
+        ),
+        Line::raw(""),
+        insert("", String::from("Placing a piece: "), PLACEMENT, primary),
+        Line::raw(""),
+        combine(
+            Line::from(Span::styled("Moving a piece: ", primary)),
+            insert(
+                MOVEMENT_BEFORE_QUEEN,
+                String::from("Bee Queen"),
+                MOVEMENT_AFTER_QUEEN,
+                piece_color(PieceType::Queen),
+            ),
+        ),
+        Line::raw(""),
+        piece_text(QUEEN.iter(), PieceType::Queen),
+        Line::raw(""),
+        piece_text(ANT.iter(), PieceType::Ant),
+        Line::raw(""),
+        combine(
+            combine(
+                insert("", String::from("Spider: "), SPIDER[0], spider),
+                insert("", String::from("Ants"), SPIDER[1], ant),
+            ),
+            combine(
+                insert("", String::from("Spiders"), SPIDER[2], spider),
+                insert("", String::from("Spider"), SPIDER[3], spider),
+            ),
+        ),
+        Line::raw(""),
+        piece_text(GRASSHOPPER.iter(), PieceType::Grasshopper),
+        Line::raw(""),
+        piece_text(BEETLE.iter(), PieceType::Beetle),
+        Line::raw(""),
+        Line::raw(""),
+        Line::raw(REMARKS),
+    ];
+    Text::from(lines)
+}
 
 pub fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -209,7 +291,7 @@ pub fn render(
         let splitted_in_game =
             Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).split(area);
 
-        let splitted_layout = if state.ui_state.top_level() {
+        let splitted_layout = if state.ui_state == UIState::Toplevel {
             splitted_top_level
         } else {
             splitted_in_game.clone()
@@ -217,89 +299,21 @@ pub fn render(
         let canvas_area = splitted_layout[0];
         let &menu_area = splitted_layout.last().unwrap();
         // the rules summary
-        if state.ui_state == UIState::RulesSummary {
-            // first a few helpers
-            let insert = |start, val, end, color| {
-                Line::from(vec![
-                    Span::raw(start),
-                    Span::styled(val, color),
-                    Span::raw(end),
-                ])
-            };
-            let combine = |left: Line<'static>, right: Line<'static>| {
-                let mut spans = left.spans;
-                spans.extend(right.spans);
-                Line::from(spans)
-            };
-            let piece_text = |mut string_iter: slice::Iter<&'static str>, p_type: PieceType| {
-                let name = p_type.name();
-                let mut line = insert(
-                    "",
-                    format!("{}: ", name),
-                    *string_iter.next().unwrap(),
-                    piece_color(p_type),
-                );
-                for str in string_iter {
-                    line = combine(
-                        line,
-                        insert("", String::from(name), str, piece_color(p_type)),
-                    );
-                }
-                line
-            };
+        if let UIState::RulesSummary(scroll) = state.ui_state {
+            let split_top_line =
+                Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).split(canvas_area);
+            let top_line = Line::raw("[ws] or [Space] to scroll, [Esc] or [r/h] to return ")
+                .alignment(Alignment::Right);
+            let paragraph = Paragraph::new(top_line)
+                .block(Block::default().borders(Borders::BOTTOM.complement()));
+            frame.render_widget(paragraph, split_top_line[0]);
 
-            // construct the text
-            let primary = settings.color_scheme.primary();
-            let spider = piece_color(PieceType::Spider);
-            let ant = piece_color(PieceType::Ant);
-            let lines = vec![
-                Line::styled("Summary of Rules", primary).alignment(Alignment::Center),
-                Line::raw(""),
-                insert(
-                    INTRODUCTION_BEFORE_QUEEN,
-                    String::from("Bee Queen"),
-                    INTRODUCTION_AFTER_QUEEN,
-                    piece_color(PieceType::Queen),
-                ),
-                Line::raw(""),
-                insert("", String::from("Placing a piece: "), PLACEMENT, primary),
-                Line::raw(""),
-                combine(
-                    Line::from(Span::styled("Moving a piece: ", primary)),
-                    insert(
-                        MOVEMENT_BEFORE_QUEEN,
-                        String::from("Bee Queen"),
-                        MOVEMENT_AFTER_QUEEN,
-                        piece_color(PieceType::Queen),
-                    ),
-                ),
-                Line::raw(""),
-                piece_text(QUEEN.iter(), PieceType::Queen),
-                Line::raw(""),
-                piece_text(ANT.iter(), PieceType::Ant),
-                Line::raw(""),
-                combine(
-                    combine(
-                        insert("", String::from("Spider: "), SPIDER[0], spider),
-                        insert("", String::from("Ants"), SPIDER[1], ant),
-                    ),
-                    combine(
-                        insert("", String::from("Spiders"), SPIDER[2], spider),
-                        insert("", String::from("Spider"), SPIDER[3], spider),
-                    ),
-                ),
-                Line::raw(""),
-                piece_text(GRASSHOPPER.iter(), PieceType::Grasshopper),
-                Line::raw(""),
-                piece_text(BEETLE.iter(), PieceType::Beetle),
-                Line::raw(""),
-                Line::raw(""),
-                Line::raw(REMARKS),
-            ];
-            let paragraph = Paragraph::new(Text::from(lines))
-                .block(Block::default().borders(Borders::ALL))
-                .wrap(Wrap { trim: true });
-            frame.render_widget(paragraph, canvas_area);
+            let text = build_help_text(settings);
+            let paragraph = Paragraph::new(text)
+                .block(Block::default().borders(Borders::TOP.complement()))
+                .wrap(Wrap { trim: true })
+                .scroll((scroll, 0));
+            frame.render_widget(paragraph, split_top_line[1]);
         }
         // the board
         else {
@@ -330,7 +344,7 @@ pub fn render(
 
         if state.ui_state.top_level() {
             // the actions
-            {
+            if !matches!(state.ui_state, UIState::RulesSummary(_)) {
                 let action_area = splitted_layout[1];
                 let text = "[c]ontinue game  [↲]\n\
                     [n]ew game\n\

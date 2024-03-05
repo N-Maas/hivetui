@@ -43,7 +43,8 @@ mod tui_settings;
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum UIState {
     Toplevel,
-    RulesSummary,
+    /// the current scrolling
+    RulesSummary(u16),
     /// 1. true if the current turn must be skipped
     /// 2. true if pieces are switched
     ShowOptions(bool, bool),
@@ -61,7 +62,7 @@ impl UIState {
     fn top_level(&self) -> bool {
         match self {
             UIState::Toplevel => true,
-            UIState::RulesSummary => true,
+            UIState::RulesSummary(_) => true,
             UIState::ShowOptions(_, _) => false,
             UIState::PositionSelected(_) => false,
             UIState::PieceSelected(_) => false,
@@ -74,7 +75,7 @@ impl UIState {
     fn show_game(&self) -> bool {
         match self {
             UIState::Toplevel => false,
-            UIState::RulesSummary => false,
+            UIState::RulesSummary(_) => false,
             UIState::ShowOptions(_, _) => true,
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
@@ -390,6 +391,8 @@ enum Event {
     MoveRight,
     MoveUp,
     MoveDown,
+    ScrollUp,
+    ScrollDown,
 }
 
 impl Event {
@@ -406,37 +409,48 @@ impl Event {
 fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result<Option<Event>> {
     let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
-    let rules_summary = ui_state == UIState::RulesSummary;
+    let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
         KeyCode::Char('q') => Some(Event::Exit),
         KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
-        KeyCode::Char('r') | KeyCode::Char('y') => {
-            Some(if top_level { Event::Help } else { Event::Redo })
-        }
+        KeyCode::Char('r') => Some(if top_level { Event::Help } else { Event::Redo }),
+        KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
         KeyCode::Char('c') => Some(if top_level {
             Event::ContinueGame
         } else {
             Event::Cancel
-        }),
+        })
+        .filter(|_| !rules_summary),
         KeyCode::Char('n') => Some(if top_level {
             Event::NewGame
         } else {
             Event::LetAIMove
-        }),
+        })
+        .filter(|_| !rules_summary),
         KeyCode::Char('h') => Some(Event::Help),
         KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
         KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
-        KeyCode::Char('w') => Some(Event::MoveUp).filter(|_| !rules_summary),
+        KeyCode::Char('w') => Some(if rules_summary {
+            Event::ScrollUp
+        } else {
+            Event::MoveUp
+        }),
         KeyCode::Char('a') => Some(Event::MoveLeft).filter(|_| !rules_summary),
-        KeyCode::Char('s') => Some(Event::MoveDown).filter(|_| !rules_summary),
+        KeyCode::Char('s') => Some(if rules_summary {
+            Event::ScrollDown
+        } else {
+            Event::MoveDown
+        }),
         KeyCode::Char('d') => Some(Event::MoveRight).filter(|_| !rules_summary),
         KeyCode::Enter | KeyCode::Char(' ') => {
             if ui_state == UIState::Toplevel {
                 Some(Event::ContinueGame)
-            } else if top_level {
+            } else if top_level && key == KeyCode::Enter {
                 Some(Event::Exit)
+            } else if top_level {
+                Some(Event::ScrollDown)
             } else if !animation && !two_digit && !is_skip && !show_suggestions {
                 Some(Event::TwoDigitInit)
             } else if key == KeyCode::Enter {
@@ -588,7 +602,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             match e {
                 Event::Exit => match ui_state {
                     UIState::Toplevel => break,
-                    UIState::RulesSummary => ui_state = UIState::Toplevel,
+                    UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
@@ -616,7 +630,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     if ui_state == UIState::ShowAIMoves {
                         ui_state = UIState::ShowOptions(false, false);
                     }
-                    if ui_state == UIState::RulesSummary {
+                    if let UIState::RulesSummary(_) = ui_state {
                         ui_state = UIState::Toplevel;
                     }
                 }
@@ -649,8 +663,8 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     }
                 }
                 Event::Help => match ui_state {
-                    UIState::Toplevel => ui_state = UIState::RulesSummary,
-                    UIState::RulesSummary => ui_state = UIState::Toplevel,
+                    UIState::Toplevel => ui_state = UIState::RulesSummary(0),
+                    UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::ShowOptions(false, _)
                     | UIState::PositionSelected(_)
                     | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
@@ -696,6 +710,16 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     setting_renderer.get(menu_selection).decrease(&mut settings);
                     if setting_renderer.is_ai_setting(menu_selection) {
                         ai_state.reset();
+                    }
+                }
+                Event::ScrollUp => {
+                    if let UIState::RulesSummary(i) = ui_state {
+                        ui_state = UIState::RulesSummary(i.saturating_sub(1));
+                    }
+                }
+                Event::ScrollDown => {
+                    if let UIState::RulesSummary(i) = ui_state {
+                        ui_state = UIState::RulesSummary(i + 1);
                     }
                 }
                 Event::Selection(_) => (),
@@ -861,8 +885,8 @@ fn update_game_state_and_fill_input_mapping(
             }
 
             match (*ui_state, follow_up) {
-                (UIState::Toplevel | UIState::RulesSummary, Ok(d)) => d.retract_all(),
-                (UIState::Toplevel | UIState::RulesSummary, Err(_)) => (),
+                (UIState::Toplevel | UIState::RulesSummary(_), Ok(d)) => d.retract_all(),
+                (UIState::Toplevel | UIState::RulesSummary(_), Err(_)) => (),
                 (UIState::ShowOptions(_, _), Ok(d)) => d.retract_all(),
                 (UIState::ShowOptions(is_skip, switch), Err(d)) => {
                     match d.context() {
