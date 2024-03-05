@@ -493,7 +493,7 @@ impl SettingRenderer {
                 }),
             ],
             general: vec![
-                create_menu_setting("automatic camera moves: ", vec!["on", "off"], |state| {
+                create_menu_setting("automatic camera movement: ", vec!["on", "off"], |state| {
                     &mut state.automatic_camera_moves
                 }),
                 create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {

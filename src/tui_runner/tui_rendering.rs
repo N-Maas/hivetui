@@ -9,9 +9,10 @@ use super::{
 use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
-    tui_graphics,
+    tui_graphics::{self, piece_color},
     tui_runner::tui_settings::FilterAISuggestions,
 };
+use core::slice;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
@@ -107,6 +108,79 @@ const IN_GAME_HELP_SHORT: &'static str = "\
     [q/Esc] to get back to the menu\
 ";
 
+const INTRODUCTION_BEFORE_QUEEN: &'static str = "\
+    Hive is a chess-like game played with hexagonal pieces. \
+    Unlike chess, there is no explicit board. Instead, the board \
+    is implicitely represented by the placed pieces. At the start \
+    of the game, the board is empty. As in chess, both players have \
+    alternating turns. At your turn, you can either place a new piece \
+    or move an already placed piece. \
+    Victory is achieved by surrounding the enemy \
+";
+const INTRODUCTION_AFTER_QUEEN: &'static str = " with six pieces (can be friend or enemy).";
+
+const PLACEMENT: &'static str = "\
+    Any available piece can be placed at a position that is not yet \
+    occupied. The position must be adjacent to one of your own pieces \
+    and must not be adjacent to an enemy piece.\
+";
+
+const MOVEMENT_BEFORE_QUEEN: &'static str = "\
+    Moving a piece is only possible if you have already placed your \
+";
+
+const MOVEMENT_AFTER_QUEEN: &'static str = ". \
+    You can move pieces that have at least one valid destination according \
+    to their specific movement rules. However, the movement must obey the \
+    one hive rule: at any point in time, all pieces must be connected to \
+    each other. A move that would split the hive (even only temporarily \
+    during the movement) is thus forbidden. Also, sufficient space must \
+    be available: you can not move to an adjacent position if both the \
+    next left and the next right position are occupied, since the piece \
+    does not \"fit\" through the bottleneck.\
+";
+
+const QUEEN: [&'static str; 3] = [
+    "The most important piece, since you loose the game if the ",
+    " is surrounded. She must be placed within your first four turns. \
+    Once placed, the ",
+    " can move to any adjacent non-occupied position.",
+];
+
+const ANT: [&'static str; 2] = [
+    "Flexible pieces that travel the edge of the hive. The ",
+    " can move to any position that is reachable via a non-occupied path.",
+];
+
+const SPIDER: [&'static str; 4] = [
+    "Similar to ",
+    ", ",
+    " crawl along the hive. However, the ",
+    " is much more restricted: it must move exactly three steps.",
+];
+
+const GRASSHOPPER: [&'static str; 2] = [
+    "Less flexible, but ignores obstacles. The ",
+    " jumps over adjacent pieces (at least one!) in a straight line, \
+    moving to the first non-occupied position in the line.",
+];
+
+const BEETLE: [&'static str; 5] = [
+    "Slow but powerful. The ",
+    " moves only one position at a time. However, he has a super-power: the ",
+    " can crawl atop another piece and travel along the top of the hive. \
+    The piece below the ",
+    " is blocked and unable to move. Also, the position now counts as \
+    belonging to the ",
+    " player for the purpose of placing new pieces (i.e., you can place \
+    a piece next to it even if the piece below is not yours)."
+];
+
+const REMARKS: &'static str = "\
+    Notes: This is a summary, not a comprehensive explanation of the \
+    rules. Please refer to the official rules of Hive instead.\
+";
+
 pub fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     setting_renderer: &SettingRenderer,
@@ -142,8 +216,93 @@ pub fn render(
         };
         let canvas_area = splitted_layout[0];
         let &menu_area = splitted_layout.last().unwrap();
+        // the rules summary
+        if state.ui_state == UIState::RulesSummary {
+            // first a few helpers
+            let insert = |start, val, end, color| {
+                Line::from(vec![
+                    Span::raw(start),
+                    Span::styled(val, color),
+                    Span::raw(end),
+                ])
+            };
+            let combine = |left: Line<'static>, right: Line<'static>| {
+                let mut spans = left.spans;
+                spans.extend(right.spans);
+                Line::from(spans)
+            };
+            let piece_text = |mut string_iter: slice::Iter<&'static str>, p_type: PieceType| {
+                let name = p_type.name();
+                let mut line = insert(
+                    "",
+                    format!("{}: ", name),
+                    *string_iter.next().unwrap(),
+                    piece_color(p_type),
+                );
+                for str in string_iter {
+                    line = combine(
+                        line,
+                        insert("", String::from(name), str, piece_color(p_type)),
+                    );
+                }
+                line
+            };
+
+            // construct the text
+            let primary = settings.color_scheme.primary();
+            let spider = piece_color(PieceType::Spider);
+            let ant = piece_color(PieceType::Ant);
+            let lines = vec![
+                Line::styled("Summary of Rules", primary).alignment(Alignment::Center),
+                Line::raw(""),
+                insert(
+                    INTRODUCTION_BEFORE_QUEEN,
+                    String::from("Bee Queen"),
+                    INTRODUCTION_AFTER_QUEEN,
+                    piece_color(PieceType::Queen),
+                ),
+                Line::raw(""),
+                insert("", String::from("Placing a piece: "), PLACEMENT, primary),
+                Line::raw(""),
+                combine(
+                    Line::from(Span::styled("Moving a piece: ", primary)),
+                    insert(
+                        MOVEMENT_BEFORE_QUEEN,
+                        String::from("Bee Queen"),
+                        MOVEMENT_AFTER_QUEEN,
+                        piece_color(PieceType::Queen),
+                    ),
+                ),
+                Line::raw(""),
+                piece_text(QUEEN.iter(), PieceType::Queen),
+                Line::raw(""),
+                piece_text(ANT.iter(), PieceType::Ant),
+                Line::raw(""),
+                combine(
+                    combine(
+                        insert("", String::from("Spider: "), SPIDER[0], spider),
+                        insert("", String::from("Ants"), SPIDER[1], ant),
+                    ),
+                    combine(
+                        insert("", String::from("Spiders"), SPIDER[2], spider),
+                        insert("", String::from("Spider"), SPIDER[3], spider),
+                    ),
+                ),
+                Line::raw(""),
+                piece_text(GRASSHOPPER.iter(), PieceType::Grasshopper),
+                Line::raw(""),
+                piece_text(BEETLE.iter(), PieceType::Beetle),
+                Line::raw(""),
+                Line::raw(""),
+                Line::raw(REMARKS),
+            ];
+            let paragraph = Paragraph::new(Text::from(lines))
+                .block(Block::default().borders(Borders::ALL))
+                .wrap(Wrap { trim: true });
+            frame.render_widget(paragraph, canvas_area);
+        }
         // the board
-        {
+        else {
             let y_factor = 2.1;
             let zoom = state.graphics_state.zoom_level.multiplier();
             let mut center_x = state.graphics_state.center_x;
