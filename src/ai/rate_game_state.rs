@@ -156,7 +156,7 @@ fn rate_piece_movability(
     meta: &mut MetaData,
 ) -> (RatingType, RatingType, RatingType, RatingType) {
     let mut rating = [0; 2];
-    let mut beetle_bonus = [0; 2];
+    let mut beetle_bonus = [0; 2];  // TODO: beetle bonus should not stack
     for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
         let &piece = field.content().top().unwrap();
         if field.content().len() == 1 && data.is_movable(field, false) {
@@ -272,7 +272,7 @@ fn single_piece_rating(
 
     let mut beetle_bonus = 0;
     let base_rating = match piece.p_type {
-        PieceType::Queen => 0,
+        PieceType::Queen => 0,  // TODO: should be positive, right?!
         PieceType::Ant => match movability {
             MovabilityType::Movable => {
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
@@ -327,7 +327,7 @@ fn single_piece_rating(
                     8
                 }
             }
-            MovabilityType::Blocked(_) => 10,
+            MovabilityType::Blocked(_) => 10,  // TODO: seems too bad compared to ant
             MovabilityType::AtQueen => 5,
             MovabilityType::Unmovable => {
                 // grasshoppers are more likely to escape
@@ -506,6 +506,7 @@ fn rate_queen_situation(
         }
     }
     val -= enemy_beetle_bonus;
+    // TODO: subtract ~10 for being endangered??
 
     // TODO: we probably want to change this (consider endangerment etc...)
     if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {

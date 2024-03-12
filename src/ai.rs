@@ -121,7 +121,7 @@ impl HiveAI {
                     vec![50, 30, 20, 18],
                     vec![15, 12, 8, 6, 5, 5],
                     vec![14, 10, 7, 7, 6, 6],
-                    vec![50, 3, 2, 2],
+                    vec![50, 3, 2, 2], // TODO: increase limit?!
                 );
                 Params::new(3, sliding)
             }
