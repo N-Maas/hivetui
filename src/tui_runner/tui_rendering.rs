@@ -275,7 +275,15 @@ pub fn render(
     terminal.draw(|frame| {
         let area = frame.size();
         let menu_contraint = match state.settings.splitting {
-            ScreenSplitting::Auto => Constraint::Max(62),
+            ScreenSplitting::Auto => {
+                let cutoff_low = 125;
+                let cutoff_high = 250;
+                let max_bonus = 14;
+                let added = max_bonus
+                    * u16::min(area.width, cutoff_high).saturating_sub(cutoff_low)
+                    / (cutoff_high - cutoff_low);
+                Constraint::Max(56 + added)
+            }
             ScreenSplitting::FarLeft => Constraint::Percentage(50),
             ScreenSplitting::Left => Constraint::Percentage(42),
             ScreenSplitting::Normal => Constraint::Percentage(36),
@@ -296,7 +304,7 @@ pub fn render(
         } else {
             splitted_in_game.clone()
         };
-        let canvas_area = splitted_layout[0];
+        let canvas_area = splitted_in_game[0];
         let &menu_area = splitted_layout.last().unwrap();
         // the rules summary
         if let UIState::RulesSummary(scroll) = state.ui_state {
@@ -319,18 +327,18 @@ pub fn render(
         else {
             let y_factor = 2.1;
             let zoom = state.graphics_state.zoom_level.multiplier();
-            let mut center_x = state.graphics_state.center_x;
+            let center_x = state.graphics_state.center_x;
             let center_y = state.graphics_state.center_y;
 
             let x_len = zoom * (f64::from(canvas_area.width) - 2.5);
             let y_len = zoom * y_factor * (f64::from(canvas_area.height) - 2.5);
 
             // use same center with the top level layout
-            if state.ui_state.top_level() {
-                let alt_x_len = zoom * (f64::from(splitted_in_game[0].width) - 2.5);
-                let diff = x_len - alt_x_len;
-                center_x += diff;
-            }
+            // if state.ui_state.top_level() {
+            //     let alt_x_len = zoom * (f64::from(splitted_in_game[0].width) - 2.5);
+            //     let diff = x_len - alt_x_len;
+            //     center_x += diff;
+            // }
             let x_bounds = [center_x - x_len, center_x + x_len];
             let y_bounds = [center_y - y_len, center_y + y_len];
             let canvas = Canvas::default()
@@ -345,18 +353,22 @@ pub fn render(
         if state.ui_state.top_level() {
             // the actions
             if !matches!(state.ui_state, UIState::RulesSummary(_)) {
-                let action_area = splitted_layout[1];
-                let text = "[c]ontinue game  [↲]\n\
+                let mut action_area = splitted_layout[1];
+                let text = Text::from(
+                    "[c]ontinue game  [↲]\n\
                     [n]ew game\n\
                     [r]ules summary  [h]\n\
                     \n\
-                    [q]uit";
+                    [q]uit",
+                );
+                action_area.height = text.height() as u16 + 2;
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Actions").borders(Borders::ALL));
+                frame.render_widget(Clear, action_area);
                 frame.render_widget(paragraph, action_area);
             }
 
-            let (player_size, mut settings_size, mut help_size) = (5, 10, 15);
+            let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
             let both_settings = menu_area.height >= 27 + help_size;
             let small_help = menu_area.height < player_size + settings_size + help_size;
             assert!(!(both_settings && small_help));
