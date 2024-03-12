@@ -362,7 +362,6 @@ fn single_piece_rating(
                             })
                             .count() as RatingType;
                         if dist == 0 {
-                            meta.flags_mut(piece.player.switched()).queen_endangered = true;
                             beetle_bonus = 17 + 15 * num_placeable;
                         } else {
                             beetle_bonus = 17 + 5 * num_placeable;
@@ -510,11 +509,11 @@ fn rate_queen_situation(
 
     // TODO: we probably want to change this (consider endangerment etc...)
     if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {
-        (val * 2 / 3) + 4
+        val * 2 / 3 - 4
     } else if can_move && is_less_endangered {
-        val * 3 / 4 + 2
+        val * 3 / 4 - 2
     } else if is_less_endangered {
-        val * 4 / 5 + 1
+        val * 4 / 5
     } else if can_move {
         val * 5 / 6
     } else {
