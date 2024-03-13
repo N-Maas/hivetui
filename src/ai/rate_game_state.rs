@@ -289,7 +289,7 @@ fn single_piece_rating(
                 }
             }
             MovabilityType::AtQueen => 8,
-            MovabilityType::Unmovable => 5,
+            MovabilityType::Unmovable => 4,
         },
         PieceType::Spider | PieceType::Grasshopper => match movability {
             MovabilityType::Movable => {
