@@ -42,9 +42,14 @@ where
     num_components <= 1
 }
 
+#[inline(always)]
 fn blocks(target: Field<HiveBoard>, blocked: Field<HiveBoard>) -> bool {
     debug_assert!(!target.is_empty());
     debug_assert!(!blocked.is_empty());
+    if target.content().len() > 1 || target.content().top().unwrap().p_type == PieceType::Queen {
+        return false;
+    }
+
     let mut hypothetical =
         Hypothetical::with_index_map(target.board(), ArrayIndexMap::<_, _, 1>::new());
     hypothetical[target].pop();

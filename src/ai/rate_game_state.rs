@@ -272,7 +272,7 @@ fn single_piece_rating(
 
     let mut beetle_bonus = 0;
     let base_rating = match piece.p_type {
-        PieceType::Queen => 0,  // TODO: should be positive, right?!
+        PieceType::Queen => 10,
         PieceType::Ant => match movability {
             MovabilityType::Movable => {
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
@@ -509,9 +509,9 @@ fn rate_queen_situation(
 
     // TODO: we probably want to change this (consider endangerment etc...)
     if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {
-        val * 2 / 3 - 4
+        val * 2 / 3
     } else if can_move && is_less_endangered {
-        val * 3 / 4 - 2
+        val * 3 / 4
     } else if is_less_endangered {
         val * 4 / 5
     } else if can_move {
