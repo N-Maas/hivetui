@@ -317,11 +317,13 @@ fn single_piece_rating(
                         }
                     }
                 }
-                if reaches_queen {
-                    meta.flags_mut(piece.player.switched()).queen_endangered = true;
-                    18
-                } else if can_block && piece.player == data.player() {
-                    15
+                meta.flags_mut(piece.player.switched()).queen_endangered |= reaches_queen;
+                if reaches_queen && piece.player == data.player() {
+                    16
+                } else if reaches_queen || (can_block && piece.player == data.player()) {
+                    14
+                } else if can_block {
+                    11
                 } else {
                     8
                 }

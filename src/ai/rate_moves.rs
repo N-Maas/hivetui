@@ -502,8 +502,6 @@ fn rate_usual_move(
         (PositionType::AtQueen, PositionType::Blocking) => {
             if meta.want_to_block {
                 9
-            } else if piece.p_type == PieceType::Ant {
-                2  // TODO: this does not seem like it makes sense
             } else {
                 4
             }
@@ -627,6 +625,8 @@ pub fn rate_moves(
                     if t == PieceType::Spider {
                         // TODO: not convinced anymore whether this is wise
                         rater.rate(0, i, 100);
+                    } else if t == PieceType::Grasshopper {
+                        rater.rate(0, i, 90);
                     } else {
                         rater.rate(0, i, 0);
                     }
