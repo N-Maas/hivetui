@@ -64,7 +64,6 @@ impl MetaData {
     }
 }
 
-// TODO: is queen ant-reachable?
 fn calculate_metadata(data: &HiveGameState) -> MetaData {
     let mut meta_data = MetaData {
         queen_pos: [None; 2],
@@ -342,6 +341,7 @@ fn single_piece_rating(
             MovabilityType::Movable => {
                 let enemy = piece.player.switched();
                 // offensive beetle
+                // TODO: correctly determine queen endangerment?
                 match meta.distance_to_queen(enemy, field) {
                     dist @ 0 | dist @ 1 => {
                         assert!(field.content().len() > 1);
@@ -505,9 +505,11 @@ fn rate_queen_situation(
         }
     }
     val -= enemy_beetle_bonus;
-    // TODO: subtract ~10 for being endangered??
+    if meta.flags(player).queen_endangered {
+        val -= 12;
+    }
 
-    // TODO: we probably want to change this (consider endangerment etc...)
+    // TODO: still unclear whether this is good
     if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {
         val * 2 / 3
     } else if can_move && is_less_endangered {
