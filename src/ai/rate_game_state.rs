@@ -360,7 +360,9 @@ fn single_piece_rating(
                                         .count()
                                         == 1
                             })
-                            .count() as RatingType;
+                            .count() as u32;
+                        let num_placeable =
+                            u32::min(num_placeable, data.total_num_pieces(piece.player)) as i32;
                         if dist == 0 {
                             beetle_bonus = 17 + 15 * num_placeable;
                         } else {
