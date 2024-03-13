@@ -428,7 +428,7 @@ impl HiveGameState {
         let p_type = field.content().top().unwrap().p_type;
         if self.black_pieces_on_board == 0 {
             // of course we need a special case for the start of the game...
-            return p_type == PieceType::Queen;
+            return true;
         }
         p_type.is_movable(field) && !move_violates_ohr(field)
     }
