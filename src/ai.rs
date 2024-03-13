@@ -147,7 +147,7 @@ impl HiveAI {
                     vec![20, 10],
                     vec![6, 3],
                     vec![8, 4],
-                    vec![3, 2],
+                    vec![50, 2],
                 );
                 Params::new(1, sliding)
             }
