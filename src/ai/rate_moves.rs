@@ -119,7 +119,6 @@ enum Equivalency {
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
     PlaceAnt,
-    PlaceQueen,
     PlaceBeetle(u32),
     PlaceAtEnemyQueen(bool),
 }
@@ -541,8 +540,7 @@ fn handle_placement_ratings(
             assert!(interest_to_type(&meta_data.map, player, meta).0 == PositionType::NeutralOrBad);
             match piece_t {
                 PieceType::Queen => {
-                    let is_better = meta == MetaInterest::Uninteresting;
-                    set_eq(i, j, rater, eq_map, PlaceQueen, 11, is_better);
+                    rater.rate(i, j, 11);
                 }
                 PieceType::Ant => {
                     let is_better = meta == MetaInterest::Uninteresting;
