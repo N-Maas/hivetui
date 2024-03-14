@@ -64,6 +64,7 @@ pub enum PlayerType {
     AI2 = 2,
     AI3 = 3,
     AI4 = 4,
+    AI5 = 5,
 }
 
 impl PlayerType {
@@ -81,6 +82,7 @@ pub enum AILevel {
     #[default]
     Normal = 2,
     Hard = 3,
+    Master = 4,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
@@ -410,7 +412,7 @@ where
 }
 
 const PLAYER_PREFIXES: [&'static str; 2] = ["white player: ", "black player: "];
-const PLAYER_TYPES: [&'static str; 5] = ["human", "beginner", "easy", "normal", "hard"];
+const PLAYER_TYPES: [&'static str; 6] = ["human", "beginner", "easy", "normal", "hard", "master"];
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SettingSelection {
@@ -499,7 +501,7 @@ impl SettingRenderer {
                 create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
                     &mut state.ai_moves
                 }),
-                create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4"], |state| {
+                create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4", "5"], |state| {
                     &mut state.ai_assistant
                 }),
                 create_menu_setting("filter suggested moves: ", vec!["yes", "no"], |state| {
@@ -578,7 +580,7 @@ impl SettingRenderer {
 
             spans = Vec::new();
             if selection.index() == i {
-                spans.push(Span::raw("    "));
+                spans.push(Span::raw("   "));
                 spans.push(option.get_entry(settings, selection.index() == i, 0));
                 spans.push(Span::raw(" or AI: "));
                 for level in 1..PLAYER_TYPES.len() {

@@ -278,11 +278,11 @@ pub fn render(
             ScreenSplitting::Auto => {
                 let cutoff_low = 125;
                 let cutoff_high = 250;
-                let max_bonus = 14;
+                let max_bonus = 13;
                 let added = max_bonus
                     * u16::min(area.width, cutoff_high).saturating_sub(cutoff_low)
                     / (cutoff_high - cutoff_low);
-                Constraint::Max(56 + added)
+                Constraint::Max(57 + added)
             }
             ScreenSplitting::FarLeft => Constraint::Percentage(50),
             ScreenSplitting::Left => Constraint::Percentage(42),

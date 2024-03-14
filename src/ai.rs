@@ -1,8 +1,6 @@
 use tgp::engine::{Engine, EventListener, GameEngine};
 use tgp_ai::{
-    add_context_to_ratings,
-    rater::{DecisionType, Rater},
-    MinMaxAlgorithm, MinMaxError, Params, RateAndMap, RatingType, SlidingParams,
+    add_context_to_ratings, rater::{DecisionType, Rater}, MinMaxAlgorithm, MinMaxError, Params, PruningKind, RateAndMap, RatingType, SlidingParams
 };
 use tgp_board::{
     hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
@@ -110,23 +108,36 @@ pub enum Difficulty {
     QuiteEasy,
     Medium,
     Hard,
+    VeryHard,
 }
 
+type Algorithm = MinMaxAlgorithm::<HiveGameState, HiveRater>;
+
 pub struct HiveAI {
-    alg: MinMaxAlgorithm<HiveGameState, HiveRater>,
+    alg: Algorithm,
     use_direct_move: bool,
 }
 
 impl HiveAI {
     pub fn new(level: Difficulty) -> Self {
         let params = match level {
+            Difficulty::VeryHard => {
+                let sliding = SlidingParams::new(
+                    vec![15, 10, 6, 6, 4, 4],
+                    vec![50, 35, 22, 22, 15, 15],
+                    vec![24, 20, 10, 8, 6, 5, 3, 3],
+                    vec![17, 14, 9, 9, 7, 7, 6, 6],
+                    vec![50, 10, 3, 3, 2, 2],
+                );
+                Params::new(4, sliding)
+            }
             Difficulty::Hard => {
                 let sliding = SlidingParams::new(
                     vec![8, 6, 4, 4],
                     vec![50, 30, 20, 18],
                     vec![15, 12, 8, 6, 5, 5],
                     vec![14, 10, 7, 7, 6, 6],
-                    vec![50, 3, 2, 2], // TODO: increase limit?!
+                    vec![50, 3, 2, 2],
                 );
                 Params::new(3, sliding)
             }
@@ -152,7 +163,35 @@ impl HiveAI {
                 Params::new(1, sliding)
             }
         };
-        let alg = MinMaxAlgorithm::<HiveGameState, HiveRater>::new(params, HiveRater {});
+        let alg = match level {
+            Difficulty::VeryHard => Algorithm::with_pruning(params, HiveRater {}, |input| {
+                if input.total_depth <= 2 {
+                    match input.current_depth {
+                        0 => PruningKind::WithinBounds(5, 9, 30),
+                        1 => PruningKind::WithinBounds(3, 6, 22),
+                        _ => unreachable!(),
+                    }
+                } else if input.total_depth <= 4 {
+                    match input.current_depth {
+                        0 => PruningKind::WithinBounds(3, 5, 20),
+                        1 => PruningKind::WithinBounds(2, 4, 14),
+                        2 => PruningKind::WithinBounds(1, 3, 12),
+                        3 => PruningKind::WithinBounds(1, 3, 12),
+                        _ => unreachable!(),
+                    }
+                } else {
+                    unreachable!()
+                }
+            }),
+            Difficulty::Hard => Algorithm::with_pruning(params, HiveRater {}, |input| {
+                match input.current_depth {
+                    0 => PruningKind::WithinBounds(3, 7, 30),
+                    1 => PruningKind::WithinBounds(2, 5, 18),
+                    _ => unreachable!(),
+                }
+            }),
+            _ => Algorithm::new(params, HiveRater {}),
+        };
         Self {
             alg,
             use_direct_move: level == Difficulty::Easy,

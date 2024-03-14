@@ -23,6 +23,7 @@ pub fn start_ai_worker_thread(exchange_point: Arc<Mutex<AIExchange>>) {
                 HiveAI::new(Difficulty::QuiteEasy),
                 HiveAI::new(Difficulty::Medium),
                 HiveAI::new(Difficulty::Hard),
+                HiveAI::new(Difficulty::VeryHard),
             ];
             loop {
                 thread::sleep(Duration::from_millis(10));
