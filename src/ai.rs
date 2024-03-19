@@ -123,9 +123,9 @@ impl HiveAI {
         let params = match level {
             Difficulty::VeryHard => {
                 let sliding = SlidingParams::new(
-                    vec![15, 10, 6, 6, 4, 4],
-                    vec![50, 35, 22, 22, 15, 15],
-                    vec![24, 20, 10, 8, 6, 5, 3, 3],
+                    vec![15, 10, 6, 6, 3, 3],
+                    vec![50, 35, 22, 22, 16, 16],
+                    vec![24, 20, 10, 8, 5, 5, 3, 3],
                     vec![17, 14, 9, 9, 7, 7, 6, 6],
                     vec![50, 10, 3, 3, 2, 2],
                 );
@@ -183,13 +183,13 @@ impl HiveAI {
                     unreachable!()
                 }
             }),
-            Difficulty::Hard => Algorithm::with_pruning(params, HiveRater {}, |input| {
-                match input.current_depth {
+            Difficulty::Hard => {
+                Algorithm::with_pruning(params, HiveRater {}, |input| match input.current_depth {
                     0 => PruningKind::WithinBounds(3, 7, 30),
                     1 => PruningKind::WithinBounds(2, 5, 18),
                     _ => unreachable!(),
-                }
-            }),
+                })
+            }
             _ => Algorithm::new(params, HiveRater {}),
         };
         Self {
