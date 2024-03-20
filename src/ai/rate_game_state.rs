@@ -153,13 +153,14 @@ fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
 fn rate_piece_movability(
     data: &HiveGameState,
     meta: &mut MetaData,
-) -> (RatingType, RatingType, RatingType, RatingType) {
+) -> (RatingType, RatingType, RatingType, RatingType, u32, u32) {
     let mut rating = [0; 2];
-    let mut beetle_bonus = [0; 2];  // TODO: beetle bonus should not stack
+    let mut beetle_bonus = [0; 2]; // TODO: beetle bonus should not stack
+    let mut pieces_reaching_queen = [0; 2];
     for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
         let &piece = field.content().top().unwrap();
         if field.content().len() == 1 && data.is_movable(field, false) {
-            let (val, bonus) =
+            let (val, bonus, could_reach_queen) =
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
             rating[usize::from(piece.player)] += if is_only_half_movable(data, meta, piece, field) {
                 val * 3 / 4
@@ -167,6 +168,8 @@ fn rate_piece_movability(
                 val
             };
             beetle_bonus[usize::from(piece.player)] += bonus;
+            pieces_reaching_queen[usize::from(piece.player)] +=
+                if could_reach_queen { 1 } else { 0 };
         } else if field.content().len() == 1 && !data.is_movable(field, false) {
             // is this blocked by only one adjacent piece?
             let mut value =
@@ -198,10 +201,11 @@ fn rate_piece_movability(
                     };
                     rating[usize::from(next.player)] +=
                         single_piece_rating(data, meta, *next, field, mov_type).0;
-                    let (val, bonus) =
+                    let (val, bonus, _) =
                         single_piece_rating(data, meta, *beetle, field, MovabilityType::Movable);
                     rating[usize::from(beetle.player)] += val;
                     beetle_bonus[usize::from(beetle.player)] += bonus;
+                    pieces_reaching_queen[usize::from(beetle.player)] += 1;
                 }
                 _ => unreachable!(),
             }
@@ -212,6 +216,8 @@ fn rate_piece_movability(
         rating[usize::from(data.player().switched())],
         beetle_bonus[usize::from(data.player())],
         beetle_bonus[usize::from(data.player().switched())],
+        pieces_reaching_queen[usize::from(data.player())],
+        pieces_reaching_queen[usize::from(data.player().switched())],
     )
 }
 
@@ -253,13 +259,14 @@ fn is_only_half_movable(
     false
 }
 
+/// rating, beetle bonus, whether queen might be reached
 fn single_piece_rating(
     data: &HiveGameState,
     meta: &mut MetaData,
     piece: Piece,
     field: Field<HiveBoard>,
     mut movability: MovabilityType,
-) -> (RatingType, RatingType) {
+) -> (RatingType, RatingType, bool) {
     let at_queen = meta.adjacent_to_queen(piece.player.switched(), field);
     if at_queen && (field.content().len() == 1 || movability != MovabilityType::Movable) {
         movability = if movability == MovabilityType::Movable {
@@ -269,11 +276,13 @@ fn single_piece_rating(
         };
     }
 
+    let mut could_reach_queen = false;
     let mut beetle_bonus = 0;
     let base_rating = match piece.p_type {
         PieceType::Queen => 10,
         PieceType::Ant => match movability {
             MovabilityType::Movable => {
+                could_reach_queen = true;
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
                     24
                 } else {
@@ -317,6 +326,7 @@ fn single_piece_rating(
                         }
                     }
                 }
+                could_reach_queen = reaches_queen;
                 meta.flags_mut(piece.player.switched()).queen_endangered |= reaches_queen;
                 if reaches_queen && piece.player == data.player() {
                     16
@@ -328,7 +338,7 @@ fn single_piece_rating(
                     8
                 }
             }
-            MovabilityType::Blocked(_) => 10,  // TODO: seems too bad compared to ant
+            MovabilityType::Blocked(_) => 10, // TODO: seems too bad compared to ant
             MovabilityType::AtQueen => 5,
             MovabilityType::Unmovable => {
                 // grasshoppers are more likely to escape
@@ -341,6 +351,7 @@ fn single_piece_rating(
         },
         PieceType::Beetle => match movability {
             MovabilityType::Movable => {
+                could_reach_queen = true;
                 let enemy = piece.player.switched();
                 // offensive beetle
                 // TODO: correctly determine queen endangerment?
@@ -441,6 +452,7 @@ fn single_piece_rating(
             _ => base_rating,
         },
         beetle_bonus,
+        could_reach_queen,
     )
 }
 
@@ -475,11 +487,12 @@ fn rate_queen_situation(
     meta: &MetaData,
     player: Player,
     enemy_beetle_bonus: RatingType,
-    is_less_endangered: bool,
+    less_endangered: Option<Player>,
+    enemies_reaching_queen: u32,
 ) -> RatingType {
     const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 80, 120];
     let mut can_move = false;
-    let mut num_neighbors = 0;
+    let mut num_neighbors = 0_u32;
     let mut num_friendly_movable = 0;
     if let Some(index) = meta.q_pos(player) {
         let pos = data.board().get_field_unchecked(index);
@@ -497,7 +510,7 @@ fn rate_queen_situation(
         }
     }
 
-    let mut val = -QUEEN_VAL[num_neighbors];
+    let mut val = -QUEEN_VAL[num_neighbors as usize];
     if val < 0 {
         if num_friendly_movable > 0 && player == data.player() {
             val += 20;
@@ -512,16 +525,26 @@ fn rate_queen_situation(
     if meta.flags(player).queen_endangered {
         val -= 12;
     }
+    if !meta.flags(player).queen_is_ant_reachable {
+        val += 8;
+    }
 
     // TODO: still unclear whether this is good
-    if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {
+    let enough = num_neighbors + enemies_reaching_queen >= 6;
+    let exactly_enough = num_neighbors + enemies_reaching_queen == 6;
+    let is_less_endangered = less_endangered == Some(player);
+    if !enough && less_endangered != Some(player.switched()) {
+        val * 3 / 5
+    } else if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {
         val * 2 / 3
-    } else if can_move && is_less_endangered {
+    } else if (can_move || exactly_enough) && is_less_endangered {
         val * 3 / 4
-    } else if is_less_endangered {
+    } else if is_less_endangered || !enough {
         val * 4 / 5
     } else if can_move {
         val * 5 / 6
+    } else if exactly_enough {
+        val * 9 / 10
     } else {
         val
     }
@@ -544,8 +567,16 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
 
     let my_remaining = rate_remaining_pieces(data, player);
     let enemy_remaining = rate_remaining_pieces(data, enemy);
-    let (my_movability, enemy_movability, my_beetle_bonus, enemy_beetle_bonus) =
-        rate_piece_movability(data, &mut meta);
+    let (
+        my_movability,
+        enemy_movability,
+        my_beetle_bonus,
+        enemy_beetle_bonus,
+        mut my_reach_queen,
+        mut enemy_reach_queen,
+    ) = rate_piece_movability(data, &mut meta);
+    my_reach_queen += data.total_num_pieces(player);
+    enemy_reach_queen += data.total_num_pieces(enemy);
 
     let less_endangered = determine_less_endangered(data, &meta);
     let my_queen = rate_queen_situation(
@@ -553,14 +584,16 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
         &meta,
         player,
         enemy_beetle_bonus,
-        less_endangered == Some(player),
+        less_endangered,
+        enemy_reach_queen,
     );
     let enemy_queen = rate_queen_situation(
         data,
         &meta,
         enemy,
         my_beetle_bonus,
-        less_endangered == Some(enemy),
+        less_endangered,
+        my_reach_queen,
     );
     my_remaining - enemy_remaining + my_movability - enemy_movability + my_queen - enemy_queen
 }
@@ -574,8 +607,14 @@ pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingTy
 
     let my_remaining = rate_remaining_pieces(data, player);
     let enemy_remaining = rate_remaining_pieces(data, enemy);
-    let (my_movability, enemy_movability, my_beetle_bonus, enemy_beetle_bonus) =
-        rate_piece_movability(data, &mut meta);
+    let (
+        my_movability,
+        enemy_movability,
+        my_beetle_bonus,
+        enemy_beetle_bonus,
+        my_reach_queen,
+        enemy_reach_queen,
+    ) = rate_piece_movability(data, &mut meta);
 
     let less_endangered = determine_less_endangered(data, &meta);
     let my_queen = rate_queen_situation(
@@ -583,14 +622,16 @@ pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingTy
         &meta,
         player,
         enemy_beetle_bonus,
-        less_endangered == Some(player),
+        less_endangered,
+        enemy_reach_queen,
     );
     let enemy_queen = rate_queen_situation(
         data,
         &meta,
         enemy,
         my_beetle_bonus,
-        less_endangered == Some(enemy),
+        less_endangered,
+        my_reach_queen,
     );
     println!("       Current player -   Enemy player");
     println!("Rem.   {:<15}-{:>15}", my_remaining, enemy_remaining);
