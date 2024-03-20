@@ -501,9 +501,11 @@ impl SettingRenderer {
                 create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
                     &mut state.ai_moves
                 }),
-                create_menu_setting("AI assistant level: ", vec!["1", "2", "3", "4", "5"], |state| {
-                    &mut state.ai_assistant
-                }),
+                create_menu_setting(
+                    "AI assistant level: ",
+                    vec!["1", "2", "3", "4", "5"],
+                    |state| &mut state.ai_assistant,
+                ),
                 create_menu_setting("filter suggested moves: ", vec!["yes", "no"], |state| {
                     &mut state.filter_ai_suggestions
                 }),

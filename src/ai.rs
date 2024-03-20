@@ -1,6 +1,8 @@
 use tgp::engine::{Engine, EventListener, GameEngine};
 use tgp_ai::{
-    add_context_to_ratings, rater::{DecisionType, Rater}, MinMaxAlgorithm, MinMaxError, Params, PruningKind, RateAndMap, RatingType, SlidingParams
+    add_context_to_ratings,
+    rater::{DecisionType, Rater},
+    MinMaxAlgorithm, MinMaxError, Params, PruningKind, RateAndMap, RatingType, SlidingParams,
 };
 use tgp_board::{
     hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
@@ -111,7 +113,7 @@ pub enum Difficulty {
     VeryHard,
 }
 
-type Algorithm = MinMaxAlgorithm::<HiveGameState, HiveRater>;
+type Algorithm = MinMaxAlgorithm<HiveGameState, HiveRater>;
 
 pub struct HiveAI {
     alg: Algorithm,
