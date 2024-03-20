@@ -144,6 +144,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 
 fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     let ant_rating = 10 * data.remaining_pieces(player, PieceType::Ant);
+    // TODO: use 6?
     let spider_rating = 5 * data.remaining_pieces(player, PieceType::Spider);
     let grasshopper_rating = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
     let beetle_rating = 5 * data.remaining_pieces(player, PieceType::Beetle);

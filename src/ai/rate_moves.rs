@@ -115,6 +115,7 @@ enum PositionType {
 enum Equivalency {
     AntToNeutral(OpenIndex),
     // TODO: ant works badly for circles
+    // TODO: more equivalency classes for ants?!
     AntToBlocking(OpenIndex, OpenIndex),
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
@@ -449,6 +450,7 @@ fn rate_usual_move(
     to: MetaInterest,
     modifier: RatingType,
 ) -> RatingType {
+    // TODO: shift moves? (i.e. move to adjacent space to make room for other piece, blocking-to-blocking)
     // TODO: endgame (spiders and grasshoppers need to find their way, including previous move)
     let mut total_modifier = modifier;
     let mut from_type =
@@ -484,13 +486,13 @@ fn rate_usual_move(
             if meta.want_to_block {
                 8
             } else if piece.p_type == PieceType::Ant {
-                4
+                4 // TODO: does this make senese?
             } else {
                 6
             }
         }
         (PositionType::Blocking, PositionType::AtQueen) => {
-            if meta.defensive {
+            if meta.defensive { // TODO: too much?
                 3
             } else if piece.p_type == PieceType::Ant {
                 3 + 2 * meta.q_neighbors(piece.player.switched()) as i32
