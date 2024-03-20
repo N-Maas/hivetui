@@ -340,6 +340,7 @@ fn handle_move_ratings(
 
         if piece.p_type == PieceType::Queen {
             // moving the queen only makes sense when it is endangered
+            // TODO: WHAT?
             if meta_data.queen_endangered && meta_data.q_neighbors(data.player()) > 1 {
                 rater.rate(i, j, 15);
             } else if meta_data.queen_should_move {
@@ -492,7 +493,8 @@ fn rate_usual_move(
             }
         }
         (PositionType::Blocking, PositionType::AtQueen) => {
-            if meta.defensive { // TODO: too much?
+            if meta.defensive {
+                // TODO: too much?
                 3
             } else if piece.p_type == PieceType::Ant {
                 3 + 2 * meta.q_neighbors(piece.player.switched()) as i32
