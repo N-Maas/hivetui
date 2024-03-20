@@ -372,11 +372,14 @@ impl HiveGameState {
     }
 
     fn check_movability_for_all(&mut self) {
-        for index in self.board.all_indices() {
-            let field = self.board.get_field(index).unwrap();
-            if !field.is_empty() {
-                self.board[index].is_movable = self.check_piece_is_movable(field);
-            }
+        let updates = self
+            .board
+            .iter_fields()
+            .filter(|f| !f.is_empty())
+            .map(|f| (f.index(), self.check_piece_is_movable(f)))
+            .collect::<Vec<_>>();
+        for (index, value) in updates {
+            self.board[index].is_movable = value;
         }
     }
 
