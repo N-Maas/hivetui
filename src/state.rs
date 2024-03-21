@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
+use smallvec::SmallVec;
 use tgp::{
     mapped_decision::MappedDecision, plain_decision::PlainDecision, vec_context::VecContext,
     Decision, GameData, Outcome, RevEffect,
@@ -23,13 +24,13 @@ use crate::pieces::{Piece, PieceType, Player};
 #[derive(Debug, Default, Clone)]
 pub struct HiveContent {
     pub is_movable: bool,
-    pieces: Vec<Piece>,
+    pieces: SmallVec<[Piece; 4]>,
 }
 
 impl HiveContent {
     pub fn new() -> Self {
         Self {
-            pieces: Vec::new(),
+            pieces: SmallVec::new(),
             is_movable: false,
         }
     }

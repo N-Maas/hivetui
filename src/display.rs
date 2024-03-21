@@ -160,10 +160,10 @@ fn draw_field<T: Display>(
                         fill_char(player, print_empty)
                     };
                     if field.content().len() > 1 {
-                        let Piece {
+                        let &Piece {
                             player: player_top,
                             p_type: p_top,
-                        } = field.content().pieces()[1];
+                        } = field.content().get(1).unwrap();
                         let fill_top = if from_field == Some(index) {
                             '~'
                         } else {
