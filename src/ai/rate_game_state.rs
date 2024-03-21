@@ -163,14 +163,14 @@ fn rate_piece_movability(
         if field.content().len() == 1 && data.is_movable(field, false) {
             let (val, bonus, could_reach_queen) =
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
-            rating[usize::from(piece.player)] += if is_only_half_movable(data, meta, piece, field) {
+            let player = usize::from(piece.player);
+            rating[player] += if is_only_half_movable(data, meta, piece, field) {
                 val * 3 / 4
             } else {
                 val
             };
-            beetle_bonus[usize::from(piece.player)] += bonus;
-            pieces_reaching_queen[usize::from(piece.player)] +=
-                if could_reach_queen { 1 } else { 0 };
+            beetle_bonus[player] = RatingType::max(beetle_bonus[player], bonus);
+            pieces_reaching_queen[player] += if could_reach_queen { 1 } else { 0 };
         } else if field.content().len() == 1 && !data.is_movable(field, false) {
             // is this blocked by only one adjacent piece?
             let mut value =
@@ -204,21 +204,25 @@ fn rate_piece_movability(
                         single_piece_rating(data, meta, *next, field, mov_type).0;
                     let (val, bonus, _) =
                         single_piece_rating(data, meta, *beetle, field, MovabilityType::Movable);
-                    rating[usize::from(beetle.player)] += val;
-                    beetle_bonus[usize::from(beetle.player)] += bonus;
-                    pieces_reaching_queen[usize::from(beetle.player)] += 1;
+                    let b_player = usize::from(beetle.player);
+                    rating[b_player] += val;
+                    beetle_bonus[b_player] = RatingType::max(beetle_bonus[b_player], bonus);
+                    pieces_reaching_queen[b_player] += 1;
                 }
                 _ => unreachable!(),
             }
         }
     }
+
+    let p1 = usize::from(data.player());
+    let p2 = usize::from(data.player().switched());
     (
-        rating[usize::from(data.player())],
-        rating[usize::from(data.player().switched())],
-        beetle_bonus[usize::from(data.player())],
-        beetle_bonus[usize::from(data.player().switched())],
-        pieces_reaching_queen[usize::from(data.player())],
-        pieces_reaching_queen[usize::from(data.player().switched())],
+        rating[p1],
+        rating[p2],
+        beetle_bonus[p1],
+        beetle_bonus[p2],
+        pieces_reaching_queen[p1],
+        pieces_reaching_queen[p2],
     )
 }
 
@@ -356,8 +360,9 @@ fn single_piece_rating(
                 let enemy = piece.player.switched();
                 // offensive beetle
                 // TODO: correctly determine queen endangerment?
-                match meta.distance_to_queen(enemy, field) {
-                    dist @ 0 | dist @ 1 => {
+                let dist = meta.distance_to_queen(enemy, field);
+                match dist {
+                    0 | 1 => {
                         assert!(field.content().len() > 1);
                         let queen_field =
                             data.board().get_field_unchecked(meta.q_pos(enemy).unwrap());
@@ -378,20 +383,19 @@ fn single_piece_rating(
                         let num_placeable =
                             u32::min(num_placeable, data.total_num_pieces(piece.player)) as i32;
                         if dist == 0 {
-                            beetle_bonus = 17 + 15 * num_placeable;
+                            beetle_bonus = 10 + 15 * num_placeable;
                         } else {
-                            beetle_bonus = 17 + 5 * num_placeable;
+                            beetle_bonus = 10 + 5 * num_placeable;
                         }
                     }
                     2 => {
-                        beetle_bonus = 9;
+                        beetle_bonus = 4;
                     }
-                    dist => {
-                        beetle_bonus = RatingType::max(0, 7 - dist as RatingType);
-                    }
+                    _ => (),
                 };
+                let move_rating = 8 + RatingType::max(0, 7 - dist as RatingType);
                 // defensive beetle
-                if beetle_bonus <= 10 {
+                if beetle_bonus <= 5 {
                     let mut best_blocking = field
                         .neighbors()
                         .filter_map(|f| {
@@ -423,14 +427,14 @@ fn single_piece_rating(
                     if piece.player != data.player() {
                         best_blocking -= 5;
                     }
-                    if best_blocking >= 8 + beetle_bonus {
+                    if best_blocking >= move_rating + beetle_bonus {
                         beetle_bonus = 0;
                         best_blocking
                     } else {
-                        8
+                        move_rating
                     }
                 } else {
-                    8
+                    move_rating
                 }
             }
             MovabilityType::Blocked(_) => 12,
