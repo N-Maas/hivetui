@@ -125,13 +125,13 @@ impl HiveAI {
         let params = match level {
             Difficulty::VeryHard => {
                 let sliding = SlidingParams::new(
-                    vec![15, 10, 6, 6, 3, 3],
-                    vec![50, 35, 22, 22, 16, 16],
-                    vec![24, 20, 10, 8, 5, 5, 3, 3],
-                    vec![17, 14, 9, 9, 7, 7, 6, 6],
-                    vec![50, 10, 3, 3, 2, 2],
+                    vec![15, 10, 6, 6, 3, 3, 2, 2],
+                    vec![50, 35, 22, 22, 16, 16, 16, 16],
+                    vec![24, 20, 10, 8, 5, 5, 3, 3, 3, 3],
+                    vec![17, 14, 9, 9, 7, 7, 6, 6, 6, 6],
+                    vec![50, 10, 3, 3, 2, 2, 1, 1],
                 );
-                Params::new(4, sliding)
+                Params::new(5, sliding)
             }
             Difficulty::Hard => {
                 let sliding = SlidingParams::new(
@@ -179,6 +179,16 @@ impl HiveAI {
                         1 => PruningKind::WithinBounds(2, 4, 14),
                         2 => PruningKind::WithinBounds(1, 3, 12),
                         3 => PruningKind::WithinBounds(1, 3, 12),
+                        _ => unreachable!(),
+                    }
+                } else if input.total_depth <= 6 {
+                    match input.current_depth {
+                        0 => PruningKind::WithinBounds(2, 5, 16),
+                        1 => PruningKind::WithinBounds(2, 2, 14),
+                        2 => PruningKind::WithinBounds(1, 2, 12),
+                        3 => PruningKind::WithinBounds(1, 2, 12),
+                        4 => PruningKind::WithinBounds(1, 2, 12),
+                        5 => PruningKind::WithinBounds(1, 2, 12),
                         _ => unreachable!(),
                     }
                 } else {
