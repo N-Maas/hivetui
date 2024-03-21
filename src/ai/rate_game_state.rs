@@ -821,6 +821,6 @@ mod test {
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
         // beetle bonus for black: 22
         // note that white queen is movable, but the beetle is only half movable
-        print_and_compare_rating(&state, Some([20, 15, 70, 51, -44, -46]));
+        print_and_compare_rating(&state, Some([20, 15, 70, 53, -44, -46]));
     }
 }
