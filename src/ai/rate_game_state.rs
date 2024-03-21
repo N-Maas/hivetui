@@ -393,7 +393,11 @@ fn single_piece_rating(
                     }
                     _ => (),
                 };
-                let move_rating = 8 + RatingType::max(0, 7 - dist as RatingType);
+                let mut move_rating = 8 + RatingType::max(0, 7 - dist as RatingType);
+                if field.content().len() > 1 && dist > 0 {
+                    // bonus: a beetle on top of the hive can not easily be blocked
+                    move_rating += 2;
+                }
                 // defensive beetle
                 if beetle_bonus <= 5 {
                     let mut best_blocking = field
