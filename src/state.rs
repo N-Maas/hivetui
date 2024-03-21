@@ -815,4 +815,50 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn beetle_up_blocked_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Beetle, 3);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = zero + HexaDirection::Up;
+        let left = zero + HexaDirection::UpLeft;
+        let right = zero + HexaDirection::UpRight;
+        state.place_piece(PieceType::Beetle, zero);
+        state.place_piece(PieceType::Queen, up);
+        state.place_piece(PieceType::Beetle, left);
+        state.place_piece(PieceType::Beetle, right);
+        state.place_piece(PieceType::Queen, zero + HexaDirection::DownRight);
+        state.place_piece(PieceType::Beetle, up + HexaDirection::UpRight);
+        state.place_piece(PieceType::Beetle, up + HexaDirection::UpLeft);
+
+        let moves = state.create_movement_decision(zero);
+        assert_eq!(moves.option_count(), 6);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                // the beetle can move up for now
+                assert!(context.contains(&up));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+
+        state.move_piece(up + HexaDirection::UpRight, right, true);
+        state.move_piece(up + HexaDirection::UpLeft, left, true);
+        let moves = state.create_movement_decision(zero);
+        assert_eq!(moves.option_count(), 5);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                // the beetle can move up for now
+                assert!(!context.contains(&up));
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+    }
 }

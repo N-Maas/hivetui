@@ -117,16 +117,18 @@ impl PieceType {
         field
             .neighbors_by_direction()
             .filter(move |(d, f)| {
-                if f.content().len() > height {
-                    return may_go_up;
+                let target_height = f.content().len();
+                if target_height > height && !may_go_up {
+                    return false;
                 }
+                let max_height = usize::max(height, target_height);
                 let left_is_plain = field
                     .next(d.prev_direction())
-                    .map_or(true, |f| f.content().len() <= height);
+                    .map_or(true, |f| f.content().len() <= max_height);
                 let right_is_plain = field
                     .next(d.next_direction())
-                    .map_or(true, |f| f.content().len() <= height);
-                if height == 0 {
+                    .map_or(true, |f| f.content().len() <= max_height);
+                if max_height == 0 {
                     // we either move along the _border_ of the hive..
                     left_is_plain != right_is_plain
                 } else {
