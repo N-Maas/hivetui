@@ -438,6 +438,7 @@ fn handle_move_ratings(
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus);
             rater.rate(i, j, rating);
         } else {
+            // TODO: ladybug handling?
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0);
             rater.rate(i, j, rating);
         }
@@ -606,6 +607,10 @@ fn handle_placement_ratings(
                     } else {
                         rater.rate(i, j, 1);
                     }
+                }
+                PieceType::Ladybug => {
+                    // TODO: refine
+                    rater.rate(i, j, 8);
                 }
             }
         }

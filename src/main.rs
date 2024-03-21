@@ -25,6 +25,7 @@ fn main() -> io::Result<()> {
     pieces.insert(PieceType::Grasshopper, 3);
     pieces.insert(PieceType::Beetle, 2);
     pieces.insert(PieceType::Spider, 2);
+    pieces.insert(PieceType::Ladybug, 1);
 
     let args = Args::parse();
     if args.cli {

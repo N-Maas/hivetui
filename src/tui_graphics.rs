@@ -279,6 +279,7 @@ pub fn piece_color(piece_t: PieceType) -> Color {
         PieceType::Spider => Color::from_u32(0x009A4800),
         PieceType::Grasshopper => Color::from_u32(0x000DD084),
         PieceType::Beetle => Color::from_u32(0x009A009A),
+        PieceType::Ladybug => Color::from_u32(0x00C02030),
     }
 }
 
@@ -289,6 +290,7 @@ pub fn draw_piece(ctx: &mut Context<'_>, piece_t: PieceType, x_mid: f64, y_mid: 
         PieceType::Spider => draw_spider(ctx, x_mid, y_mid, zoom),
         PieceType::Grasshopper => draw_grasshopper(ctx, x_mid, y_mid, zoom),
         PieceType::Beetle => draw_beetle(ctx, x_mid, y_mid, zoom),
+        PieceType::Ladybug => draw_ladybug(ctx, x_mid, y_mid, zoom),
     }
 }
 
@@ -299,6 +301,7 @@ pub fn to_bottom_offset(piece_t: PieceType) -> f64 {
         PieceType::Spider => 2.4,
         PieceType::Grasshopper => 1.2,
         PieceType::Beetle => 1.6,
+        PieceType::Ladybug => 1.8,
     }
 }
 
@@ -330,6 +333,107 @@ pub fn draw_tiny_piece(
 
 pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
     let color = piece_color(PieceType::Queen);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 4);
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 3.6,
+        radius: 1.0,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 3.6,
+        radius: 0.7,
+        color,
+    });
+    let bases = [-1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5];
+    ctx.draw(&Points {
+        coords: &bases.map(|x_diff| (x_mid + x_diff, y_mid + 2.0)),
+        color,
+    });
+    fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -1, 0);
+    fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -4, -3);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -6, -6);
+    // antennas
+    ctx.draw(&Line {
+        x1: x_mid - 1.5,
+        y1: y_mid + 4.0,
+        x2: x_mid - 2.5,
+        y2: y_mid + 6.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.5,
+        y1: y_mid + 4.0,
+        x2: x_mid + 2.5,
+        y2: y_mid + 6.0,
+        color,
+    });
+    // middle feet
+    ctx.draw(&Line {
+        x1: x_mid - 3.5,
+        y1: y_mid - 1.0,
+        x2: x_mid - 6.0,
+        y2: y_mid - 3.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.5,
+        y1: y_mid - 1.0,
+        x2: x_mid + 6.0,
+        y2: y_mid - 3.0,
+        color,
+    });
+    // back feet
+    ctx.draw(&Line {
+        x1: x_mid - 3.5,
+        y1: y_mid - 5.0,
+        x2: x_mid - 5.0,
+        y2: y_mid - 6.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.5,
+        y1: y_mid - 5.0,
+        x2: x_mid + 5.0,
+        y2: y_mid - 6.5,
+        color,
+    });
+    // wings
+    ctx.draw(&Circle {
+        x: x_mid - 5.5,
+        y: y_mid + 2.0,
+        radius: 1.2,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid - 7.0,
+        y: y_mid + 3.5,
+        radius: 1.5,
+        color,
+    });
+    if zoom <= 0.55 {
+        fill_rectangle(ctx, color, x_mid, y_mid, -7, -7, 3, 4);
+    }
+    ctx.draw(&Circle {
+        x: x_mid + 5.5,
+        y: y_mid + 2.0,
+        radius: 1.2,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid + 7.0,
+        y: y_mid + 3.5,
+        radius: 1.5,
+        color,
+    });
+    if zoom <= 0.55 {
+        fill_rectangle(ctx, color, x_mid, y_mid, 7, 7, 3, 4);
+    }
+}
+
+pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
+    let color = piece_color(PieceType::Ladybug);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 4);
     ctx.draw(&Circle {
         x: x_mid,

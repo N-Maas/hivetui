@@ -143,12 +143,13 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 }
 
 fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
-    let ant_rating = 10 * data.remaining_pieces(player, PieceType::Ant);
+    let ants = 10 * data.remaining_pieces(player, PieceType::Ant);
+    let ladybugs = 8 * data.remaining_pieces(player, PieceType::Ladybug);
     // TODO: use 6?
-    let spider_rating = 5 * data.remaining_pieces(player, PieceType::Spider);
-    let grasshopper_rating = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
-    let beetle_rating = 5 * data.remaining_pieces(player, PieceType::Beetle);
-    (ant_rating + spider_rating + grasshopper_rating + beetle_rating) as RatingType
+    let spiders = 5 * data.remaining_pieces(player, PieceType::Spider);
+    let grasshoppers = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
+    let beetles = 5 * data.remaining_pieces(player, PieceType::Beetle);
+    (ants + ladybugs + spiders + grasshoppers + beetles) as RatingType
 }
 
 fn rate_piece_movability(
@@ -445,6 +446,13 @@ fn single_piece_rating(
             MovabilityType::AtQueen => 5,
             // beetles are somewhat likely to escape
             MovabilityType::Unmovable => 4,
+        },
+        PieceType::Ladybug => match movability {
+            // TODO: refine this
+            MovabilityType::Movable => 18,
+            MovabilityType::Blocked(_) => 16,
+            MovabilityType::AtQueen => 8,
+            MovabilityType::Unmovable => 5,
         },
     };
 

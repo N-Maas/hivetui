@@ -74,6 +74,7 @@ pub enum PieceType {
     Spider,
     Grasshopper,
     Beetle,
+    Ladybug,
 }
 
 // note that both get_moves and is_movable do not consider the OHR yet
@@ -85,6 +86,7 @@ impl PieceType {
             PieceType::Spider => "Spider",
             PieceType::Grasshopper => "Grasshopper",
             PieceType::Beetle => "Beetle",
+            PieceType::Ladybug => "Ladybug",
         }
     }
 
@@ -97,7 +99,7 @@ impl PieceType {
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
     {
-        Self::feasible_steps_impl(field, Some(0), false)
+        Self::feasible_steps_impl(field, Some(0), false, true, true)
     }
 
     fn feasible_steps_any<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
@@ -105,10 +107,16 @@ impl PieceType {
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
     {
-        Self::feasible_steps_impl(field, None, true)
+        Self::feasible_steps_impl(field, None, true, true, true)
     }
 
-    fn feasible_steps_impl<B>(field: Field<B>, height: Option<usize>, may_go_up: bool) -> FieldSearchResult<OpenIndex>
+    fn feasible_steps_impl<B>(
+        field: Field<B>,
+        height: Option<usize>,
+        may_go_up: bool,
+        may_go_flat: bool,
+        may_go_down: bool,
+    ) -> FieldSearchResult<OpenIndex>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
@@ -119,6 +127,10 @@ impl PieceType {
             .filter(move |(d, f)| {
                 let target_height = f.content().len();
                 if target_height > height && !may_go_up {
+                    return false;
+                } else if target_height == height && !may_go_flat {
+                    return false;
+                } else if target_height < height && !may_go_down {
                     return false;
                 }
                 let max_height = usize::max(height, target_height);
@@ -140,6 +152,7 @@ impl PieceType {
             .collect()
     }
 
+    // TODO: don't return a vec?!
     pub fn get_moves<'a>(&self, field: Field<'a, HiveBoard>) -> Vec<Field<'a, HiveBoard>> {
         assert!(!field.is_empty());
         let mut hypothetical =
@@ -169,6 +182,14 @@ impl PieceType {
             PieceType::Beetle => {
                 search.replace(Self::feasible_steps_any);
             }
+            PieceType::Ladybug => {
+                // upwards move
+                search.replace(|f| Self::feasible_steps_impl(f, Some(0), true, false, false));
+                // move on top of hive
+                search.replace(|f| Self::feasible_steps_impl(f, None, false, true, false));
+                // downwards move
+                search.replace(|f| Self::feasible_steps_impl(f, None, false, false, true));
+            }
         }
         search
             .into_iter()
@@ -180,10 +201,9 @@ impl PieceType {
     pub fn is_movable(&self, field: Field<HiveBoard>) -> bool {
         assert!(!field.is_empty());
         match self {
-            // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant => feasible_steps_plain(field).count() > 0,
             PieceType::Grasshopper | PieceType::Beetle => true,
-            PieceType::Spider => !self.get_moves(field).is_empty(),
+            PieceType::Spider | PieceType::Ladybug => !self.get_moves(field).is_empty(),
         }
     }
 
@@ -197,11 +217,10 @@ impl PieceType {
     {
         assert!(!field.is_empty());
         match self {
-            // TODO: not completetly correct for spider
             PieceType::Queen | PieceType::Ant | PieceType::Spider => {
                 feasible_steps_plain(field).count() > 0
             }
-            PieceType::Grasshopper | PieceType::Beetle => true,
+            PieceType::Grasshopper | PieceType::Beetle | PieceType::Ladybug => true,
         }
     }
 }
@@ -265,6 +284,7 @@ impl Display for PieceType {
             PieceType::Spider => "S",
             PieceType::Grasshopper => "G",
             PieceType::Beetle => "B",
+            PieceType::Ladybug => "L",
         };
         write!(f, "{}", string)
     }
