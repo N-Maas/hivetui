@@ -283,8 +283,8 @@ fn single_piece_rating(
         PieceType::Queen => 10,
         PieceType::Ant => match movability {
             MovabilityType::Movable => {
-                could_reach_queen = true;
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
+                    could_reach_queen = true;
                     24
                 } else {
                     16
