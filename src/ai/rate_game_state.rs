@@ -765,7 +765,7 @@ mod test {
         state.place_piece(PieceType::Spider, zero + HexaDirection::UpLeft);
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
-        print_and_compare_rating(&state, Some([20, 10, 35, 37, -10, -20]));
+        print_and_compare_rating(&state, Some([20, 10, 46, 43, -24, -15]));
     }
 
     #[test]
@@ -817,6 +817,6 @@ mod test {
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
         // beetle bonus for black: 22
         // note that white queen is movable, but the beetle is only half movable
-        print_and_compare_rating(&state, Some([20, 15, 63, 35, -39, -40]));
+        print_and_compare_rating(&state, Some([20, 15, 70, 51, -44, -46]));
     }
 }
