@@ -92,17 +92,33 @@ impl PieceType {
         &self.name()[0..1]
     }
 
-    fn feasible_steps<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
+    fn feasible_steps_flat<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
     {
+        Self::feasible_steps_impl(field, Some(0), false)
+    }
+
+    fn feasible_steps_any<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
+    where
+        B: Board<Index = OpenIndex, Content = HiveContent>,
+        B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+    {
+        Self::feasible_steps_impl(field, None, true)
+    }
+
+    fn feasible_steps_impl<B>(field: Field<B>, height: Option<usize>, may_go_up: bool) -> FieldSearchResult<OpenIndex>
+    where
+        B: Board<Index = OpenIndex, Content = HiveContent>,
+        B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+    {
+        let height = height.unwrap_or_else(|| field.content().len());
         field
             .neighbors_by_direction()
             .filter(move |(d, f)| {
-                let height = field.content().len();
                 if f.content().len() > height {
-                    return false;
+                    return may_go_up;
                 }
                 let left_is_plain = field
                     .next(d.prev_direction())
@@ -131,15 +147,15 @@ impl PieceType {
         let mut search = new_field.search();
         match self {
             PieceType::Queen => {
-                search.replace(Self::feasible_steps);
+                search.replace(Self::feasible_steps_flat);
             }
             PieceType::Ant => {
-                search.extend_repeated(Self::feasible_steps);
+                search.extend_repeated(Self::feasible_steps_flat);
             }
             PieceType::Spider => {
                 let mut tree = new_field.search_tree();
                 for _ in 0..3 {
-                    tree.extend(Self::feasible_steps, SearchMode::NoCycles);
+                    tree.extend(Self::feasible_steps_flat, SearchMode::NoCycles);
                 }
                 search = tree.into_endpoint_set();
             }
@@ -149,15 +165,7 @@ impl PieceType {
                     .expect("Grasshopper has no adjacent piece.");
             }
             PieceType::Beetle => {
-                // plain or downwards move
-                search.replace(Self::feasible_steps);
-                // upwards move
-                for f in new_field
-                    .neighbors()
-                    .filter(|f| f.content().len() > new_field.content().len())
-                {
-                    search.insert(f);
-                }
+                search.replace(Self::feasible_steps_any);
             }
         }
         search
@@ -227,7 +235,7 @@ where
 {
     let mut tree = field.search_tree();
     for _ in 0..3 {
-        tree.extend(PieceType::feasible_steps, SearchMode::NoCycles);
+        tree.extend(PieceType::feasible_steps_flat, SearchMode::NoCycles);
     }
     tree
 }
