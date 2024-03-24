@@ -440,7 +440,7 @@ pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
     fill_rectangle(ctx, color, x_mid, y_mid, -5, -2, -4, 0);
     fill_rectangle(ctx, color, x_mid, y_mid, -6, -5, -3, 1);
     fill_rectangle(ctx, color, x_mid, y_mid, 1, 2, -5, 4);
-    fill_rectangle(ctx, color, x_mid, y_mid, 2, 5, -4   , 0);
+    fill_rectangle(ctx, color, x_mid, y_mid, 2, 5, -4, 0);
     fill_rectangle(ctx, color, x_mid, y_mid, 5, 6, -3, 1);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -3, 2);
     // upper dots
