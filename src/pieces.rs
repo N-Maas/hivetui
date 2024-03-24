@@ -5,7 +5,6 @@ use tgp_board::{
     index_map::ArrayIndexMap,
     open_board::OpenIndex,
     prelude::*,
-    search::FieldSearchResult,
     search::{SearchMode, SearchingTree},
     structures::{
         directions::{DirectionEnumerable, HexaDirection},
@@ -94,7 +93,7 @@ impl PieceType {
         &self.name()[0..1]
     }
 
-    fn feasible_steps_flat<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
+    fn feasible_steps_flat<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
@@ -102,7 +101,7 @@ impl PieceType {
         Self::feasible_steps_impl(field, Some(0), false, true, true)
     }
 
-    fn feasible_steps_any<B>(field: Field<B>) -> FieldSearchResult<OpenIndex>
+    fn feasible_steps_any<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
@@ -116,7 +115,7 @@ impl PieceType {
         may_go_up: bool,
         may_go_flat: bool,
         may_go_down: bool,
-    ) -> FieldSearchResult<OpenIndex>
+    ) -> impl Iterator<Item = Field<B>>
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection>,
@@ -149,7 +148,6 @@ impl PieceType {
                 }
             })
             .map(|(_, f)| f)
-            .collect()
     }
 
     // TODO: don't return a vec?!

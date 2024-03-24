@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, iter};
+use std::cmp::Ordering;
 
 use tgp_ai::RatingType;
 use tgp_board::{
@@ -123,10 +123,8 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
                 && search.extend(|f| {
                     if f.neighbor_count() < 6 {
                         found_border = true;
-                        iter::empty::<OpenIndex>().collect()
-                    } else {
-                        feasible_steps_plain(f).collect()
                     }
+                    feasible_steps_plain(f).map(Field::index)
                 })
             {}
             meta_data.flags_mut(player).queen_is_ant_reachable = found_border;
