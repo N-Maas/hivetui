@@ -186,7 +186,7 @@ impl PieceType {
                 // upwards move
                 search.replace(|f| Self::feasible_steps_impl(f, Some(0), true, false, false));
                 // move on top of hive
-                search.replace(|f| Self::feasible_steps_impl(f, None, false, true, false));
+                search.replace(|f| Self::feasible_steps_any(f).filter(|f| f.content().len() > 0));
                 // downwards move
                 search.replace(|f| Self::feasible_steps_impl(f, None, false, false, true));
             }
