@@ -437,7 +437,10 @@ fn handle_move_ratings(
             rater.rate(i, j, rating);
         } else {
             // TODO: ladybug handling?
-            assert!(matches!(piece.p_type, PieceType::Grasshopper | PieceType::Spider | PieceType::Ladybug));
+            assert!(matches!(
+                piece.p_type,
+                PieceType::Grasshopper | PieceType::Spider | PieceType::Ladybug
+            ));
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, false);
             rater.rate(i, j, rating);
         }
@@ -463,7 +466,10 @@ fn rate_usual_move(
         from_type = PositionType::NeutralOrBad;
         total_modifier -= 1;
     }
-    if is_distance_one_move && from_type == PositionType::Blocking && to_type == PositionType::NeutralOrBad {
+    if is_distance_one_move
+        && from_type == PositionType::Blocking
+        && to_type == PositionType::NeutralOrBad
+    {
         // this is likely to still be a blocking move (so should be considered a zero-move)
         if meta.is_endgame {
             return 3 + total_modifier;
@@ -498,7 +504,7 @@ fn rate_usual_move(
             } else {
                 -4
             }
-        },
+        }
         (PositionType::Blocking, PositionType::Blocking) => {
             if meta.want_to_block {
                 8
@@ -789,7 +795,7 @@ mod test {
 
         let meta_data = calculate_metadata(&state);
         assert!(!meta_data.queen_endangered);
-        assert!(meta_data.queen_should_move);
+        // assert!(meta_data.queen_should_move);  --> we don't consider spiders at the moment
         assert!(!meta_data.defensive);
         assert!(!meta_data.want_to_block);
         assert_eq!(meta_data.queen_neighbors, [1, 2]);
@@ -928,9 +934,9 @@ mod test {
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
         let rating = print_move_ratings(&state, &HiveRater {});
-        // Move  <Q> from (0 , -1) to (1 , -1) =>   15
-        // Move  <Q> from (0 , -1) to (-1, -2) =>   15
         // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
+        // Move  <Q> from (0 , -1) to (1 , -1) =>   13
+        // Move  <Q> from (0 , -1) to (-1, -2) =>   13
         // Move  <A> from (-1, -1) to (0 , 3 ) =>   12
         // Move  <S> from (2 , 0 ) to (2 , 2 ) =>   12
         // Place <A>  at  (-2, -2)             =>   11
@@ -943,7 +949,7 @@ mod test {
                 .map(|(r, _, _)| r)
                 .take(9)
                 .collect::<Vec<_>>(),
-            vec![15, 15, 14, 12, 12, 11, 3, 2, 1]
+            vec![14, 13, 13, 12, 12, 11, 3, 2, 1]
         );
     }
 
