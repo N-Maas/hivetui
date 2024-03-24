@@ -539,12 +539,12 @@ fn rate_queen_situation(
     let mut val = -QUEEN_VAL[num_neighbors as usize];
     if val < 0 {
         if num_friendly_movable > 0 && player == data.player() {
-            val += 20;
+            val += 18;
         } else if num_friendly_movable > 0 && player != data.player() {
-            val += 15;
+            val += 10;
         }
         if num_friendly_movable > 1 {
-            val += 8;
+            val += 6;
         }
     }
     val -= enemy_beetle_bonus;
