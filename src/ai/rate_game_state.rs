@@ -143,9 +143,9 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     let ants = 10 * data.remaining_pieces(player, PieceType::Ant);
     let ladybugs = 8 * data.remaining_pieces(player, PieceType::Ladybug);
-    // TODO: use 6?
     let spiders = 5 * data.remaining_pieces(player, PieceType::Spider);
     let grasshoppers = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
+    // TODO: increase for beetle to 6 or 7?
     let beetles = 5 * data.remaining_pieces(player, PieceType::Beetle);
     (ants + ladybugs + spiders + grasshoppers + beetles) as RatingType
 }
@@ -446,9 +446,20 @@ fn single_piece_rating(
             MovabilityType::Unmovable => 4,
         },
         PieceType::Ladybug => match movability {
-            // TODO: refine this
-            MovabilityType::Movable => 18,
-            MovabilityType::Blocked(_) => 16,
+            MovabilityType::Movable => {
+                // TODO: should we check for blocking opportunities?
+                let dist = meta.distance_to_queen(piece.player.switched(), field);
+                if dist <= 2 {
+                    22
+                } else if dist == 3 {
+                    17
+                } else if dist == 4 {
+                    14
+                } else {
+                    11
+                }
+            },
+            MovabilityType::Blocked(_) => 14,
             MovabilityType::AtQueen => 8,
             MovabilityType::Unmovable => 5,
         },
