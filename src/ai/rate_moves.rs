@@ -214,7 +214,8 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
             if piece.player != data.player() && data.is_movable(field, false) {
                 let moves = match piece.p_type {
                     // TODO: add beetle?
-                    PieceType::Spider => PieceType::Spider.get_moves(field),
+                    // PieceType::Spider => PieceType::Spider.get_moves(field),
+                    // --> most likely not worth the computation cost
                     PieceType::Grasshopper => grasshopper_moves(field).collect(),
                     _ => Vec::new(),
                 };
@@ -340,15 +341,11 @@ fn handle_move_ratings(
 
         if piece.p_type == PieceType::Queen {
             // moving the queen only makes sense when it is endangered
-            // TODO: WHAT?
-            if meta_data.queen_endangered && meta_data.q_neighbors(data.player()) > 1 {
-                rater.rate(i, j, 15);
-            } else if meta_data.queen_should_move {
-                rater.rate(i, j, 10);
-            } else if meta_data.q_neighbors(data.player().switched()) == 5 {
-                rater.rate(i, j, 6);
+            let num_neighbors = meta_data.q_neighbors(data.player()) as RatingType;
+            if meta_data.queen_endangered || meta_data.queen_should_move {
+                rater.rate(i, j, 10 + num_neighbors);
             } else {
-                rater.rate(i, j, 0);
+                rater.rate(i, j, 5 + num_neighbors);
             }
         } else if piece.p_type == PieceType::Ant {
             // to avoid combinatorial explosion, it is really important to use equivalency classes for ants
@@ -461,6 +458,7 @@ fn rate_usual_move(
         interest_to_type_with_mod(&meta.map, piece.player, to, -5, 4, &mut total_modifier);
     if meta.is_endgame && from_type == PositionType::Blocking && piece.p_type != PieceType::Ant {
         from_type = PositionType::NeutralOrBad;
+        total_modifier -= 1;
     }
 
     let rating = match (from_type, to_type) {
@@ -483,12 +481,18 @@ fn rate_usual_move(
                 15
             }
         }
-        (PositionType::Blocking, PositionType::NeutralOrBad) => -6,
+        (PositionType::Blocking, PositionType::NeutralOrBad) => {
+            if meta.is_endgame {
+                -1
+            } else {
+                -4
+            }
+        },
         (PositionType::Blocking, PositionType::Blocking) => {
             if meta.want_to_block {
                 8
             } else if piece.p_type == PieceType::Ant {
-                4 // TODO: does this make senese?
+                4
             } else {
                 6
             }
