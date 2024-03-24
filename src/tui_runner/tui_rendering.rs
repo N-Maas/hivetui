@@ -433,8 +433,9 @@ pub fn render(
             }
         } else {
             let piece_height = 10;
+            let double_piece_height = 20;
             let help_height = Text::raw(IN_GAME_HELP_LONG).height() as u16 + 2;
-            let small_in_game_help = menu_area.height < piece_height + help_height;
+            let small_in_game_help = menu_area.height < double_piece_height + help_height;
             let constraints = if small_in_game_help {
                 let small_height = Text::raw(IN_GAME_HELP_SHORT).height() as u16 + 2;
                 [
@@ -487,7 +488,7 @@ pub fn render(
                     )
                     .x_bounds([0.0, x_len])
                     .y_bounds([-y_len, 0.0])
-                    .paint(|ctx| draw_pieces(ctx, state, initial_pieces));
+                    .paint(|ctx| draw_pieces(ctx, state, initial_pieces, x_len));
                 frame.render_widget(canvas, piece_area);
             }
 
@@ -939,20 +940,31 @@ pub fn draw_board(
     }
 }
 
-pub fn draw_pieces(
-    ctx: &mut Context<'_>,
-    state: AllState<'_>,
-    initial_pieces: &BTreeMap<PieceType, u32>,
-) {
-    let zoom = state.settings.piece_zoom_level.multiplier();
-    let player = if matches!(
+fn available_pieces_player(state: AllState<'_>) -> Player {
+    if matches!(
         state.ui_state,
         UIState::PlaysAnimation(false) | UIState::ShowOptions(_, true)
     ) {
         state.game_state.player().switched()
     } else {
         state.game_state.player()
-    };
+    }
+}
+
+fn row_column_index(state: AllState<'_>, stack_index: usize, xlen: f64) -> (usize, usize) {
+    let zoom = state.settings.piece_zoom_level.multiplier();
+    let stacks_per_row = f64::floor((xlen - 2.0 * 12.5) / (23.0 + 4.0 * zoom)) as usize + 1;
+    (stack_index / stacks_per_row, stack_index % stacks_per_row)
+}
+
+fn draw_pieces(
+    ctx: &mut Context<'_>,
+    state: AllState<'_>,
+    initial_pieces: &BTreeMap<PieceType, u32>,
+    xlen: f64,
+) {
+    let zoom = state.settings.piece_zoom_level.multiplier();
+    let player = available_pieces_player(state);
     let (pieces, _) = state.game_state.pieces_for_player(player);
     let interior_color = match player {
         Player::White => DARK_WHITE,
@@ -977,12 +989,20 @@ pub fn draw_pieces(
             .collect::<Vec<_>>()
     };
 
+    let max_depth = 3;
+    let max_initial_count = initial_pieces
+        .iter()
+        .map(|(_, &count)| count)
+        .max()
+        .unwrap();
+    let y_offset_per_row = -58.0 + (u32::saturating_sub(4, max_initial_count) as f64) * 9.0;
     let get_coords = |i: usize, depth: u32| {
-        let x = 12_f64 + f64::from(u32::try_from(i).unwrap()) * (22.0 + 4.0 * zoom);
-        let y = -10_f64 - 8.0 * zoom - f64::from(u32::try_from(3 - depth).unwrap()) * 10.0;
-        (x, y)
+        let (row, col) = row_column_index(state, i, xlen);
+        let x = 12.5 + (col as f64) * (23.0 + 4.0 * zoom);
+        let y = -10_f64 - 8.0 * zoom - f64::from(u32::try_from(max_depth - depth).unwrap()) * 9.0;
+        (x, y + (row as f64) * y_offset_per_row)
     };
-    for depth in 0..=3 {
+    for depth in 0..=max_depth {
         // multiple iteration to draw "stacked" pieces
         let it = pieces_with_counts
             .iter()
@@ -992,7 +1012,7 @@ pub fn draw_pieces(
 
         // draw the interior
         for (i, (_, count)) in it.clone() {
-            if count > 3 - depth {
+            if count > max_depth - depth {
                 let (x, y) = get_coords(i, depth);
                 draw_interior(ctx, state.settings.white_tiles_style, x, y, interior_color);
             }
@@ -1001,22 +1021,25 @@ pub fn draw_pieces(
         // draw the pieces themselves
         let secondary_color = state.settings.color_scheme.secondary();
         for (i, (piece_t, count)) in it {
-            if count > 3 - depth {
+            if count > max_depth - depth {
                 let (x, y) = get_coords(i, depth);
                 tui_graphics::draw_piece(ctx, piece_t, x, y, zoom);
 
-                if depth == 3 {
+                if depth == max_depth {
+                    let y_pos: f64 = (row_column_index(state, i, xlen).0 as f64)
+                        * (y_offset_per_row - 2.5 * zoom)
+                        - 2.0;
                     let intial_count = initial_pieces[&piece_t];
                     if let UIState::PositionSelected(_) = state.ui_state {
                         let number = state.piece_annotations[&piece_t] + 1;
                         ctx.print(
                             x - zoom * 3.5 - 2.5,
-                            -2.0,
+                            y_pos,
                             Line::styled(format!("[{number}]"), secondary_color),
                         );
                         ctx.print(
                             x + zoom * 1.0 + 1.2,
-                            -2.0,
+                            y_pos,
                             Line::raw(format!("{count}/{intial_count}")),
                         );
                     } else {
@@ -1029,7 +1052,7 @@ pub fn draw_pieces(
                             x_shift = zoom + 1.0;
                             content = format!("{count}/{intial_count}")
                         };
-                        ctx.print(x - x_shift, -2.0, Line::styled(content, Color::White));
+                        ctx.print(x - x_shift, y_pos, Line::styled(content, Color::White));
                     }
                 }
             }

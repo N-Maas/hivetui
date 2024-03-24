@@ -458,7 +458,7 @@ fn single_piece_rating(
                 } else {
                     11
                 }
-            },
+            }
             MovabilityType::Blocked(_) => 14,
             MovabilityType::AtQueen => 8,
             MovabilityType::Unmovable => 5,
