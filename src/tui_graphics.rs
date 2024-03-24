@@ -432,105 +432,127 @@ pub fn draw_queen(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
     }
 }
 
-pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, zoom: f64) {
+pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
     let color = piece_color(PieceType::Ladybug);
-    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 4);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 6, 7);
+    fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, 5, 6);
+    fill_rectangle(ctx, color, x_mid, y_mid, -2, -1, -5, 4);
+    fill_rectangle(ctx, color, x_mid, y_mid, -5, -2, -4, 0);
+    fill_rectangle(ctx, color, x_mid, y_mid, -6, -5, -3, 1);
+    fill_rectangle(ctx, color, x_mid, y_mid, 1, 2, -5, 4);
+    fill_rectangle(ctx, color, x_mid, y_mid, 2, 5, -4   , 0);
+    fill_rectangle(ctx, color, x_mid, y_mid, 5, 6, -3, 1);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -3, 2);
+    // upper dots
     ctx.draw(&Circle {
-        x: x_mid,
-        y: y_mid + 3.6,
-        radius: 1.0,
+        x: x_mid - 3.2,
+        y: y_mid + 1.5,
+        radius: 1.5,
         color,
     });
     ctx.draw(&Circle {
-        x: x_mid,
-        y: y_mid + 3.6,
-        radius: 0.7,
+        x: x_mid - 3.2,
+        y: y_mid + 1.4,
+        radius: 1.8,
         color,
     });
-    let bases = [-1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5];
-    ctx.draw(&Points {
-        coords: &bases.map(|x_diff| (x_mid + x_diff, y_mid + 2.0)),
+    ctx.draw(&Circle {
+        x: x_mid + 3.2,
+        y: y_mid + 1.5,
+        radius: 1.5,
         color,
     });
-    fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -1, 0);
-    fill_rectangle(ctx, color, x_mid, y_mid, -3, 3, -4, -3);
-    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -6, -6);
+    ctx.draw(&Circle {
+        x: x_mid + 3.2,
+        y: y_mid + 1.4,
+        radius: 1.8,
+        color,
+    });
+    // lower dots
+    ctx.draw(&Circle {
+        x: x_mid - 3.0,
+        y: y_mid - 5.0,
+        radius: 1.5,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid - 3.2,
+        y: y_mid - 4.9,
+        radius: 1.7,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid + 3.0,
+        y: y_mid - 5.0,
+        radius: 1.5,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid + 3.2,
+        y: y_mid - 4.9,
+        radius: 1.7,
+        color,
+    });
     // antennas
     ctx.draw(&Line {
         x1: x_mid - 1.5,
-        y1: y_mid + 4.0,
-        x2: x_mid - 2.5,
-        y2: y_mid + 6.0,
+        y1: y_mid + 6.0,
+        x2: x_mid - 3.0,
+        y2: y_mid + 8.0,
         color,
     });
     ctx.draw(&Line {
-        x1: x_mid + 1.5,
-        y1: y_mid + 4.0,
-        x2: x_mid + 2.5,
-        y2: y_mid + 6.0,
+        x1: x_mid - 1.5,
+        y1: y_mid + 6.0,
+        x2: x_mid + 3.0,
+        y2: y_mid + 8.0,
+        color,
+    });
+    // front feet
+    ctx.draw(&Line {
+        x1: x_mid - 3.5,
+        y1: y_mid + 3.5,
+        x2: x_mid - 6.0,
+        y2: y_mid + 5.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.5,
+        y1: y_mid + 3.5,
+        x2: x_mid + 6.0,
+        y2: y_mid + 5.5,
         color,
     });
     // middle feet
     ctx.draw(&Line {
-        x1: x_mid - 3.5,
-        y1: y_mid - 1.0,
-        x2: x_mid - 6.0,
-        y2: y_mid - 3.0,
+        x1: x_mid - 6.0,
+        y1: y_mid + 0.5,
+        x2: x_mid - 8.0,
+        y2: y_mid + 2.0,
         color,
     });
     ctx.draw(&Line {
-        x1: x_mid + 3.5,
-        y1: y_mid - 1.0,
-        x2: x_mid + 6.0,
-        y2: y_mid - 3.0,
+        x1: x_mid + 6.0,
+        y1: y_mid + 0.5,
+        x2: x_mid + 8.0,
+        y2: y_mid + 2.0,
         color,
     });
     // back feet
     ctx.draw(&Line {
-        x1: x_mid - 3.5,
-        y1: y_mid - 5.0,
-        x2: x_mid - 5.0,
-        y2: y_mid - 6.5,
+        x1: x_mid - 4.5,
+        y1: y_mid - 3.5,
+        x2: x_mid - 7.5,
+        y2: y_mid - 6.0,
         color,
     });
     ctx.draw(&Line {
-        x1: x_mid + 3.5,
-        y1: y_mid - 5.0,
-        x2: x_mid + 5.0,
-        y2: y_mid - 6.5,
+        x1: x_mid + 4.5,
+        y1: y_mid - 3.5,
+        x2: x_mid + 7.5,
+        y2: y_mid - 6.0,
         color,
     });
-    // wings
-    ctx.draw(&Circle {
-        x: x_mid - 5.5,
-        y: y_mid + 2.0,
-        radius: 1.2,
-        color,
-    });
-    ctx.draw(&Circle {
-        x: x_mid - 7.0,
-        y: y_mid + 3.5,
-        radius: 1.5,
-        color,
-    });
-    if zoom <= 0.55 {
-        fill_rectangle(ctx, color, x_mid, y_mid, -7, -7, 3, 4);
-    }
-    ctx.draw(&Circle {
-        x: x_mid + 5.5,
-        y: y_mid + 2.0,
-        radius: 1.2,
-        color,
-    });
-    ctx.draw(&Circle {
-        x: x_mid + 7.0,
-        y: y_mid + 3.5,
-        radius: 1.5,
-        color,
-    });
-    if zoom <= 0.55 {
-        fill_rectangle(ctx, color, x_mid, y_mid, 7, 7, 3, 4);
-    }
 }
 
 pub fn draw_ant(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
