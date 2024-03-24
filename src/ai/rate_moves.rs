@@ -375,7 +375,8 @@ fn handle_move_ratings(
                     Equivalency::AntToQueen(from.index())
                 }
             };
-            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0);
+            let dist_one = distance(from.index(), *target) == 1;
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, dist_one);
             set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
         } else if piece.p_type == PieceType::Beetle {
             let mut bonus = 0;
@@ -432,11 +433,12 @@ fn handle_move_ratings(
                 );
                 continue;
             }
-            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus);
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus, true);
             rater.rate(i, j, rating);
         } else {
             // TODO: ladybug handling?
-            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0);
+            assert!(matches!(piece.p_type, PieceType::Grasshopper | PieceType::Spider | PieceType::Ladybug));
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, false);
             rater.rate(i, j, rating);
         }
     }
@@ -448,6 +450,7 @@ fn rate_usual_move(
     from: MetaInterest,
     to: MetaInterest,
     modifier: RatingType,
+    is_distance_one_move: bool,
 ) -> RatingType {
     // TODO: shift moves? (i.e. move to adjacent space to make room for other piece, blocking-to-blocking)
     // TODO: endgame (spiders and grasshoppers need to find their way, including previous move)
@@ -459,6 +462,14 @@ fn rate_usual_move(
     if meta.is_endgame && from_type == PositionType::Blocking && piece.p_type != PieceType::Ant {
         from_type = PositionType::NeutralOrBad;
         total_modifier -= 1;
+    }
+    if is_distance_one_move && from_type == PositionType::Blocking && to_type == PositionType::NeutralOrBad {
+        // this is likely to still be a blocking move (so should be considered a zero-move)
+        if meta.is_endgame {
+            return 3 + total_modifier;
+        } else {
+            return total_modifier;
+        }
     }
 
     let rating = match (from_type, to_type) {
