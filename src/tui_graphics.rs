@@ -438,10 +438,10 @@ pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
     fill_rectangle(ctx, color, x_mid, y_mid, -2, 2, 5, 6);
     fill_rectangle(ctx, color, x_mid, y_mid, -2, -1, -5, 4);
     fill_rectangle(ctx, color, x_mid, y_mid, -5, -2, -4, 0);
-    fill_rectangle(ctx, color, x_mid, y_mid, -6, -5, -3, 1);
+    // fill_rectangle(ctx, color, x_mid, y_mid, -6, -5, -3, 1);
     fill_rectangle(ctx, color, x_mid, y_mid, 1, 2, -5, 4);
     fill_rectangle(ctx, color, x_mid, y_mid, 2, 5, -4, 0);
-    fill_rectangle(ctx, color, x_mid, y_mid, 5, 6, -3, 1);
+    // fill_rectangle(ctx, color, x_mid, y_mid, 5, 6, -3, 1);
     fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -3, 2);
     // upper dots
     ctx.draw(&Circle {
@@ -493,19 +493,32 @@ pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
         radius: 1.7,
         color,
     });
+    // make the body less square
+    ctx.draw(&Circle {
+        x: x_mid - 4.1,
+        y: y_mid - 1.8,
+        radius: 1.6,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid + 4.1,
+        y: y_mid - 1.8,
+        radius: 1.6,
+        color,
+    });
     // antennas
     ctx.draw(&Line {
-        x1: x_mid - 1.5,
+        x1: x_mid - 1.0,
         y1: y_mid + 6.0,
-        x2: x_mid - 3.0,
-        y2: y_mid + 8.0,
+        x2: x_mid - 2.5,
+        y2: y_mid + 7.75,
         color,
     });
     ctx.draw(&Line {
-        x1: x_mid - 1.5,
+        x1: x_mid + 1.0,
         y1: y_mid + 6.0,
-        x2: x_mid + 3.0,
-        y2: y_mid + 8.0,
+        x2: x_mid + 2.5,
+        y2: y_mid + 7.75,
         color,
     });
     // front feet
@@ -526,16 +539,16 @@ pub fn draw_ladybug(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
     // middle feet
     ctx.draw(&Line {
         x1: x_mid - 6.0,
-        y1: y_mid + 0.5,
+        y1: y_mid + 1.0,
         x2: x_mid - 8.0,
-        y2: y_mid + 2.0,
+        y2: y_mid + 2.5,
         color,
     });
     ctx.draw(&Line {
         x1: x_mid + 6.0,
-        y1: y_mid + 0.5,
+        y1: y_mid + 1.0,
         x2: x_mid + 8.0,
-        y2: y_mid + 2.0,
+        y2: y_mid + 2.5,
         color,
     });
     // back feet
