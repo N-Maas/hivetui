@@ -449,7 +449,7 @@ pub fn render(
                 unreachable!()
             };
 
-            let suggestion_height = 14;
+            let suggestion_height = 12;
             let render_both = state.ui_state == UIState::ShowAIMoves
                 && piece_area.height >= suggestion_height + piece_height;
             let (piece_area, suggestion_area) = if render_both {
@@ -601,7 +601,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
 pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings) {
     const MOVES_CUTOFF: RatingType = 20;
     const MAX_PER_FIELD: usize = 2;
-    const MAX_SHOWN: usize = 8;
+    const MAX_SHOWN: usize = 6;
 
     let ratings = &mut ai_result.all_ratings;
     let annotations = &mut ai_result.annotations;
