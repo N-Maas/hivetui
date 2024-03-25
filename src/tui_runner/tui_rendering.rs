@@ -388,7 +388,8 @@ pub fn render(
             };
             // the players
             {
-                let text = setting_renderer.render_player_settings(settings, state.menu_selection);
+                let text = setting_renderer
+                    .render_player_settings(settings, state.menu_selection.player_index());
                 let paragraph = Paragraph::new(text).block(
                     Block::default()
                         .title("Players")

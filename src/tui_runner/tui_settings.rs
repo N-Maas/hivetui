@@ -4,9 +4,12 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
-use std::fmt::Debug;
+use std::{collections::BTreeMap, fmt::Debug, iter};
 
-use crate::pieces::Player;
+use crate::{
+    pieces::{PieceType, Player},
+    tui_graphics,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -421,6 +424,10 @@ pub enum SettingSelection {
 }
 
 impl SettingSelection {
+    pub fn player_index(&self) -> Option<usize> {
+        Some(self.index()).filter(|&i| i <= 2)
+    }
+
     pub fn index(&self) -> usize {
         match *self {
             SettingSelection::General(i) => i,
@@ -558,11 +565,12 @@ impl SettingRenderer {
     pub fn render_player_settings(
         &self,
         settings: &mut Settings,
-        selection: SettingSelection,
+        selection: Option<usize>,
     ) -> Text<'static> {
         let mut lines = Vec::new();
         for (i, option) in self.players.iter().enumerate() {
-            let color = if selection.index() == i {
+            let is_selected = selection == Some(i);
+            let color = if is_selected {
                 settings.color_scheme.primary()
             } else {
                 Color::White
@@ -581,12 +589,12 @@ impl SettingRenderer {
             lines.push(Line::from(spans));
 
             spans = Vec::new();
-            if selection.index() == i {
+            if is_selected {
                 spans.push(Span::raw("   "));
-                spans.push(option.get_entry(settings, selection.index() == i, 0));
+                spans.push(option.get_entry(settings, true, 0));
                 spans.push(Span::raw(" or AI: "));
                 for level in 1..PLAYER_TYPES.len() {
-                    spans.push(option.get_entry(settings, selection.index() == i, level));
+                    spans.push(option.get_entry(settings, true, level));
                 }
             }
             lines.push(Line::from(spans));
@@ -664,5 +672,89 @@ impl SettingRenderer {
             lines.push(Line::from(spans));
         }
         Text::from(lines)
+    }
+}
+
+pub struct GameSetup {
+    white_pieces: BTreeMap<PieceType, u32>,
+    black_pieces: Option<BTreeMap<PieceType, u32>>,
+}
+
+impl GameSetup {
+    pub fn is_symmetric(&self) -> bool {
+        self.black_pieces.is_some()
+    }
+
+    pub fn num_types(&self) -> usize {
+        self.white_pieces.len()
+    }
+
+    pub fn render_game_setup(
+        &self,
+        settings: &Settings,
+        selection: usize,
+        offset: usize,
+    ) -> Paragraph<'static> {
+        let selection = selection.saturating_sub(offset);
+        self.black_pieces
+            .as_ref()
+            .inspect(|b| assert!(b.len() == self.num_types()));
+        let color = if selection == 0 {
+            settings.color_scheme.primary()
+        } else {
+            Color::White
+        };
+        let mut lines = Vec::new();
+        {
+            let mut spans = vec![Span::styled(format!("[{}] ", offset), color)];
+            spans.push(Span::raw("Symmetric pieces: "));
+            for sym in [true, false] {
+                let selected = sym == self.is_symmetric();
+                let str = if sym { "yes" } else { "no" };
+                if selected {
+                    spans.push(Span::styled(format!("<{str}>"), color));
+                } else {
+                    spans.push(Span::raw(format!(" {str} ")));
+                }
+            }
+            lines.push(Line::from(spans));
+            lines.push(Line::raw(""));
+            if self.is_symmetric() {
+                lines.push(Line::raw(""));
+            } else {
+                lines.push(Line::raw(" ".repeat(16) + "White  Black"));
+            }
+        }
+        let pieces_iter = self
+            .white_pieces
+            .iter()
+            .enumerate()
+            .map(|(i, (&p, &count))| (i, p, count, self.black_pieces.as_ref().map(|b| b[&p])));
+        for (i, p_type, w_count, b_count) in pieces_iter {
+            let selected = (selection % self.num_types()) == i;
+            let color = if selected {
+                settings.color_scheme.primary()
+            } else {
+                Color::White
+            };
+            let p_color = tui_graphics::piece_color(p_type);
+            let mut spans = vec![Span::styled(format!("[{}] ", i + offset), color)];
+            spans.push(Span::styled(p_type.name(), p_color));
+            spans.push(Span::raw(": "));
+            for (is_white, count) in iter::once((true, w_count)).chain(b_count.map(|c| (false, c)))
+            {
+                let selected = selected && is_white == (selection < self.num_types());
+                if selected {
+                    lines.push(Line::styled(format!(" <{count}> "), color));
+                } else {
+                    lines.push(Line::raw(format!("  {count}  ")));
+                }
+            }
+        }
+        lines.push(Line::raw(""));
+        lines.push(Line::raw("[↲] to start the game"));
+        lines.push(Line::raw("[Esc] or [q] to return"));
+        let text = Text::from(lines);
+        Paragraph::new(text).block(Block::default().title("Game Setup").borders(Borders::ALL))
     }
 }
