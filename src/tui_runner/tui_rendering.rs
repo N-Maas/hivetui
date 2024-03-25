@@ -373,6 +373,9 @@ pub fn render(
             }
 
             let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
+            if is_game_setup {
+                settings_size += 5;
+            }
             let both_settings = menu_area.height >= 27 + help_size && !is_game_setup;
             let small_help = menu_area.height < player_size + settings_size + help_size;
             assert!(!(both_settings && small_help));
@@ -380,7 +383,7 @@ pub fn render(
                 settings_size = 22;
             }
             if small_help {
-                (settings_size, help_size) = (8, 8);
+                (settings_size, help_size) = (settings_size - 2, 8);
             }
             let [player_area, settings_area, help_area] = *Layout::vertical([
                 Constraint::Max(player_size),
