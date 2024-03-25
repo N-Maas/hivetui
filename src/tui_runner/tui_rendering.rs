@@ -1,7 +1,7 @@
 use super::{
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
-        BordersStyle, ColorScheme, GraphicsState, ScreenSplitting, SettingRenderer,
+        BordersStyle, ColorScheme, GameSetup, GraphicsState, ScreenSplitting, SettingRenderer,
         SettingSelection, Settings, WhiteTilesStyle,
     },
     AIResult, AIState, AnimationState, UIState,
@@ -269,7 +269,7 @@ pub fn render(
     state: AllState<'_>,
     // we don't actually mutate anything, this is just an API limitation
     settings: &mut Settings,
-    initial_pieces: &BTreeMap<PieceType, u32>,
+    game_setup: &GameSetup,
 ) -> io::Result<([f64; 2], [f64; 2])> {
     let mut output_bound = ([0.0, 0.0], [0.0, 0.0]);
     terminal.draw(|frame| {
@@ -489,7 +489,7 @@ pub fn render(
                     )
                     .x_bounds([0.0, x_len])
                     .y_bounds([-y_len, 0.0])
-                    .paint(|ctx| draw_pieces(ctx, state, initial_pieces, x_len));
+                    .paint(|ctx| draw_pieces(ctx, state, game_setup, x_len));
                 frame.render_widget(canvas, piece_area);
             }
 
@@ -958,12 +958,7 @@ fn row_column_index(state: AllState<'_>, stack_index: usize, xlen: f64) -> (usiz
     (stack_index / stacks_per_row, stack_index % stacks_per_row)
 }
 
-fn draw_pieces(
-    ctx: &mut Context<'_>,
-    state: AllState<'_>,
-    initial_pieces: &BTreeMap<PieceType, u32>,
-    xlen: f64,
-) {
+fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &GameSetup, xlen: f64) {
     let zoom = state.settings.piece_zoom_level.multiplier();
     let player = available_pieces_player(state);
     let (pieces, _) = state.game_state.pieces_for_player(player);
@@ -991,6 +986,7 @@ fn draw_pieces(
     };
 
     let max_depth = 3;
+    let initial_pieces = game_setup.pieces_for_player(player);
     let max_initial_count = initial_pieces
         .iter()
         .map(|(_, &count)| count)

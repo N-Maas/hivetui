@@ -31,7 +31,7 @@ fn main() -> io::Result<()> {
     if args.cli {
         cli_runner::run_in_cli(pieces);
     } else {
-        tui_runner::run_in_tui(pieces)?;
+        tui_runner::run_in_tui()?;
     }
     Ok(())
 }

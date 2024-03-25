@@ -30,12 +30,13 @@ use self::{
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
     tui_rendering::{find_losing_queen, translate_index},
     tui_settings::{
-        AILevel, AutomaticCameraMoves, GraphicsState, PlayerType, SettingRenderer,
+        AILevel, AutomaticCameraMoves, GameSetup, GraphicsState, PlayerType, SettingRenderer,
         SettingSelection, Settings,
     },
 };
 
 mod ai_worker;
+// mod dynamic_layout;
 mod tui_animations;
 mod tui_rendering;
 mod tui_settings;
@@ -45,6 +46,8 @@ enum UIState {
     Toplevel,
     /// the current scrolling
     RulesSummary(u16),
+    /// the currently selected option
+    GameSetup(usize),
     /// 1. true if the current turn must be skipped
     /// 2. true if pieces are switched
     ShowOptions(bool, bool),
@@ -63,6 +66,7 @@ impl UIState {
         match self {
             UIState::Toplevel => true,
             UIState::RulesSummary(_) => true,
+            UIState::GameSetup(_) => true,
             UIState::ShowOptions(_, _) => false,
             UIState::PositionSelected(_) => false,
             UIState::PieceSelected(_) => false,
@@ -76,6 +80,7 @@ impl UIState {
         match self {
             UIState::Toplevel => false,
             UIState::RulesSummary(_) => false,
+            UIState::GameSetup(_) => false,
             UIState::ShowOptions(_, _) => true,
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
@@ -380,6 +385,7 @@ enum Event {
     Cancel,
     SoftCancel,
     ContinueGame,
+    StartGame,
     NewGame,
     Undo,
     Redo,
@@ -428,7 +434,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         } else {
             Event::LetAIMove
         })
-        .filter(|_| !rules_summary),
+        .filter(|_| !rules_summary && !matches!(ui_state, UIState::GameSetup(_))),
         KeyCode::Char('h') => Some(Event::Help),
         KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
         KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
@@ -447,6 +453,8 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         KeyCode::Enter | KeyCode::Char(' ') => {
             if ui_state == UIState::Toplevel {
                 Some(Event::ContinueGame)
+            } else if matches!(ui_state, UIState::GameSetup(_)) {
+                Some(Event::StartGame)
             } else if top_level && key == KeyCode::Enter {
                 Some(Event::Exit)
             } else if top_level {
@@ -533,12 +541,12 @@ pub fn get_panic_data() -> (String, String) {
     (msg, trace)
 }
 
-pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
+pub fn run_in_tui() -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
     setup_panic_reporting();
 
-    let result = panic::catch_unwind(|| run_in_tui_impl(pieces));
+    let result = panic::catch_unwind(|| run_in_tui_impl());
 
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
@@ -554,15 +562,16 @@ pub fn run_in_tui(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
 }
 
 /// this implements the main event loop
-pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
+pub fn run_in_tui_impl() -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.hide_cursor()?;
     terminal.clear()?;
 
     let setting_renderer = SettingRenderer::build();
     let mut settings = Settings::default();
+    let mut game_setup = GameSetup::default();
     settings.black_player_type = PlayerType::AI2;
-    let mut engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
+    let mut engine = Engine::new_logging(2, game_setup.new_game_state());
     let mut board_annotations = HashMap::new();
     let mut piece_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
@@ -603,6 +612,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                 Event::Exit => match ui_state {
                     UIState::Toplevel => break,
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
+                    UIState::GameSetup(_) => ui_state = UIState::Toplevel,
                     UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
@@ -641,7 +651,10 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
                     ui_state = UIState::ShowOptions(false, false);
                 }
                 Event::NewGame => {
-                    engine = Engine::new_logging(2, HiveGameState::new(pieces.clone()));
+                    ui_state = UIState::GameSetup(2);
+                }
+                Event::StartGame => {
+                    engine = Engine::new_logging(2, game_setup.new_game_state());
                     graphics_state.center_x = 0.0;
                     graphics_state.center_y = 0.0;
                     animation_state.reset();
@@ -790,7 +803,7 @@ pub fn run_in_tui_impl(pieces: BTreeMap<PieceType, u32>) -> io::Result<()> {
             &setting_renderer,
             state,
             &mut settings,
-            &pieces,
+            &game_setup,
         )?;
 
         // update animation state
@@ -885,8 +898,12 @@ fn update_game_state_and_fill_input_mapping(
             }
 
             match (*ui_state, follow_up) {
-                (UIState::Toplevel | UIState::RulesSummary(_), Ok(d)) => d.retract_all(),
-                (UIState::Toplevel | UIState::RulesSummary(_), Err(_)) => (),
+                (UIState::Toplevel | UIState::RulesSummary(_) | UIState::GameSetup(_), Ok(d)) => {
+                    d.retract_all()
+                }
+                (UIState::Toplevel | UIState::RulesSummary(_) | UIState::GameSetup(_), Err(_)) => {
+                    ()
+                }
                 (UIState::ShowOptions(_, _), Ok(d)) => d.retract_all(),
                 (UIState::ShowOptions(is_skip, switch), Err(d)) => {
                     match d.context() {

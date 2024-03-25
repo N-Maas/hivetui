@@ -1,3 +1,4 @@
+use crate::state::HiveGameState;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use ratatui::{
     style::Color,
@@ -680,13 +681,45 @@ pub struct GameSetup {
     black_pieces: Option<BTreeMap<PieceType, u32>>,
 }
 
+impl Default for GameSetup {
+    fn default() -> Self {
+        Self {
+            white_pieces: [
+                (PieceType::Queen, 1),
+                (PieceType::Ant, 3),
+                (PieceType::Grasshopper, 3),
+                (PieceType::Beetle, 2),
+                (PieceType::Spider, 2),
+            ]
+            .into_iter()
+            .collect(),
+            black_pieces: None,
+        }
+    }
+}
+
 impl GameSetup {
+    pub fn pieces_for_player(&self, player: Player) -> &BTreeMap<PieceType, u32> {
+        match player {
+            Player::White => &self.white_pieces,
+            Player::Black => self.black_pieces.as_ref().unwrap_or(&self.white_pieces),
+        }
+    }
+
     pub fn is_symmetric(&self) -> bool {
         self.black_pieces.is_some()
     }
 
     pub fn num_types(&self) -> usize {
         self.white_pieces.len()
+    }
+
+    pub fn new_game_state(&self) -> HiveGameState {
+        let white_pieces = self.white_pieces.clone();
+        match self.black_pieces.as_ref() {
+            Some(black_pieces) => HiveGameState::new_asym(white_pieces, black_pieces.clone()),
+            None => HiveGameState::new(white_pieces),
+        }
     }
 
     pub fn render_game_setup(

@@ -146,12 +146,19 @@ pub struct HiveGameState {
 
 impl HiveGameState {
     pub fn new(pieces: BTreeMap<PieceType, u32>) -> Self {
+        Self::new_asym(pieces.clone(), pieces)
+    }
+
+    pub fn new_asym(
+        white_pieces: BTreeMap<PieceType, u32>,
+        black_pieces: BTreeMap<PieceType, u32>,
+    ) -> Self {
         let mut board = HiveBoard::new(OffsetStructure::new());
         board.extend_and_insert(OpenIndex::from((0, 0)), HiveContent::new());
         Self {
             current_player: Player::White,
-            white_pieces: pieces.clone(),
-            black_pieces: pieces,
+            white_pieces: white_pieces,
+            black_pieces: black_pieces,
             board,
             white_pieces_on_board: 0,
             black_pieces_on_board: 0,
