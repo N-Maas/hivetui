@@ -477,6 +477,11 @@ impl SettingRenderer {
         }
     }
 
+    pub fn get_player(&self, index: usize) -> &dyn MenuSetting {
+        assert!(index < 2);
+        self.players[index].as_ref()
+    }
+
     pub fn max_index(&self, selection: SettingSelection) -> usize {
         match selection {
             SettingSelection::General(_) => self.general.len() + 2,
@@ -690,12 +695,20 @@ impl Default for GameSetup {
                 (PieceType::Grasshopper, 3),
                 (PieceType::Beetle, 2),
                 (PieceType::Spider, 2),
+                (PieceType::Ladybug, 0),
             ]
             .into_iter()
             .collect(),
             black_pieces: None,
         }
     }
+}
+
+fn no_queen<'a, Iter, V: 'a>(it: Iter) -> impl Iterator<Item = (&'a PieceType, V)>
+where
+    Iter: Iterator<Item = (&'a PieceType, V)>,
+{
+    it.filter(|&(&p_type, _)| p_type != PieceType::Queen)
 }
 
 impl GameSetup {
@@ -707,11 +720,19 @@ impl GameSetup {
     }
 
     pub fn is_symmetric(&self) -> bool {
-        self.black_pieces.is_some()
+        self.black_pieces.is_none()
     }
 
-    pub fn num_types(&self) -> usize {
-        self.white_pieces.len()
+    pub fn num_rows(&self) -> usize {
+        self.white_pieces.len() - 1
+    }
+
+    pub fn max_index(&self) -> usize {
+        let mut val = 1 + self.num_rows();
+        if !self.is_symmetric() {
+            val += self.num_rows();
+        }
+        val
     }
 
     pub fn new_game_state(&self) -> HiveGameState {
@@ -722,24 +743,74 @@ impl GameSetup {
         }
     }
 
+    pub fn decrease_at(&mut self, selection: usize, offset: usize) {
+        let selection = selection.saturating_sub(offset);
+        if selection == 0 && !self.is_symmetric() {
+            self.black_pieces = None;
+        } else if selection > 0 {
+            let mut selection = selection - 1;
+            let pieces = if selection < self.num_rows() {
+                &mut self.white_pieces
+            } else {
+                selection -= self.num_rows();
+                self.black_pieces.as_mut().expect("selection index invalid")
+            };
+            let (_, count) = no_queen(pieces.iter_mut()).skip(selection).next().unwrap();
+            *count = count.saturating_sub(1);
+        }
+    }
+
+    pub fn switched_index(&self, selection: usize, offset: usize) -> usize {
+        let index = selection.saturating_sub(offset);
+        let new_index = if index > 0 && !self.is_symmetric() {
+            if index < self.num_rows() + 1 {
+                index + self.num_rows()
+            } else {
+                index - self.num_rows()
+            }
+        } else {
+            index
+        };
+        new_index + offset
+    }
+
+    pub fn increase_at(&mut self, selection: usize, offset: usize) {
+        let selection = selection.saturating_sub(offset);
+        if selection == 0 && self.is_symmetric() {
+            self.black_pieces = Some(self.white_pieces.clone());
+        } else if selection > 0 {
+            let mut selection = selection - 1;
+            let pieces = if selection < self.num_rows() {
+                &mut self.white_pieces
+            } else {
+                selection -= self.num_rows();
+                self.black_pieces.as_mut().expect("selection index invalid")
+            };
+            let (_, count) = no_queen(pieces.iter_mut()).skip(selection).next().unwrap();
+            *count += 1;
+        }
+    }
+
     pub fn render_game_setup(
         &self,
         settings: &Settings,
         selection: usize,
         offset: usize,
     ) -> Paragraph<'static> {
-        let selection = selection.saturating_sub(offset);
         self.black_pieces
             .as_ref()
-            .inspect(|b| assert!(b.len() == self.num_types()));
-        let color = if selection == 0 {
-            settings.color_scheme.primary()
-        } else {
-            Color::White
-        };
+            .inspect(|b| assert!(b.len() == self.white_pieces.len()));
+
+        let any_selected = selection >= offset;
+        let selection = selection.saturating_sub(offset);
         let mut lines = Vec::new();
         {
-            let mut spans = vec![Span::styled(format!("[{}] ", offset), color)];
+            let color = if any_selected && selection == 0 {
+                settings.color_scheme.primary()
+            } else {
+                Color::White
+            };
+            let mut spans = vec![Span::styled(format!("[{}] ", offset + 1), color)];
             spans.push(Span::raw("Symmetric pieces: "));
             for sym in [true, false] {
                 let selected = sym == self.is_symmetric();
@@ -755,34 +826,36 @@ impl GameSetup {
             if self.is_symmetric() {
                 lines.push(Line::raw(""));
             } else {
-                lines.push(Line::raw(" ".repeat(16) + "White  Black"));
+                lines.push(Line::raw(" ".repeat(16) + "White [⇆] Black"));
             }
         }
-        let pieces_iter = self
-            .white_pieces
-            .iter()
+        let pieces_iter = no_queen(self.white_pieces.iter())
             .enumerate()
             .map(|(i, (&p, &count))| (i, p, count, self.black_pieces.as_ref().map(|b| b[&p])));
         for (i, p_type, w_count, b_count) in pieces_iter {
-            let selected = (selection % self.num_types()) == i;
-            let color = if selected {
+            let is_selected = selection > 0 && (selection - 1) % self.num_rows() == i;
+            let color = if is_selected {
                 settings.color_scheme.primary()
             } else {
                 Color::White
             };
             let p_color = tui_graphics::piece_color(p_type);
-            let mut spans = vec![Span::styled(format!("[{}] ", i + offset), color)];
-            spans.push(Span::styled(p_type.name(), p_color));
-            spans.push(Span::raw(": "));
+            let mut spans = vec![Span::styled(format!("[{}] ", i + offset + 2), color)];
+            spans.push(Span::styled(format!("{:^12}", p_type.name()), p_color));
             for (is_white, count) in iter::once((true, w_count)).chain(b_count.map(|c| (false, c)))
             {
-                let selected = selected && is_white == (selection < self.num_types());
-                if selected {
-                    lines.push(Line::styled(format!(" <{count}> "), color));
+                let left_selected = selection < self.num_rows() + 1;
+                let is_selected = is_selected && is_white == left_selected;
+                if is_selected {
+                    spans.push(Span::styled(format!(" <{count}> "), color));
                 } else {
-                    lines.push(Line::raw(format!("  {count}  ")));
+                    spans.push(Span::raw(format!("  {count}  ")));
+                }
+                if is_white {
+                    spans.push(Span::raw("     "));
                 }
             }
+            lines.push(Line::from(spans));
         }
         lines.push(Line::raw(""));
         lines.push(Line::raw("[↲] to start the game"));

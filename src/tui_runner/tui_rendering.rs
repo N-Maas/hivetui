@@ -299,7 +299,8 @@ pub fn render(
         let splitted_in_game =
             Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).split(area);
 
-        let splitted_layout = if state.ui_state == UIState::Toplevel {
+        let splitted_layout = if matches!(state.ui_state, UIState::Toplevel | UIState::GameSetup(_))
+        {
             splitted_top_level
         } else {
             splitted_in_game.clone()
@@ -351,8 +352,11 @@ pub fn render(
         }
 
         if state.ui_state.top_level() {
+            let is_rules_summary = matches!(state.ui_state, UIState::RulesSummary(_));
+            let is_game_setup = matches!(state.ui_state, UIState::GameSetup(_));
+
             // the actions
-            if !matches!(state.ui_state, UIState::RulesSummary(_)) {
+            if !is_rules_summary {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(
                     "[c]ontinue game  [↲]\n\
@@ -369,7 +373,7 @@ pub fn render(
             }
 
             let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
-            let both_settings = menu_area.height >= 27 + help_size;
+            let both_settings = menu_area.height >= 27 + help_size && !is_game_setup;
             let small_help = menu_area.height < player_size + settings_size + help_size;
             assert!(!(both_settings && small_help));
             if both_settings {
@@ -388,8 +392,12 @@ pub fn render(
             };
             // the players
             {
-                let text = setting_renderer
-                    .render_player_settings(settings, state.menu_selection.player_index());
+                let selection = if let UIState::GameSetup(index) = state.ui_state {
+                    Some(index)
+                } else {
+                    state.menu_selection.player_index()
+                };
+                let text = setting_renderer.render_player_settings(settings, selection);
                 let paragraph = Paragraph::new(text).block(
                     Block::default()
                         .title("Players")
@@ -398,9 +406,12 @@ pub fn render(
                 frame.render_widget(paragraph, player_area);
             }
 
-            // the settings
+            // the settings (or game setup)
             {
-                if both_settings {
+                if let UIState::GameSetup(index) = state.ui_state {
+                    let par = game_setup.render_game_setup(settings, index, 2);
+                    frame.render_widget(par, settings_area);
+                } else if both_settings {
                     let [general, graphic] =
                         *Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)])
                             .split(settings_area)

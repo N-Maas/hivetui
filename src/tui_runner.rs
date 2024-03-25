@@ -473,9 +473,10 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
             let to_index = c.to_string().parse::<usize>();
             to_index
                 .ok()
-                .filter(|&i| i > 0 || (!top_level && two_digit))
+                .filter(|&i| i > 0 || top_level || (!top_level && two_digit))
                 .map(|i| {
                     if top_level {
+                        let i = if i == 0 { 10 } else { i };
                         Event::MenuOption(i - 1)
                     } else if two_digit {
                         Event::TwoDigitAdd(i)
@@ -621,7 +622,9 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
                 },
                 Event::Switch => {
-                    if ui_state.top_level() {
+                    if let UIState::GameSetup(index) = ui_state {
+                        ui_state = UIState::GameSetup(game_setup.switched_index(index, 2));
+                    } else if ui_state.top_level() {
                         menu_selection = menu_selection.switched();
                         let max_index = setting_renderer.max_index(menu_selection);
                         if menu_selection.index() >= max_index {
@@ -699,30 +702,60 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
                 }
                 Event::MenuOption(new_index) => {
-                    if new_index < setting_renderer.max_index(menu_selection) {
+                    if let UIState::GameSetup(_) = ui_state {
+                        if new_index < game_setup.max_index() + 2 {
+                            ui_state = UIState::GameSetup(new_index);
+                        }
+                    } else if new_index < setting_renderer.max_index(menu_selection) {
                         *menu_selection.index_mut() = new_index;
                     }
                 }
                 Event::MenuUp => {
-                    if menu_selection.index() > 0 {
+                    if let UIState::GameSetup(index) = ui_state {
+                        ui_state = UIState::GameSetup(index.saturating_sub(1));
+                    } else if menu_selection.index() > 0 {
                         *menu_selection.index_mut() -= 1;
                     }
                 }
                 Event::MenuDown => {
-                    if menu_selection.index() + 1 < setting_renderer.max_index(menu_selection) {
+                    if let UIState::GameSetup(index) = ui_state {
+                        if index + 1 < game_setup.max_index() + 2 {
+                            ui_state = UIState::GameSetup(index + 1);
+                        }
+                    } else if menu_selection.index() + 1
+                        < setting_renderer.max_index(menu_selection)
+                    {
                         *menu_selection.index_mut() += 1;
                     }
                 }
                 Event::MenuIncrease => {
-                    setting_renderer.get(menu_selection).increase(&mut settings);
-                    if setting_renderer.is_ai_setting(menu_selection) {
-                        ai_state.reset();
+                    if let UIState::GameSetup(index) = ui_state {
+                        if index >= 2 {
+                            game_setup.increase_at(index, 2);
+                        } else {
+                            setting_renderer.get_player(index).increase(&mut settings);
+                            ai_state.reset();
+                        }
+                    } else {
+                        setting_renderer.get(menu_selection).increase(&mut settings);
+                        if setting_renderer.is_ai_setting(menu_selection) {
+                            ai_state.reset();
+                        }
                     }
                 }
                 Event::MenuDecrease => {
-                    setting_renderer.get(menu_selection).decrease(&mut settings);
-                    if setting_renderer.is_ai_setting(menu_selection) {
-                        ai_state.reset();
+                    if let UIState::GameSetup(index) = ui_state {
+                        if index >= 2 {
+                            game_setup.decrease_at(index, 2);
+                        } else {
+                            setting_renderer.get_player(index).decrease(&mut settings);
+                            ai_state.reset();
+                        }
+                    } else {
+                        setting_renderer.get(menu_selection).decrease(&mut settings);
+                        if setting_renderer.is_ai_setting(menu_selection) {
+                            ai_state.reset();
+                        }
                     }
                 }
                 Event::ScrollUp => {
