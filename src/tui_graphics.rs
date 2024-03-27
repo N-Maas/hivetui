@@ -227,7 +227,7 @@ pub fn draw_hex_interior(
         points.retain(|(x, y)| {
             let x = x - x_mid;
             let y = y - y_mid;
-            x * x + y * y > 40.0
+            x * x + y * y > 42.0
         });
     }
 
@@ -280,6 +280,7 @@ pub fn piece_color(piece_t: PieceType) -> Color {
         PieceType::Grasshopper => Color::from_u32(0x000DD084),
         PieceType::Beetle => Color::from_u32(0x009A009A),
         PieceType::Ladybug => Color::from_u32(0x00C02030),
+        PieceType::Mosquito => Color::from_u32(0x00909090),
     }
 }
 
@@ -291,6 +292,7 @@ pub fn draw_piece(ctx: &mut Context<'_>, piece_t: PieceType, x_mid: f64, y_mid: 
         PieceType::Grasshopper => draw_grasshopper(ctx, x_mid, y_mid, zoom),
         PieceType::Beetle => draw_beetle(ctx, x_mid, y_mid, zoom),
         PieceType::Ladybug => draw_ladybug(ctx, x_mid, y_mid, zoom),
+        PieceType::Mosquito => draw_mosquito(ctx, x_mid, y_mid, zoom),
     }
 }
 
@@ -302,6 +304,7 @@ pub fn to_bottom_offset(piece_t: PieceType) -> f64 {
         PieceType::Grasshopper => 1.2,
         PieceType::Beetle => 1.6,
         PieceType::Ladybug => 1.8,
+        PieceType::Mosquito => 1.2,
     }
 }
 
@@ -314,6 +317,7 @@ pub fn draw_small_piece(
 ) {
     match piece_t {
         PieceType::Beetle => draw_small_beetle(ctx, x_mid, y_mid, zoom),
+        PieceType::Mosquito => draw_small_mosquito(ctx, x_mid, y_mid, zoom),
         _ => panic!("this piece can not be stacked: {:?}", piece_t),
     }
 }
@@ -327,6 +331,7 @@ pub fn draw_tiny_piece(
 ) {
     match piece_t {
         PieceType::Beetle => draw_tiny_beetle(ctx, x_mid, y_mid, zoom),
+        PieceType::Mosquito => draw_tiny_mosquito(ctx, x_mid, y_mid, zoom),
         _ => panic!("this piece can not be stacked: {:?}", piece_t),
     }
 }
@@ -1035,6 +1040,344 @@ pub fn draw_grasshopper(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f6
         y1: y_mid + 5.0,
         x2: x_mid + 5.5,
         y2: y_mid + 4.5,
+        color,
+    });
+}
+
+pub fn draw_mosquito(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
+    let color = piece_color(PieceType::Mosquito);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 3, 4);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -8, 2);
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 1.0,
+        radius: 1.8,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid - 7.75,
+        radius: 1.0,
+        color,
+    });
+    // trunk
+    ctx.draw(&Line {
+        x1: x_mid,
+        y1: y_mid + 3.5,
+        x2: x_mid,
+        y2: y_mid + 9.5,
+        color,
+    });
+    // left wing
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 1.0,
+        x2: x_mid - 4.0,
+        y2: y_mid - 5.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid - 4.0,
+        y1: y_mid - 5.5,
+        x2: x_mid - 3.25,
+        y2: y_mid - 8.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid - 2.75,
+        y1: y_mid - 8.0,
+        x2: x_mid - 1.0,
+        y2: y_mid - 4.0,
+        color,
+    });
+    // right wing
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 1.0,
+        x2: x_mid + 4.0,
+        y2: y_mid - 5.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 4.0,
+        y1: y_mid - 5.5,
+        x2: x_mid + 3.25,
+        y2: y_mid - 8.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.75,
+        y1: y_mid - 8.0,
+        x2: x_mid + 1.0,
+        y2: y_mid - 4.0,
+        color,
+    });
+    // front feet
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 2.5,
+        x2: x_mid - 6.0,
+        y2: y_mid + 8.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 2.5,
+        x2: x_mid + 6.0,
+        y2: y_mid + 8.0,
+        color,
+    });
+    // middle feet
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 1.5,
+        x2: x_mid - 9.0,
+        y2: y_mid,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 1.5,
+        x2: x_mid + 9.0,
+        y2: y_mid,
+        color,
+    });
+    // back feet
+    ctx.draw(&Line {
+        x1: x_mid - 2.0,
+        y1: y_mid + 1.0,
+        x2: x_mid - 7.5,
+        y2: y_mid - 4.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.0,
+        y1: y_mid + 1.0,
+        x2: x_mid + 7.5,
+        y2: y_mid - 4.0,
+        color,
+    });
+}
+
+pub fn draw_small_mosquito(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
+    let color = piece_color(PieceType::Mosquito);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 5, 6);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, -2, 4);
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 4.2,
+        radius: 1.4,
+        color,
+    });
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid - 1.6,
+        radius: 1.0,
+        color,
+    });
+    // trunk
+    ctx.draw(&Line {
+        x1: x_mid,
+        y1: y_mid + 5.5,
+        x2: x_mid,
+        y2: y_mid + 10.5,
+        color,
+    });
+    // left wing
+    ctx.draw(&Line {
+        x1: x_mid - 1.5,
+        y1: y_mid + 3.5,
+        x2: x_mid - 3.5,
+        y2: y_mid - 0.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid - 3.5,
+        y1: y_mid - 0.5,
+        x2: x_mid - 3.0,
+        y2: y_mid - 2.25,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid - 2.5,
+        y1: y_mid - 2.25,
+        x2: x_mid - 1.0,
+        y2: y_mid + 0.5,
+        color,
+    });
+    // right wing
+    ctx.draw(&Line {
+        x1: x_mid + 1.5,
+        y1: y_mid + 3.5,
+        x2: x_mid + 3.5,
+        y2: y_mid - 0.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.5,
+        y1: y_mid - 0.5,
+        x2: x_mid + 3.0,
+        y2: y_mid - 2.25,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.5,
+        y1: y_mid - 2.25,
+        x2: x_mid + 1.0,
+        y2: y_mid + 0.5,
+        color,
+    });
+    // front feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.75,
+        y1: y_mid + 4.5,
+        x2: x_mid - 4.5,
+        y2: y_mid + 9.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.75,
+        y1: y_mid + 4.5,
+        x2: x_mid + 4.5,
+        y2: y_mid + 9.0,
+        color,
+    });
+    // middle feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.75,
+        y1: y_mid + 4.0,
+        x2: x_mid - 6.5,
+        y2: y_mid + 3.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.75,
+        y1: y_mid + 4.0,
+        x2: x_mid + 6.5,
+        y2: y_mid + 3.0,
+        color,
+    });
+    // back feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.75,
+        y1: y_mid + 3.75,
+        x2: x_mid - 5.5,
+        y2: y_mid + 0.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.75,
+        y1: y_mid + 3.75,
+        x2: x_mid + 5.5,
+        y2: y_mid + 0.5,
+        color,
+    });
+}
+
+pub fn draw_tiny_mosquito(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, _zoom: f64) {
+    let color = piece_color(PieceType::Mosquito);
+    fill_rectangle(ctx, color, x_mid, y_mid, -1, 1, 2, 7);
+    ctx.draw(&Circle {
+        x: x_mid,
+        y: y_mid + 2.5,
+        radius: 0.9,
+        color,
+    });
+    // trunk
+    ctx.draw(&Line {
+        x1: x_mid,
+        y1: y_mid + 6.5,
+        x2: x_mid,
+        y2: y_mid + 10.5,
+        color,
+    });
+    // left wing
+    ctx.draw(&Line {
+        x1: x_mid - 1.2,
+        y1: y_mid + 5.5,
+        x2: x_mid - 3.0,
+        y2: y_mid + 3.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid - 3.0,
+        y1: y_mid + 3.0,
+        x2: x_mid - 2.75,
+        y2: y_mid + 2.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid - 2.5,
+        y1: y_mid + 2.0,
+        x2: x_mid - 1.0,
+        y2: y_mid + 3.7,
+        color,
+    });
+    // right wing
+    ctx.draw(&Line {
+        x1: x_mid + 1.2,
+        y1: y_mid + 5.5,
+        x2: x_mid + 3.0,
+        y2: y_mid + 3.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 3.0,
+        y1: y_mid + 3.0,
+        x2: x_mid + 2.75,
+        y2: y_mid + 2.0,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 2.5,
+        y1: y_mid + 2.0,
+        x2: x_mid + 1.0,
+        y2: y_mid + 3.7,
+        color,
+    });
+    // front feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.4,
+        y1: y_mid + 6.25,
+        x2: x_mid - 3.75,
+        y2: y_mid + 9.25,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.4,
+        y1: y_mid + 6.25,
+        x2: x_mid + 3.75,
+        y2: y_mid + 9.25,
+        color,
+    });
+    // middle feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.4,
+        y1: y_mid + 6.0,
+        x2: x_mid - 5.25,
+        y2: y_mid + 5.25,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.4,
+        y1: y_mid + 6.0,
+        x2: x_mid + 5.25,
+        y2: y_mid + 5.25,
+        color,
+    });
+    // back feet
+    ctx.draw(&Line {
+        x1: x_mid - 1.4,
+        y1: y_mid + 5.75,
+        x2: x_mid - 4.75,
+        y2: y_mid + 3.5,
+        color,
+    });
+    ctx.draw(&Line {
+        x1: x_mid + 1.4,
+        y1: y_mid + 5.75,
+        x2: x_mid + 4.75,
+        y2: y_mid + 3.5,
         color,
     });
 }
