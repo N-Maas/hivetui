@@ -4,11 +4,8 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
+use std::sync::{Arc, Mutex};
 use std::{backtrace::Backtrace, cell::RefCell, io::stdout, panic, process};
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
 use std::{collections::HashMap, io};
 use tgp::{
     engine::{logging::EventLog, Engine, FollowUpDecision, GameEngine, GameState},

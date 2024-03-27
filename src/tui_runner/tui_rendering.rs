@@ -24,7 +24,7 @@ use ratatui::{
     },
 };
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     io::{self, Stdout},
     iter,
 };
