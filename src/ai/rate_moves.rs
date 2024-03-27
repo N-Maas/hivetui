@@ -635,7 +635,11 @@ fn handle_placement_ratings(
                 }
                 PieceType::Ladybug => {
                     // TODO: refine
-                    rater.rate(i, j, 8);
+                    if meta_data.defensive {
+                        rater.rate(i, j, 3);
+                    } else {
+                        rater.rate(i, j, 8);
+                    }
                 }
                 PieceType::Mosquito => {
                     // TODO: refine
