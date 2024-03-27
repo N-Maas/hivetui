@@ -426,8 +426,11 @@ impl HiveGameState {
 
     pub fn is_movable_precise(&self, field: Field<HiveBoard>, check_player: bool) -> bool {
         assert!(!field.is_empty());
-        let piece_movable = match field.content().top().unwrap().p_type {
-            PieceType::Spider => PieceType::Spider.is_movable(field) && !move_violates_ohr(field),
+        let p_type = field.content().top().unwrap().p_type;
+        let piece_movable = match p_type {
+            PieceType::Spider | PieceType::Mosquito => {
+                p_type.is_movable(field) && !move_violates_ohr(field)
+            }
             _ => field.content().is_movable,
         };
         piece_movable
@@ -621,6 +624,8 @@ fn move_violates_ohr(field: Field<HiveBoard>) -> bool {
 
 #[cfg(test)]
 mod test {
+    use crate::ai::distance;
+
     use super::*;
 
     #[test]
@@ -917,6 +922,45 @@ mod test {
                 assert!(!context.contains(&(up + HexaDirection::Up + HexaDirection::Up)));
                 for &i in context.iter() {
                     assert!(state.board[i].is_empty());
+                }
+            }
+            _ => {
+                assert!(false)
+            }
+        }
+    }
+
+    #[test]
+    fn mosquito_up_test() {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(PieceType::Queen, 1);
+        pieces.insert(PieceType::Mosquito, 2);
+
+        let mut state = HiveGameState::new(pieces);
+        let zero = OpenIndex::from((0, 0));
+        let up = zero + HexaDirection::Up;
+        let left = zero + HexaDirection::UpLeft;
+        let right = zero + HexaDirection::UpRight;
+        let right_away = right + HexaDirection::UpRight;
+        state.place_piece(PieceType::Queen, zero);
+        state.place_piece(PieceType::Queen, up);
+        state.place_piece(PieceType::Mosquito, left);
+        state.place_piece(PieceType::Mosquito, right);
+        state.place_piece(PieceType::Mosquito, zero + HexaDirection::Down);
+        state.place_piece(PieceType::Mosquito, right_away);
+
+        let moves = state.create_movement_decision(zero + HexaDirection::Down);
+        assert_eq!(moves.option_count(), 2); // move as queen
+
+        state.move_piece(left, right_away, true);
+        state.current_player.switch();
+
+        let moves = state.create_movement_decision(right_away);
+        assert_eq!(moves.option_count(), 6);
+        match moves.context(&state) {
+            HiveContext::TargetField(context) => {
+                for &i in context.iter() {
+                    assert!(distance(i, right_away) == 1);
                 }
             }
             _ => {

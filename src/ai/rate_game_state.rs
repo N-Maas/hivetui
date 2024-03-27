@@ -143,11 +143,12 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     let ants = 10 * data.remaining_pieces(player, PieceType::Ant);
     let ladybugs = 8 * data.remaining_pieces(player, PieceType::Ladybug);
+    let mosquitos = 6 * data.remaining_pieces(player, PieceType::Mosquito);
     let spiders = 5 * data.remaining_pieces(player, PieceType::Spider);
     let grasshoppers = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
     // TODO: increase for beetle to 6 or 7?
     let beetles = 5 * data.remaining_pieces(player, PieceType::Beetle);
-    (ants + ladybugs + spiders + grasshoppers + beetles) as RatingType
+    (ants + ladybugs + mosquitos + spiders + grasshoppers + beetles) as RatingType
 }
 
 fn rate_piece_movability(
@@ -188,7 +189,9 @@ fn rate_piece_movability(
             assert!(data.is_movable(field, false));
             match field.content().pieces() {
                 [inner @ .., next, beetle] => {
-                    assert_eq!(beetle.p_type, PieceType::Beetle);
+                    assert!(
+                        beetle.p_type == PieceType::Beetle || beetle.p_type == PieceType::Mosquito
+                    );
                     for &piece in inner {
                         let movability = MovabilityType::Unmovable;
                         rating[usize::from(piece.player)] +=
@@ -201,8 +204,13 @@ fn rate_piece_movability(
                     };
                     rating[usize::from(next.player)] +=
                         single_piece_rating(data, meta, *next, field, mov_type).0;
+                    // a on-top mosquito is just considered a beetle
+                    let beetle = Piece {
+                        p_type: PieceType::Beetle,
+                        ..*beetle
+                    };
                     let (val, bonus, _) =
-                        single_piece_rating(data, meta, *beetle, field, MovabilityType::Movable);
+                        single_piece_rating(data, meta, beetle, field, MovabilityType::Movable);
                     let b_player = usize::from(beetle.player);
                     rating[b_player] += val;
                     beetle_bonus[b_player] = RatingType::max(beetle_bonus[b_player], bonus);
@@ -463,6 +471,10 @@ fn single_piece_rating(
             MovabilityType::AtQueen => 8,
             MovabilityType::Unmovable => 5,
         },
+        PieceType::Mosquito => {
+            // TODO: does not make senese
+            10
+        }
     };
 
     (

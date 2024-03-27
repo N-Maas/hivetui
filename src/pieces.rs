@@ -5,10 +5,10 @@ use tgp_board::{
     index_map::ArrayIndexMap,
     open_board::OpenIndex,
     prelude::*,
-    search::{SearchMode, SearchingTree},
+    search::{SearchMode, SearchingSet, SearchingTree},
     structures::{
         directions::{DirectionEnumerable, HexaDirection},
-        DirectionStructure,
+        DirectionStructure, NeighborhoodStructure,
     },
 };
 
@@ -66,6 +66,110 @@ impl Player {
     }
 }
 
+/// used to represent sets of adjacent pieces for the mosquito
+#[derive(Debug, Clone, Copy)]
+struct PieceSet {
+    flags: u32,
+}
+
+impl PieceSet {
+    pub fn new() -> Self {
+        Self { flags: 0 }
+    }
+
+    pub fn insert(&mut self, p_type: PieceType) {
+        self.flags |= Self::piece_to_flag(p_type);
+    }
+
+    #[must_use]
+    pub fn moves_dominance_set(mut self) -> Self {
+        use PieceType::*;
+
+        // remove mosquito
+        self.flags &= !Self::piece_to_flag(Mosquito);
+        self.apply_dominance(Beetle, Queen);
+        self.apply_dominance(Ant, Spider);
+        self.apply_dominance(Ant, Queen);
+        self
+    }
+
+    #[must_use]
+    pub fn movable_dominance_set(mut self) -> Self {
+        use PieceType::*;
+
+        // remove mosquito
+        self.flags &= !Self::piece_to_flag(Mosquito);
+        self.apply_dominance(Beetle, Queen);
+        self.apply_dominance(Beetle, Ant);
+        self.apply_dominance(Beetle, Spider);
+        self.apply_dominance(Beetle, Ladybug);
+        self.apply_dominance(Grasshopper, Queen);
+        self.apply_dominance(Grasshopper, Ant);
+        self.apply_dominance(Grasshopper, Spider);
+        self.apply_dominance(Grasshopper, Ladybug);
+        self.apply_dominance(Ladybug, Spider);
+        self.apply_dominance(Ladybug, Ant);
+        self.apply_dominance(Ladybug, Queen);
+        self.apply_dominance(Ant, Spider);
+        self.apply_dominance(Ant, Queen);
+        self.apply_dominance(Queen, Spider);
+        self
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = PieceType> {
+        use PieceType::*;
+
+        let flags = self.flags;
+        let all = [Queen, Ant, Spider, Grasshopper, Beetle, Ladybug, Mosquito];
+        all.into_iter()
+            .filter(move |&p_type| (flags & Self::piece_to_flag(p_type)) != 0)
+    }
+
+    fn apply_dominance(&mut self, dom: PieceType, sub: PieceType) {
+        // this bitflag based implementation allows branchless calculation
+        // of the dominating piece set
+        // (which is probably a pointless micro-optimization, but fun)
+        debug_assert!(dom != sub);
+        let dom_index = Self::piece_to_offset(dom);
+        let sub_index = Self::piece_to_offset(sub);
+        let flag = self.flags & Self::piece_to_flag(dom);
+        if dom_index > sub_index {
+            self.flags &= !(flag >> (dom_index - sub_index));
+        } else {
+            self.flags &= !(flag << (sub_index - dom_index));
+        }
+    }
+
+    fn piece_to_offset(p_type: PieceType) -> u32 {
+        match p_type {
+            PieceType::Queen => 0,
+            PieceType::Ant => 1,
+            PieceType::Spider => 2,
+            PieceType::Grasshopper => 3,
+            PieceType::Beetle => 4,
+            PieceType::Ladybug => 5,
+            PieceType::Mosquito => 6,
+        }
+    }
+
+    fn piece_to_flag(p_type: PieceType) -> u32 {
+        1 << Self::piece_to_offset(p_type)
+    }
+}
+
+impl<P> FromIterator<P> for PieceSet
+where
+    P: Into<PieceType>,
+{
+    fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
+        let mut result = Self::new();
+        for p_type in iter.into_iter() {
+            result.insert(p_type.into());
+        }
+        result
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 pub enum PieceType {
     Queen,
@@ -74,6 +178,7 @@ pub enum PieceType {
     Grasshopper,
     Beetle,
     Ladybug,
+    Mosquito,
 }
 
 // note that both get_moves and is_movable do not consider the OHR yet
@@ -86,11 +191,36 @@ impl PieceType {
             PieceType::Grasshopper => "Grasshopper",
             PieceType::Beetle => "Beetle",
             PieceType::Ladybug => "Ladybug",
+            PieceType::Mosquito => "Mosquito",
         }
     }
 
     pub fn letter(&self) -> &'static str {
         &self.name()[0..1]
+    }
+
+    fn get_mosquito_piece_set<'a, B>(field: Field<'a, B>, top_piece_removed: bool) -> PieceSet
+    where
+        B: Board<Index = OpenIndex, Content = HiveContent>,
+        B::Structure: NeighborhoodStructure<B>,
+    {
+        debug_assert!(
+            top_piece_removed
+                || field
+                    .content()
+                    .top()
+                    .map_or(false, |p| p.p_type == PieceType::Mosquito)
+        );
+        if field.content().len() > 1 || (top_piece_removed && !field.content().is_empty()) {
+            let mut set = PieceSet::new();
+            set.insert(PieceType::Beetle);
+            set
+        } else {
+            field
+                .neighbors()
+                .filter_map(|f| f.content().top().map(|p| p.p_type))
+                .collect()
+        }
     }
 
     fn feasible_steps_flat<B>(field: Field<B>) -> impl Iterator<Item = Field<B>>
@@ -150,14 +280,12 @@ impl PieceType {
             .map(|(_, f)| f)
     }
 
-    // TODO: don't return a vec?!
-    pub fn get_moves<'a>(&self, field: Field<'a, HiveBoard>) -> Vec<Field<'a, HiveBoard>> {
-        assert!(!field.is_empty());
-        let mut hypothetical =
-            Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
-        hypothetical[field].pop();
-        let new_field = hypothetical.get_field_unchecked(field.index());
-        let mut search = new_field.search();
+    fn get_moves_impl<'a, B>(&self, field: Field<'a, B>) -> SearchingSet<'a, B::Map, B>
+    where
+        B: Board<Index = OpenIndex, Content = HiveContent> + BoardToMap<()>,
+        B::Structure: DirectionStructure<B, Direction = HexaDirection> + NeighborhoodStructure<B>,
+    {
+        let mut search = field.search();
         match self {
             PieceType::Queen => {
                 search.replace(Self::feasible_steps_flat);
@@ -166,14 +294,14 @@ impl PieceType {
                 search.extend_repeated(Self::feasible_steps_flat);
             }
             PieceType::Spider => {
-                let mut tree = new_field.search_tree();
+                let mut tree = field.search_tree();
                 for _ in 0..3 {
                     tree.extend(Self::feasible_steps_flat, SearchMode::NoCycles);
                 }
-                search = tree.into_endpoint_set();
+                return tree.into_endpoint_set();
             }
             PieceType::Grasshopper => {
-                search = grasshopper_moves(new_field)
+                return grasshopper_moves(field)
                     .collect::<Option<_>>()
                     .expect("Grasshopper has no adjacent piece.");
             }
@@ -191,7 +319,27 @@ impl PieceType {
                         .filter(|f| f.content().is_empty())
                 });
             }
+            PieceType::Mosquito => {
+                let piece_set = Self::get_mosquito_piece_set(field, true);
+                for p_type in piece_set.moves_dominance_set().iter() {
+                    let p_moves = p_type.get_moves_impl(field);
+                    for field in p_moves.into_iter() {
+                        search.insert(field);
+                    }
+                }
+            }
         }
+        search
+    }
+
+    // TODO: don't return a vec?!
+    pub fn get_moves<'a>(&self, field: Field<'a, HiveBoard>) -> Vec<Field<'a, HiveBoard>> {
+        assert!(!field.is_empty());
+        let mut hypothetical =
+            Hypothetical::with_index_map(field.board(), ArrayIndexMap::<_, _, 1>::new());
+        hypothetical[field].pop();
+        let new_field = hypothetical.get_field_unchecked(field.index());
+        let search = self.get_moves_impl(new_field);
         search
             .into_iter()
             .map(|f| f.original_field(field.board()))
@@ -205,6 +353,19 @@ impl PieceType {
             PieceType::Queen | PieceType::Ant => feasible_steps_plain(field).count() > 0,
             PieceType::Grasshopper | PieceType::Beetle => true,
             PieceType::Spider | PieceType::Ladybug => !self.get_moves(field).is_empty(),
+            PieceType::Mosquito => {
+                let piece_set = Self::get_mosquito_piece_set(field, false);
+                for p_type in piece_set.movable_dominance_set().iter() {
+                    if p_type.is_movable(field) {
+                        let moves = self.get_moves(field);
+                        if moves.is_empty() {
+                            panic!("p_type={p_type}, p_moves={:?}", p_type.get_moves(field));
+                        }
+                        return true;
+                    }
+                }
+                false
+            }
         }
     }
 
@@ -213,7 +374,7 @@ impl PieceType {
         field: Field<B>,
     ) -> bool
     where
-        B::Structure: DirectionStructure<B, Direction = HexaDirection>,
+        B::Structure: DirectionStructure<B, Direction = HexaDirection> + NeighborhoodStructure<B>,
         B: BoardToMap<()>,
     {
         assert!(!field.is_empty());
@@ -222,6 +383,15 @@ impl PieceType {
                 feasible_steps_plain(field).count() > 0
             }
             PieceType::Grasshopper | PieceType::Beetle | PieceType::Ladybug => true,
+            PieceType::Mosquito => {
+                let piece_set = Self::get_mosquito_piece_set(field, false);
+                for p_type in piece_set.movable_dominance_set().iter() {
+                    if p_type.is_movable_generic(field) {
+                        return true;
+                    }
+                }
+                false
+            }
         }
     }
 }
@@ -279,15 +449,7 @@ where
 
 impl Display for PieceType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let string = match self {
-            PieceType::Queen => "Q",
-            PieceType::Ant => "A",
-            PieceType::Spider => "S",
-            PieceType::Grasshopper => "G",
-            PieceType::Beetle => "B",
-            PieceType::Ladybug => "L",
-        };
-        write!(f, "{}", string)
+        write!(f, "{}", self.letter())
     }
 }
 
@@ -310,4 +472,32 @@ impl Display for PieceType {
 pub struct Piece {
     pub player: Player,
     pub p_type: PieceType,
+}
+
+#[cfg(test)]
+mod test {
+    use super::{PieceSet, PieceType};
+
+    #[test]
+    fn piece_set() {
+        let mut set = PieceSet::new();
+        set.insert(PieceType::Ant);
+        set.insert(PieceType::Ladybug);
+        set.insert(PieceType::Ant);
+        assert_eq!(
+            set.iter().collect::<Vec<_>>(),
+            vec![PieceType::Ant, PieceType::Ladybug]
+        );
+        set.insert(PieceType::Spider);
+        set.insert(PieceType::Queen);
+        let dom_moves = set.moves_dominance_set();
+        assert_eq!(
+            dom_moves.iter().collect::<Vec<_>>(),
+            vec![PieceType::Ant, PieceType::Ladybug]
+        );
+        let mut set = PieceSet::new();
+        set.insert(PieceType::Queen);
+        let dom_moves = set.moves_dominance_set();
+        assert_eq!(dom_moves.iter().collect::<Vec<_>>(), vec![PieceType::Queen]);
+    }
 }

@@ -696,6 +696,7 @@ impl Default for GameSetup {
                 (PieceType::Beetle, 2),
                 (PieceType::Spider, 2),
                 (PieceType::Ladybug, 0),
+                (PieceType::Mosquito, 0),
             ]
             .into_iter()
             .collect(),

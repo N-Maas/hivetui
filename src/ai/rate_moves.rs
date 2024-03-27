@@ -435,6 +435,10 @@ fn handle_move_ratings(
             }
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus, true);
             rater.rate(i, j, rating);
+        } else if piece.p_type == PieceType::Mosquito {
+            // TODO!
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, false);
+            rater.rate(i, j, rating);
         } else {
             // TODO: ladybug handling?
             assert!(matches!(
@@ -632,6 +636,10 @@ fn handle_placement_ratings(
                 PieceType::Ladybug => {
                     // TODO: refine
                     rater.rate(i, j, 8);
+                }
+                PieceType::Mosquito => {
+                    // TODO: refine
+                    rater.rate(i, j, 7);
                 }
             }
         }
