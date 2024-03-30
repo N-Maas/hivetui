@@ -356,7 +356,7 @@ pub fn render(
             let is_game_setup = matches!(state.ui_state, UIState::GameSetup(_));
 
             // the actions
-            if !is_rules_summary {
+            if !is_rules_summary && !is_game_setup {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(
                     "[c]ontinue game  [↲]\n\

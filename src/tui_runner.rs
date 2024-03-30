@@ -40,6 +40,7 @@ mod tui_settings;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum UIState {
+    // TODO: show enemy pieces during animation?
     Toplevel,
     /// the current scrolling
     RulesSummary(u16),
@@ -413,6 +414,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
+    let game_setup = matches!(ui_state, UIState::GameSetup(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
     Ok(pull_key_event()?.and_then(|key| match key {
         KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
@@ -425,13 +427,13 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         } else {
             Event::Cancel
         })
-        .filter(|_| !rules_summary),
+        .filter(|_| !rules_summary && !game_setup),
         KeyCode::Char('n') => Some(if top_level {
             Event::NewGame
         } else {
             Event::LetAIMove
         })
-        .filter(|_| !rules_summary && !matches!(ui_state, UIState::GameSetup(_))),
+        .filter(|_| !rules_summary && !game_setup),
         KeyCode::Char('h') => Some(Event::Help),
         KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
         KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
@@ -682,7 +684,10 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     | UIState::PositionSelected(_)
                     | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
                     UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
-                    _ => (),
+                    UIState::ShowOptions(true, _)
+                    | UIState::GameSetup(_)
+                    | UIState::PlaysAnimation(_)
+                    | UIState::GameFinished(_) => (),
                 },
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
