@@ -471,10 +471,12 @@ fn single_piece_rating(
             MovabilityType::AtQueen => 8,
             MovabilityType::Unmovable => 5,
         },
-        PieceType::Mosquito => {
-            // TODO: does not make senese
-            10
-        }
+        PieceType::Mosquito => match movability {
+            MovabilityType::Movable => 13,
+            MovabilityType::Blocked(_) => 12,
+            MovabilityType::AtQueen => 7,
+            MovabilityType::Unmovable => 5,
+        },
     };
 
     (
