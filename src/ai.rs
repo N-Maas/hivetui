@@ -165,8 +165,22 @@ impl HiveAI {
                 Params::new(1, sliding)
             }
         };
+        let rater = match level {
+            Difficulty::Easy => HiveRater {
+                restrictions: vec![
+                    AIRestriction::DoNotMoveQueen,
+                    AIRestriction::DoNotCrawlOnTop,
+                ],
+            },
+            Difficulty::QuiteEasy => HiveRater {
+                restrictions: vec![AIRestriction::DoNotCrawlOnTop],
+            },
+            _ => HiveRater {
+                restrictions: vec![],
+            },
+        };
         let alg = match level {
-            Difficulty::VeryHard => Algorithm::with_pruning(params, HiveRater {}, |input| {
+            Difficulty::VeryHard => Algorithm::with_pruning(params, rater, |input| {
                 if input.total_depth <= 2 {
                     match input.current_depth {
                         0 => PruningKind::WithinBounds(5, 9, 30),
@@ -196,18 +210,22 @@ impl HiveAI {
                 }
             }),
             Difficulty::Hard => {
-                Algorithm::with_pruning(params, HiveRater {}, |input| match input.current_depth {
+                Algorithm::with_pruning(params, rater, |input| match input.current_depth {
                     0 => PruningKind::WithinBounds(3, 7, 30),
                     1 => PruningKind::WithinBounds(2, 5, 18),
                     _ => unreachable!(),
                 })
             }
-            _ => Algorithm::new(params, HiveRater {}),
+            _ => Algorithm::new(params, rater),
         };
         Self {
             alg,
             use_direct_move: level == Difficulty::Easy,
         }
+    }
+
+    pub fn rater(&self) -> &HiveRater {
+        self.alg.rate_and_map()
     }
 
     pub fn run_all_ratings<L: EventListener<HiveGameState>, F: Fn() -> bool>(
@@ -217,7 +235,7 @@ impl HiveAI {
     ) -> Option<Vec<(RatingType, Box<[usize]>, HiveContext)>> {
         if self.use_direct_move {
             let mut engine = Engine::new(2, engine.data().clone());
-            let ratings = Rater::create_rating(&mut engine, &HiveRater {});
+            let ratings = Rater::create_rating(&mut engine, self.rater());
             let ratings = add_context_to_ratings(&engine, ratings).unwrap();
             Some(ratings)
         } else {
@@ -242,8 +260,14 @@ impl HiveAI {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AIRestriction {
+    DoNotMoveQueen,
+    DoNotCrawlOnTop,
+}
+
 pub struct HiveRater {
-    // TODO: weights etc.
+    restrictions: Vec<AIRestriction>,
 }
 
 impl RateAndMap<HiveGameState> for HiveRater {
@@ -263,7 +287,7 @@ impl RateAndMap<HiveGameState> for HiveRater {
         data: &HiveGameState,
         old_context: &[(HiveContext, usize)],
     ) {
-        rate_moves::rate_moves(rater, curr_context, data, old_context);
+        rate_moves::rate_moves(rater, curr_context, data, &self.restrictions, old_context);
     }
 
     fn rate_game_state(

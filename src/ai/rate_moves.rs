@@ -15,7 +15,7 @@ use crate::{
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
-use super::{blocks, would_block};
+use super::{blocks, would_block, AIRestriction};
 
 // ------ metadata types -----
 #[derive(Debug, Clone)]
@@ -329,6 +329,7 @@ fn handle_move_ratings(
     context: &VecContext<OpenIndex, OpenIndex>,
     eq_map: &mut HashMap<Equivalency, (usize, usize)>,
     rater: &mut Rater,
+    restrictions: &[AIRestriction],
     i: usize,
 ) {
     let from = data.board().get_field_unchecked(*context.inner());
@@ -337,9 +338,18 @@ fn handle_move_ratings(
     debug_assert!(piece.player == data.player());
     for (j, target) in context.iter().enumerate() {
         let to = data.board().get_field_unchecked(*target);
+        let goes_on_top = !to.is_empty();
+        if goes_on_top && restrictions.contains(&AIRestriction::DoNotCrawlOnTop) {
+            rater.rate(i, j, -100);
+            continue;
+        }
         let t_interest = meta_data.interest(to);
 
         if piece.p_type == PieceType::Queen {
+            if restrictions.contains(&AIRestriction::DoNotMoveQueen) {
+                rater.rate(i, j, -100);
+                continue;
+            }
             // moving the queen only makes sense when it is endangered
             let num_neighbors = meta_data.q_neighbors(data.player()) as RatingType;
             if meta_data.queen_endangered || meta_data.queen_should_move {
@@ -406,7 +416,6 @@ fn handle_move_ratings(
             } else {
                 f_interest
             };
-            let goes_on_top = !to.is_empty();
             let t_interest = if goes_on_top {
                 if queen_pos.map_or(false, |pos| distance(to.index(), pos) <= 1) {
                     // in this case, the bonus would stack too much
@@ -655,7 +664,7 @@ pub fn rate_moves(
     rater: &mut Rater,
     curr_context: &[HiveContext],
     data: &HiveGameState,
-    // TODO
+    restrictions: &[AIRestriction],
     _old_context: &[(HiveContext, usize)],
 ) {
     // Special case: We always use the spider as first piece.
@@ -690,7 +699,15 @@ pub fn rate_moves(
             HiveContext::BaseField(_) => unreachable!(),
             HiveContext::SkipPlayer => rater.rate(0, 0, 0),
             HiveContext::TargetField(context) => {
-                handle_move_ratings(data, &meta_data, context, &mut eq_map, rater, i);
+                handle_move_ratings(
+                    data,
+                    &meta_data,
+                    context,
+                    &mut eq_map,
+                    rater,
+                    restrictions,
+                    i,
+                );
             }
             HiveContext::Piece(context) => {
                 handle_placement_ratings(data, &meta_data, context, &mut eq_map, rater, i);

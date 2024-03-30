@@ -130,7 +130,10 @@ pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
                         print_and_compare_rating(engine.data(), None);
                     }
                     Input::MoveRating => {
-                        print_move_ratings(engine.data(), &HiveRater {});
+                        print_move_ratings(
+                            engine.data(),
+                            ais[usize::from(engine.data().player())].rater(),
+                        );
                     }
                     Input::ShowAIRating => {
                         print_ai_ratings(engine.data(), &ais[usize::from(engine.data().player())]);
