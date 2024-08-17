@@ -119,8 +119,12 @@ enum Equivalency {
     AntToBlocking(OpenIndex, OpenIndex),
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
-    PlaceAnt,
+    PlaceAnt, // TODO: reduce this equivalency class to:
+    // - place ant no-blocking
+    // - place ant blocking(blocked piece)
     PlaceBeetle(u32),
+    // TODO: placement equiv. class similar to beetle for ladybug?
+    // ---> include position rating (own blocked, own queen) to placements!
     PlaceAtEnemyQueen(bool),
 }
 
