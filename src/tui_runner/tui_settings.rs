@@ -1,3 +1,4 @@
+use crate::ai::Difficulty;
 use crate::state::HiveGameState;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use ratatui::{
@@ -87,6 +88,18 @@ pub enum AILevel {
     Normal = 2,
     Hard = 3,
     Master = 4,
+}
+
+impl AILevel {
+    pub fn as_difficulty(self) -> Difficulty {
+        match self {
+            AILevel::Beginner => Difficulty::Easy,
+            AILevel::Easy => Difficulty::QuiteEasy,
+            AILevel::Normal => Difficulty::Medium,
+            AILevel::Hard => Difficulty::Hard,
+            AILevel::Master => Difficulty::VeryHard,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]

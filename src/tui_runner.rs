@@ -5,35 +5,37 @@ use crossterm::{
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
 use std::sync::{Arc, Mutex};
-use std::{backtrace::Backtrace, cell::RefCell, io::stdout, panic, process};
 use std::{collections::HashMap, io};
+use std::{io::stdout, panic, process};
 use tgp::{
     engine::{logging::EventLog, Engine, FollowUpDecision, GameEngine, GameState},
     vec_context::VecContext,
 };
-use tgp_ai::RatingType;
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
     io::IOManager,
+    panic_handling::{get_panic_data, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_runner::{
         tui_animations::loader, tui_rendering::postprocess_ai_suggestions, tui_settings::AIMoves,
     },
+    worker::{
+        ai_worker::{start_ai_worker_thread, AIEndpoint, AIResult, AIStart},
+        MessageForMaster,
+    },
 };
 
 use self::{
-    ai_worker::start_ai_worker_thread,
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
     tui_rendering::{find_losing_queen, translate_index},
     tui_settings::{
-        AILevel, AutomaticCameraMoves, GameSetup, GraphicsState, PlayerType, SettingRenderer,
+        AutomaticCameraMoves, GameSetup, GraphicsState, PlayerType, SettingRenderer,
         SettingSelection, Settings,
     },
 };
 
-mod ai_worker;
 // mod dynamic_layout;
 mod tui_animations;
 mod tui_rendering;
@@ -209,34 +211,8 @@ impl AnimationState {
     }
 }
 
-#[derive(Debug)]
-struct AIResult {
-    player: Player,
-    best_move: Box<[usize]>,
-    all_ratings: Vec<(RatingType, Box<[usize]>, HiveContext)>,
-    annotations: HashMap<OpenIndex, Vec<(usize, Option<PieceType>)>>,
-}
-
-#[derive(Debug)]
-enum AIMessageForWorker {
-    Start(AILevel, Box<HiveGameState>),
-    Cancel,
-}
-
-#[derive(Debug)]
-enum AIMessageForRunner {
-    Result(Box<AIResult>),
-    Killed(String, String),
-}
-
-#[derive(Default)]
-struct AIExchange {
-    for_runner: Option<AIMessageForRunner>,
-    for_worker: Option<AIMessageForWorker>,
-}
-
 struct AIState {
-    exchange_point: Arc<Mutex<AIExchange>>,
+    endpoint: AIEndpoint,
     current_player: Player,
     is_started: bool,
     // TODO: update in case of menu changes?!
@@ -249,9 +225,9 @@ struct AIState {
 impl AIState {
     const AI_DELAY: usize = 40;
 
-    fn new() -> Self {
+    fn new(endpoint: AIEndpoint) -> Self {
         Self {
-            exchange_point: Arc::new(Mutex::default()),
+            endpoint,
             current_player: Player::White,
             is_started: false,
             should_use_ai: false,
@@ -262,13 +238,7 @@ impl AIState {
     }
 
     fn reset(&mut self) {
-        {
-            let mut exchange = self.exchange_point.lock().unwrap();
-            exchange.for_runner = None;
-            if self.is_started {
-                exchange.for_worker = Some(AIMessageForWorker::Cancel);
-            }
-        }
+        self.endpoint.cancel();
         self.is_started = false;
         self.result = None;
         self.animation_progress = 0;
@@ -290,8 +260,8 @@ impl AIState {
             } else {
                 settings.ai_assistant
             };
-            self.exchange_point.lock().unwrap().for_worker =
-                Some(AIMessageForWorker::Start(level, Box::new(state.clone())));
+            self.endpoint
+                .send(AIStart(level.as_difficulty(), Box::new(state.clone())));
             self.current_player = player;
             self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::Automatic;
             self.should_show_animation = settings.is_ai(player);
@@ -299,13 +269,12 @@ impl AIState {
         }
 
         {
-            let mut exchange = self.exchange_point.lock().unwrap();
-            match exchange.for_runner.take() {
-                Some(AIMessageForRunner::Result(mut result)) => {
+            match self.endpoint.get_msg() {
+                Some(MessageForMaster::Msg(mut result)) => {
                     postprocess_ai_suggestions(result.as_mut(), settings);
                     self.result = Some(*result);
                 }
-                Some(AIMessageForRunner::Killed(msg, trace)) => {
+                Some(MessageForMaster::Killed(msg, trace)) => {
                     // try to print the ai error
                     stdout().execute(LeaveAlternateScreen).unwrap();
                     disable_raw_mode().unwrap();
@@ -511,37 +480,6 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     }))
 }
 
-thread_local! {
-    static MSG: RefCell<Option<String>> = RefCell::new(None);
-    static BACKTRACE: RefCell<Option<Backtrace>> = RefCell::new(None);
-}
-
-pub fn setup_panic_reporting() {
-    panic::set_hook(Box::new(|info| {
-        let payload = info.payload();
-        let msg = payload.downcast_ref::<String>().cloned().or_else(|| {
-            payload
-                .downcast_ref::<&'static str>()
-                .map(|s| s.to_string())
-        });
-        msg.map(|value| {
-            MSG.with(|b| b.borrow_mut().replace(value));
-        });
-        let trace = Backtrace::force_capture();
-        BACKTRACE.with(move |b| b.borrow_mut().replace(trace));
-    }));
-}
-
-pub fn get_panic_data() -> (String, String) {
-    let msg = MSG
-        .with(|b| b.borrow_mut().take())
-        .map_or(String::new(), |m| m + "\n");
-    let trace = BACKTRACE
-        .with(|b| b.borrow_mut().take())
-        .map_or(String::new(), |b| b.to_string());
-    (msg, trace)
-}
-
 pub fn run_in_tui() -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -567,6 +505,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.hide_cursor()?;
     terminal.clear()?;
+    let ai_endpoint = start_ai_worker_thread();
 
     let io_manager = IOManager::new();
     let setting_renderer = SettingRenderer::build();
@@ -578,7 +517,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let mut piece_annotations = HashMap::new();
     let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::Toplevel;
-    let mut ai_state = AIState::new();
+    let mut ai_state = AIState::new(ai_endpoint);
     let mut menu_selection = SettingSelection::General(2);
     let mut animation_state: AnimationState = AnimationState::default();
     let mut camera_move: Option<CameraMove> = None;
@@ -588,7 +527,6 @@ pub fn run_in_tui_impl() -> io::Result<()> {
         // TODO: proper message?
         eprintln!("Warning: could not initialize game data directory");
     }
-    start_ai_worker_thread(ai_state.exchange_point.clone());
 
     loop {
         let board = engine.data().board();
@@ -744,11 +682,13 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                         } else {
                             setting_renderer.get_player(index).increase(&mut settings);
                             ai_state.reset();
+                            // TODO: start AI?
                         }
                     } else {
                         setting_renderer.get(menu_selection).increase(&mut settings);
                         if setting_renderer.is_ai_setting(menu_selection) {
                             ai_state.reset();
+                            // TODO: start AI?
                         }
                     }
                 }

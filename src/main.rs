@@ -6,10 +6,12 @@ mod ai;
 mod cli_runner;
 mod display;
 mod io;
+mod panic_handling;
 mod pieces;
 mod state;
 mod tui_graphics;
 mod tui_runner;
+mod worker;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
