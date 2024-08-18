@@ -15,6 +15,7 @@ use tgp_ai::RatingType;
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
+    io::IOManager,
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_runner::{
@@ -567,6 +568,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     terminal.hide_cursor()?;
     terminal.clear()?;
 
+    let io_manager = IOManager::new();
     let setting_renderer = SettingRenderer::build();
     let mut settings = Settings::default();
     let mut game_setup = GameSetup::default();
@@ -581,6 +583,11 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let mut animation_state: AnimationState = AnimationState::default();
     let mut camera_move: Option<CameraMove> = None;
     let mut digits: Option<Vec<usize>> = None;
+
+    if io_manager.is_none() {
+        // TODO: proper message?
+        eprintln!("Warning: could not initialize game data directory");
+    }
     start_ai_worker_thread(ai_state.exchange_point.clone());
 
     loop {

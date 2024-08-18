@@ -1,10 +1,11 @@
 use clap::Parser;
 use pieces::PieceType;
-use std::{collections::BTreeMap, io};
+use std::collections::BTreeMap;
 
 mod ai;
 mod cli_runner;
 mod display;
+mod io;
 mod pieces;
 mod state;
 mod tui_graphics;
@@ -18,7 +19,7 @@ struct Args {
     cli: bool,
 }
 
-fn main() -> io::Result<()> {
+fn main() -> std::io::Result<()> {
     let mut pieces = BTreeMap::new();
     pieces.insert(PieceType::Queen, 1);
     pieces.insert(PieceType::Ant, 3);
