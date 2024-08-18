@@ -6,6 +6,7 @@ use std::{
 };
 
 pub mod ai_worker;
+pub mod io_worker;
 
 #[derive(Debug)]
 enum MessageForWorker<T> {

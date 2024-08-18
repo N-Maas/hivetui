@@ -694,6 +694,7 @@ impl SettingRenderer {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct GameSetup {
     white_pieces: BTreeMap<PieceType, u32>,
     black_pieces: Option<BTreeMap<PieceType, u32>>,
@@ -876,5 +877,19 @@ impl GameSetup {
         lines.push(Line::raw("[Esc] or [q] to return"));
         let text = Text::from(lines);
         Paragraph::new(text).block(Block::default().title("Game Setup").borders(Borders::ALL))
+    }
+
+    pub fn into_key_val(self) -> impl Iterator<Item = (String, String)> {
+        let it_white = self
+            .white_pieces
+            .into_iter()
+            .map(|(p, count)| ("W".to_string() + p.letter(), count.to_string()));
+        let it_black = self.black_pieces.map(|pieces| {
+            pieces
+                .into_iter()
+                .map(|(p, count)| ("W".to_string() + p.letter(), count.to_string()))
+        });
+        let it_black = it_black.into_iter().flatten();
+        it_white.chain(it_black)
     }
 }

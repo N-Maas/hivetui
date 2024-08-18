@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, thread::sleep, time::Duration};
 
 use either::Either;
-use tgp::engine::{Engine, EventListener, GameEngine, GameState, PendingDecision};
+use tgp::engine::{Engine, EventListener, GameState, PendingDecision};
 use tgp_board::{index_map::HashIndexMap, prelude::*};
 
 use crate::display::print_annotated_board;
