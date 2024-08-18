@@ -4,7 +4,6 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
-use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, io};
 use std::{io::stdout, panic, process};
 use tgp::{
