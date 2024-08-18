@@ -526,7 +526,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let mut digits: Option<Vec<usize>> = None;
 
     if io_manager.is_none() {
-        // TODO: proper message?
+        // TODO: proper message
         eprintln!("Warning: could not initialize game data directory");
     }
     let do_autosave = |setup: &GameSetup, engine: &LoggingEngine<HiveGameState>| {
@@ -537,6 +537,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                 engine.serialized_log(),
             ));
         }
+        // TODO: what about errors?
     };
 
     loop {
