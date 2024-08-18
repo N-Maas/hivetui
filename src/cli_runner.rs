@@ -10,7 +10,7 @@ use crate::state::{HiveContext, HiveGameState};
 use text_io::try_read;
 
 use crate::{
-    ai::{print_and_compare_rating, Difficulty, HiveAI, HiveRater},
+    ai::{print_and_compare_rating, Difficulty, HiveAI},
     display::{print_ai_ratings, print_move_ratings},
     pieces::Player,
 };

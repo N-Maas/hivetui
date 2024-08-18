@@ -966,7 +966,12 @@ mod test {
         state.place_piece(PieceType::Ant, up + HexaDirection::UpRight);
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
-        let rating = print_move_ratings(&state, &HiveRater {});
+        let rating = print_move_ratings(
+            &state,
+            &HiveRater {
+                restrictions: Vec::new(),
+            },
+        );
         // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
         // Move  <Q> from (0 , -1) to (1 , -1) =>   13
         // Move  <Q> from (0 , -1) to (-1, -2) =>   13
@@ -1023,7 +1028,12 @@ mod test {
         );
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
-        let rating = print_move_ratings(&state, &HiveRater {});
+        let rating = print_move_ratings(
+            &state,
+            &HiveRater {
+                restrictions: Vec::new(),
+            },
+        );
         // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   12
         // Place <A>  at  (-2, -2)             =>   11
         let results = rating
@@ -1040,7 +1050,12 @@ mod test {
             false,
         );
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
-        let rating = print_move_ratings(&state, &HiveRater {});
+        let rating = print_move_ratings(
+            &state,
+            &HiveRater {
+                restrictions: Vec::new(),
+            },
+        );
         // Place <A>  at  (0 , -2)             =>   18
         // Place <S>  at  (0 , -2)             =>   18
         // Place <A>  at  (1 , 3 )             =>   11
