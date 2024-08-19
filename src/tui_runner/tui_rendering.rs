@@ -1,4 +1,5 @@
 use super::{
+    text_input::TextInput,
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
         BordersStyle, ColorScheme, GameSetup, GraphicsState, ScreenSplitting, SettingRenderer,
@@ -17,7 +18,7 @@ use chrono::offset::Local;
 use chrono::DateTime;
 use core::slice;
 use ratatui::{
-    layout::{Alignment, Constraint, Layout},
+    layout::{Alignment, Constraint, Layout, Rect},
     prelude::{CrosstermBackend, Terminal},
     style::{Color, Stylize},
     text::{Line, Span, Text},
@@ -25,6 +26,7 @@ use ratatui::{
         canvas::{Canvas, Context},
         Block, Borders, Clear, Paragraph, Wrap,
     },
+    Frame,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -49,6 +51,7 @@ pub struct AllState<'a> {
     pub animation_state: &'a AnimationState,
     pub ai_state: &'a AIState,
     pub menu_selection: SettingSelection,
+    pub text_input: &'a TextInput,
     pub graphics_state: GraphicsState,
 }
 
@@ -57,6 +60,7 @@ pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 const MENU: &str = "\
     [c] continue game  [↲]\n\
     [n] new game\n\
+    [k] save game\n\
     [l] load game\n\
     [h] rules summary\n\
     \n\
@@ -315,7 +319,10 @@ pub fn render(
 
         let splitted_layout = if matches!(
             state.ui_state,
-            UIState::Toplevel | UIState::GameSetup(_) | UIState::LoadScreen(_)
+            UIState::Toplevel
+                | UIState::GameSetup(_)
+                | UIState::LoadScreen(_)
+                | UIState::SaveScreen
         ) {
             splitted_top_level
         } else {
@@ -367,11 +374,13 @@ pub fn render(
             let is_rules_summary = matches!(state.ui_state, UIState::RulesSummary(_));
             let render_setup_area = matches!(
                 state.ui_state,
-                UIState::GameSetup(_) | UIState::LoadScreen(_)
+                UIState::GameSetup(_) | UIState::LoadScreen(_) | UIState::SaveScreen
             );
 
             // the menu (actions)
-            if !is_rules_summary && !matches!(state.ui_state, UIState::GameSetup(_)) {
+            if !is_rules_summary
+                && !matches!(state.ui_state, UIState::GameSetup(_) | UIState::SaveScreen)
+            {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(MENU);
                 action_area.height = text.height() as u16 + 2;
@@ -428,19 +437,29 @@ pub fn render(
 
             // the settings (or game setup/load/save)
             {
+                let available_size = settings_size
+                    + if small_help {
+                        remaining_size.saturating_sub(3) / 3
+                    } else {
+                        (remaining_size + 1) / 2
+                    };
                 if let UIState::GameSetup(index) = state.ui_state {
                     let par = game_setup.render_game_setup(settings, index, 2);
                     frame.render_widget(par, settings_area);
                 } else if let UIState::LoadScreen(index) = state.ui_state {
                     let save_games = io_manager.as_ref().unwrap().save_files_list();
-                    let available_size = settings_size
-                        + if small_help {
-                            remaining_size.saturating_sub(3) / 3
-                        } else {
-                            (remaining_size + 1) / 2
-                        };
-                    let par = save_game_list(settings, available_size, save_games, index, 2);
+                    let par = load_game_widget(settings, available_size, save_games, index, 2);
                     frame.render_widget(par, settings_area);
+                } else if let UIState::SaveScreen = state.ui_state {
+                    let save_games = io_manager.as_ref().unwrap().save_files_list();
+                    render_save_game_widget(
+                        frame,
+                        settings_area,
+                        settings,
+                        available_size,
+                        state.text_input,
+                        save_games,
+                    );
                 } else if both_settings {
                     let [general, graphic] =
                         *Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)])
@@ -645,7 +664,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))
 }
 
-pub fn save_game_list(
+pub fn load_game_widget(
     settings: &Settings,
     available_size: u16,
     save_games: &[(OsString, SystemTime)],
@@ -655,6 +674,71 @@ pub fn save_game_list(
     let mut lines = vec![Line::raw("Select game to load:"), Line::raw("")];
     let n_displayable = usize::from((available_size - 8) / 2);
     let n_skip = (selection + 1).saturating_sub(offset + n_displayable);
+    create_save_game_list(
+        &mut lines,
+        settings,
+        save_games,
+        selection,
+        offset,
+        n_displayable,
+        n_skip,
+    );
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        "[↲] to load the selected game",
+        ColorScheme::TEXT_GRAY,
+    ));
+    lines.push(Line::styled(
+        "[Esc] or [q] to return",
+        ColorScheme::TEXT_GRAY,
+    ));
+    let text = Text::from(lines);
+    Paragraph::new(text).block(Block::default().title("Load Game").borders(Borders::ALL))
+}
+
+pub fn render_save_game_widget(
+    frame: &mut Frame,
+    area: Rect,
+    settings: &Settings,
+    available_size: u16,
+    text_input: &TextInput,
+    save_games: &[(OsString, SystemTime)],
+) {
+    let prefix = "Enter name:";
+    let mut lines = vec![
+        Line::raw(""),
+        Line::raw(prefix),
+        Line::raw(""),
+        Line::raw(""),
+    ];
+    let n_displayable = usize::from((available_size - 10) / 2);
+    create_save_game_list(&mut lines, settings, save_games, 0, 1, n_displayable, 0);
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled("[↲] to save the game", ColorScheme::TEXT_GRAY));
+    lines.push(Line::styled(
+        "[Esc] or [q] to return",
+        ColorScheme::TEXT_GRAY,
+    ));
+    let text = Text::from(lines);
+    let par = Paragraph::new(text).block(Block::default().title("Save Game").borders(Borders::ALL));
+    frame.render_widget(par, area);
+    let plen = prefix.len() as u16;
+    let input_area = Rect::new(area.x + plen + 3, area.y + 1, area.width - plen - 11, 3);
+    frame.render_widget(Clear, input_area);
+    text_input.render(frame, input_area, settings.color_scheme.primary());
+}
+
+pub fn create_save_game_list(
+    lines: &mut Vec<Line<'static>>,
+    settings: &Settings,
+    save_games: &[(OsString, SystemTime)],
+    selection: usize,
+    offset: usize,
+    n_displayable: usize,
+    n_skip: usize,
+) {
     let iter = save_games
         .iter()
         .enumerate()
@@ -692,17 +776,6 @@ pub fn save_game_list(
     } else {
         lines.push(Line::raw(""));
     }
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        "[↲] to load the selected game",
-        ColorScheme::TEXT_GRAY,
-    ));
-    lines.push(Line::styled(
-        "[Esc] or [q] to return",
-        ColorScheme::TEXT_GRAY,
-    ));
-    let text = Text::from(lines);
-    Paragraph::new(text).block(Block::default().title("Load Game").borders(Borders::ALL))
 }
 
 pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings) {
@@ -1105,7 +1178,7 @@ fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &GameSetu
     let get_coords = |i: usize, depth: u32| {
         let (row, col) = row_column_index(state, i, xlen);
         let x = 12.5 + (col as f64) * (23.0 + 4.0 * zoom);
-        let y = -10_f64 - 8.0 * zoom - f64::from(u32::try_from(max_depth - depth).unwrap()) * 9.0;
+        let y = -10_f64 - 8.0 * zoom - f64::from(max_depth - depth) * 9.0;
         (x, y + (row as f64) * y_offset_per_row)
     };
     for depth in 0..=max_depth {

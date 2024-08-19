@@ -4,8 +4,9 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
-use std::{collections::HashMap, io};
+use std::{collections::HashMap, ffi::OsString, io};
 use std::{io::stdout, panic, process};
+use text_input::TextInput;
 use tgp::{
     engine::{logging::EventLog, Engine, FollowUpDecision, GameState, LoggingEngine},
     vec_context::VecContext,
@@ -37,6 +38,7 @@ use self::{
 };
 
 // mod dynamic_layout;
+mod text_input;
 mod tui_animations;
 mod tui_rendering;
 pub mod tui_settings;
@@ -51,6 +53,7 @@ enum UIState {
     GameSetup(usize),
     /// the currently selected save
     LoadScreen(usize),
+    SaveScreen,
     /// 1. true if the current turn must be skipped
     /// 2. true if pieces are switched
     ShowOptions(bool, bool),
@@ -71,6 +74,7 @@ impl UIState {
             UIState::RulesSummary(_) => true,
             UIState::GameSetup(_) => true,
             UIState::LoadScreen(_) => true,
+            UIState::SaveScreen => true,
             UIState::ShowOptions(_, _) => false,
             UIState::PositionSelected(_) => false,
             UIState::PieceSelected(_) => false,
@@ -86,12 +90,20 @@ impl UIState {
             UIState::RulesSummary(_) => false,
             UIState::GameSetup(_) => false,
             UIState::LoadScreen(_) => false,
+            UIState::SaveScreen => false,
             UIState::ShowOptions(_, _) => true,
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
             UIState::GameFinished(_) => true,
             UIState::PlaysAnimation(_) => true,
             UIState::ShowAIMoves => false,
+        }
+    }
+
+    fn alternative_selection(&mut self) -> Option<&mut usize> {
+        match self {
+            UIState::GameSetup(index) | UIState::LoadScreen(index) => Some(index),
+            _ => None,
         }
     }
 
@@ -361,6 +373,7 @@ enum Event {
     StartGame,
     NewGame,
     LoadGame,
+    SaveGame,
     Undo,
     Redo,
     LetAIMove,
@@ -373,6 +386,11 @@ enum Event {
     MoveDown,
     ScrollUp,
     ScrollDown,
+    EnterChar(char),
+    CursorLeft,
+    CursorRight,
+    DeleteLeft,
+    DeleteRight,
 }
 
 impl Event {
@@ -392,99 +410,115 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
     let game_setup = matches!(ui_state, UIState::GameSetup(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
-    Ok(pull_key_event()?.and_then(|key| match key {
-        KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
-        KeyCode::Char('q') => Some(Event::Exit),
-        KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
-        KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
-        KeyCode::Char('c') => Some(if top_level {
-            Event::ContinueGame
-        } else {
-            Event::Cancel
-        })
-        .filter(|_| !rules_summary && !game_setup),
-        KeyCode::Char('n') => Some(if top_level {
-            Event::NewGame
-        } else {
-            Event::LetAIMove
-        })
-        .filter(|_| !rules_summary && !game_setup),
-        KeyCode::Char('h') => Some(Event::Help),
-        KeyCode::Char('l') => Some(Event::LoadGame),
-        KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
-        KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
-        KeyCode::Char('w') => Some(if rules_summary {
-            Event::ScrollUp
-        } else {
-            Event::MoveUp
-        }),
-        KeyCode::Char('a') => Some(Event::MoveLeft).filter(|_| !rules_summary),
-        KeyCode::Char('s') => Some(if rules_summary {
-            Event::ScrollDown
-        } else {
-            Event::MoveDown
-        }),
-        KeyCode::Char('d') => Some(Event::MoveRight).filter(|_| !rules_summary),
-        KeyCode::Enter | KeyCode::Char(' ') => {
-            if ui_state == UIState::Toplevel {
-                Some(Event::ContinueGame)
-            } else if matches!(ui_state, UIState::GameSetup(_)) {
-                Some(Event::StartGame)
-            } else if matches!(ui_state, UIState::LoadScreen(_)) {
-                Some(Event::SelectMenuOption)
-            } else if matches!(ui_state, UIState::RulesSummary(_)) && key == KeyCode::Enter {
-                Some(Event::Exit)
-            } else if top_level {
-                Some(Event::ScrollDown)
-            } else if !animation && !two_digit && !is_skip && !show_suggestions {
-                Some(Event::TwoDigitInit)
-            } else if key == KeyCode::Enter {
-                Some(Event::SoftCancel)
-            } else {
-                None
+    Ok(pull_key_event()?.and_then(|key| {
+        if ui_state == UIState::SaveScreen {
+            let result = match key {
+                KeyCode::Char(c) => Some(Event::EnterChar(c)),
+                KeyCode::Left => Some(Event::CursorLeft),
+                KeyCode::Right => Some(Event::CursorRight),
+                KeyCode::Backspace => Some(Event::DeleteLeft),
+                KeyCode::Delete => Some(Event::DeleteRight),
+                _ => None,
+            };
+            if result.is_some() {
+                return result;
             }
         }
-        KeyCode::Tab => Some(Event::Switch),
-        KeyCode::Backspace => Some(Event::Cancel),
-        KeyCode::Char(c) => {
-            let to_index = c.to_string().parse::<usize>();
-            to_index
-                .ok()
-                .filter(|&i| i > 0 || top_level || (!top_level && two_digit))
-                .map(|i| {
-                    if top_level {
-                        let i = if i == 0 { 10 } else { i };
-                        Event::MenuOption(i - 1)
-                    } else if two_digit {
-                        Event::TwoDigitAdd(i)
-                    } else {
-                        Event::Selection(i - 1)
-                    }
-                })
+        match key {
+            KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
+            KeyCode::Char('q') => Some(Event::Exit),
+            KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
+            KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
+            KeyCode::Char('c') => Some(if top_level {
+                Event::ContinueGame
+            } else {
+                Event::Cancel
+            })
+            .filter(|_| !rules_summary && !game_setup),
+            KeyCode::Char('n') => Some(if top_level {
+                Event::NewGame
+            } else {
+                Event::LetAIMove
+            })
+            .filter(|_| !rules_summary && !game_setup),
+            KeyCode::Char('h') => Some(Event::Help),
+            KeyCode::Char('k') => Some(Event::SaveGame),
+            KeyCode::Char('l') => Some(Event::LoadGame),
+            KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
+            KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
+            KeyCode::Char('w') => Some(if rules_summary {
+                Event::ScrollUp
+            } else {
+                Event::MoveUp
+            }),
+            KeyCode::Char('a') => Some(Event::MoveLeft).filter(|_| !rules_summary),
+            KeyCode::Char('s') => Some(if rules_summary {
+                Event::ScrollDown
+            } else {
+                Event::MoveDown
+            }),
+            KeyCode::Char('d') => Some(Event::MoveRight).filter(|_| !rules_summary),
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if ui_state == UIState::Toplevel {
+                    Some(Event::ContinueGame)
+                } else if matches!(ui_state, UIState::GameSetup(_)) {
+                    Some(Event::StartGame)
+                } else if matches!(ui_state, UIState::LoadScreen(_) | UIState::SaveScreen) {
+                    Some(Event::SelectMenuOption)
+                } else if matches!(ui_state, UIState::RulesSummary(_)) && key == KeyCode::Enter {
+                    Some(Event::Exit)
+                } else if top_level {
+                    Some(Event::ScrollDown)
+                } else if !animation && !two_digit && !is_skip && !show_suggestions {
+                    Some(Event::TwoDigitInit)
+                } else if key == KeyCode::Enter {
+                    Some(Event::SoftCancel)
+                } else {
+                    None
+                }
+            }
+            KeyCode::Tab => Some(Event::Switch),
+            KeyCode::Backspace => Some(Event::Cancel),
+            KeyCode::Char(c) => {
+                let to_index = c.to_string().parse::<usize>();
+                to_index
+                    .ok()
+                    .filter(|&i| i > 0 || top_level || two_digit)
+                    .map(|i| {
+                        if top_level {
+                            let i = if i == 0 { 10 } else { i };
+                            Event::MenuOption(i - 1)
+                        } else if two_digit {
+                            Event::TwoDigitAdd(i)
+                        } else {
+                            Event::Selection(i - 1)
+                        }
+                    })
+            }
+            KeyCode::Left => Some(if top_level {
+                Event::MenuDecrease
+            } else {
+                Event::MoveLeft
+            }),
+            KeyCode::Right => Some(if top_level {
+                Event::MenuIncrease
+            } else {
+                Event::MoveRight
+            }),
+            KeyCode::Up => Some(if top_level {
+                Event::MenuUp
+            } else {
+                Event::MoveUp
+            }),
+            KeyCode::Down => Some(if top_level {
+                Event::MenuDown
+            } else {
+                Event::MoveDown
+            }),
+            KeyCode::PageDown => Some(Event::ZoomIn).filter(|_| !rules_summary),
+            KeyCode::PageUp => Some(Event::ZoomOut).filter(|_| !rules_summary),
+            _ => None,
         }
-        KeyCode::Left => Some(if top_level {
-            Event::MenuDecrease
-        } else {
-            Event::MoveLeft
-        }),
-        KeyCode::Right => Some(if top_level {
-            Event::MenuIncrease
-        } else {
-            Event::MoveRight
-        }),
-        KeyCode::Up => Some(if top_level {
-            Event::MenuUp
-        } else {
-            Event::MoveUp
-        }),
-        KeyCode::Down => Some(if top_level {
-            Event::MenuDown
-        } else {
-            Event::MoveDown
-        }),
-        KeyCode::PageDown => Some(Event::ZoomIn).filter(|_| !rules_summary),
-        KeyCode::PageUp => Some(Event::ZoomOut).filter(|_| !rules_summary),
-        _ => None,
     }))
 }
 
@@ -529,6 +563,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let mut ui_state = UIState::Toplevel;
     let mut ai_state = AIState::new(ai_endpoint);
     let mut menu_selection = SettingSelection::General(2);
+    let mut text_input = TextInput::new("".to_string());
     let mut animation_state: AnimationState = AnimationState::default();
     let mut camera_move: Option<CameraMove> = None;
     let mut digits: Option<Vec<usize>> = None;
@@ -600,6 +635,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::GameSetup(_) => ui_state = UIState::Toplevel,
                     UIState::LoadScreen(_) => ui_state = UIState::Toplevel,
+                    UIState::SaveScreen => ui_state = UIState::Toplevel,
                     UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
@@ -652,6 +688,19 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                         }
                     }
                 }
+                Event::SaveGame => {
+                    if let Some(io_manager) = io_manager.as_mut() {
+                        match io_manager.recompute_save_files_list() {
+                            Ok(_) => {
+                                ui_state = UIState::SaveScreen;
+                                // TODO: proper name (e.g. using a timestamp)
+                                text_input = TextInput::new("My Save Game".to_string());
+                            }
+                            // TODO: proper error handling
+                            Err(e) => eprintln!("Error: could not load save files: {e}"),
+                        }
+                    }
+                }
                 Event::StartGame => {
                     engine = Engine::new_logging(2, game_setup.new_game_state());
                     start_game(&game_setup, &engine, &mut ui_state);
@@ -673,7 +722,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     }
                 }
                 Event::Help => match ui_state {
-                    UIState::Toplevel | UIState::LoadScreen(_) => {
+                    UIState::Toplevel | UIState::LoadScreen(_) | UIState::SaveScreen => {
                         ui_state = UIState::RulesSummary(0)
                     }
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
@@ -705,14 +754,17 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                         if new_index < game_setup.max_index() + 2 {
                             ui_state = UIState::GameSetup(new_index);
                         }
+                    } else if let UIState::LoadScreen(_) = ui_state {
+                        let max_len = io_manager.as_ref().unwrap().save_files_list().len();
+                        if new_index < max_len + 2 {
+                            ui_state = UIState::LoadScreen(new_index);
+                        }
                     } else if new_index < setting_renderer.max_index(menu_selection) {
                         *menu_selection.index_mut() = new_index;
                     }
                 }
                 Event::MenuUp => {
-                    if let UIState::GameSetup(index) = &mut ui_state {
-                        *index = index.saturating_sub(1);
-                    } else if let UIState::LoadScreen(index) = &mut ui_state {
+                    if let Some(index) = ui_state.alternative_selection() {
                         *index = index.saturating_sub(1);
                     } else if menu_selection.index() > 0 {
                         *menu_selection.index_mut() -= 1;
@@ -724,7 +776,8 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                             *index += 1;
                         }
                     } else if let UIState::LoadScreen(index) = &mut ui_state {
-                        if *index + 1 < io_manager.as_ref().unwrap().save_files_list().len() + 2 {
+                        let max_len = io_manager.as_ref().unwrap().save_files_list().len();
+                        if *index + 1 < max_len + 2 {
                             *index += 1;
                         }
                     } else if menu_selection.index() + 1
@@ -784,8 +837,8 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     }
                 }
                 Event::SelectMenuOption => {
+                    let io_manager = io_manager.as_ref().unwrap();
                     if let UIState::LoadScreen(index) = ui_state {
-                        let io_manager = io_manager.as_ref().unwrap();
                         if index >= 2 {
                             let name = io_manager
                                 .save_files_list()
@@ -802,8 +855,23 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                                 }
                             });
                         }
+                    } else if let UIState::SaveScreen = ui_state {
+                        let name = text_input.get_text_or_default();
+                        let path = io_manager.save_file_path(&OsString::from(name));
+                        io_endpoint.send(SaveGame(
+                            path,
+                            game_setup.clone(),
+                            engine.serialized_log(),
+                        ));
+                        // TODO what about errors?
+                        ui_state = UIState::Toplevel;
                     }
                 }
+                Event::EnterChar(c) => text_input.insert_char(c),
+                Event::CursorLeft => text_input.move_cursor_left(),
+                Event::CursorRight => text_input.move_cursor_right(),
+                Event::DeleteLeft => text_input.delete_char_left(),
+                Event::DeleteRight => text_input.delete_char_right(),
                 Event::Selection(_) => (),
                 Event::TwoDigitInit => (),
                 Event::TwoDigitAdd(_) => (),
@@ -868,6 +936,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
             ai_state: &ai_state,
             animation_state: &animation_state,
             menu_selection,
+            text_input: &text_input,
             graphics_state,
         };
         let (x_bounds, y_bounds) = tui_rendering::render(
@@ -984,7 +1053,8 @@ fn update_game_state_and_fill_input_mapping(
                     UIState::Toplevel
                     | UIState::RulesSummary(_)
                     | UIState::GameSetup(_)
-                    | UIState::LoadScreen(_),
+                    | UIState::LoadScreen(_)
+                    | UIState::SaveScreen,
                     Ok(d),
                 ) => {
                     d.retract_all();
@@ -994,7 +1064,8 @@ fn update_game_state_and_fill_input_mapping(
                     UIState::Toplevel
                     | UIState::RulesSummary(_)
                     | UIState::GameSetup(_)
-                    | UIState::LoadScreen(_),
+                    | UIState::LoadScreen(_)
+                    | UIState::SaveScreen,
                     Err(_),
                 ) => GameStateChange::None,
                 (UIState::ShowOptions(_, _), Ok(d)) => {
