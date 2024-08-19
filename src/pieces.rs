@@ -199,6 +199,22 @@ impl PieceType {
         &self.name()[0..1]
     }
 
+    pub fn from_letter(val: &str) -> Option<Self> {
+        val.chars()
+            .next()
+            .and_then(|c| match c {
+                'Q' => Some(PieceType::Queen),
+                'A' => Some(PieceType::Ant),
+                'S' => Some(PieceType::Spider),
+                'G' => Some(PieceType::Grasshopper),
+                'B' => Some(PieceType::Beetle),
+                'L' => Some(PieceType::Ladybug),
+                'M' => Some(PieceType::Mosquito),
+                _ => None,
+            })
+            .filter(|_| val.len() == 1)
+    }
+
     fn get_mosquito_piece_set<'a, B>(field: Field<'a, B>, top_piece_removed: bool) -> PieceSet
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,

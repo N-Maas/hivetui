@@ -892,4 +892,34 @@ impl GameSetup {
         let it_black = it_black.into_iter().flatten();
         it_white.chain(it_black)
     }
+
+    pub fn from_key_val(input: impl Iterator<Item = (String, String)>) -> Result<Self, String> {
+        let parse = |input: Vec<(String, String)>| {
+            input
+                .into_iter()
+                .map(|(key, val)| {
+                    let piece_t = PieceType::from_letter(&key[1..])
+                        .ok_or_else(|| format!("Invalid piece type: {}", &key[1..]))?;
+                    let count = val
+                        .parse::<u32>()
+                        .map_err(|e| format!("Invalid piece count: {e}"))?;
+                    Ok((piece_t, count))
+                })
+                .collect::<Result<_, String>>()
+        };
+
+        let (white, black): (Vec<_>, Vec<_>) = input.partition(|(k, _)| k.starts_with("W"));
+        let white_pieces: BTreeMap<PieceType, u32> = parse(white)?;
+        let black_pieces: BTreeMap<PieceType, u32> = parse(black)?;
+        let white_queen_valid = white_pieces.get(&PieceType::Queen) == Some(&1);
+        let black_queen_valid =
+            black_pieces.is_empty() || black_pieces.get(&PieceType::Queen) == Some(&1);
+        if !white_queen_valid || !black_queen_valid {
+            return Err("Invalid setup: exactly one queen required".to_string());
+        }
+        Ok(Self {
+            white_pieces,
+            black_pieces: (!black_pieces.is_empty()).then(|| black_pieces),
+        })
+    }
 }

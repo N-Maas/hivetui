@@ -4,10 +4,18 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
-use std::{collections::HashMap, io};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{self, BufReader},
+};
 use std::{io::stdout, panic, process};
 use tgp::{
-    engine::{logging::EventLog, Engine, FollowUpDecision, GameState, LoggingEngine},
+    engine::{
+        io::{parse_saved_game, restore_game_state, LoadGameError},
+        logging::EventLog,
+        Engine, FollowUpDecision, GameState, LoggingEngine,
+    },
     vec_context::VecContext,
 };
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
@@ -25,6 +33,7 @@ use crate::{
         io_worker::{start_io_worker_thread, SaveGame},
         MessageForMaster,
     },
+    HEADER,
 };
 
 use self::{
@@ -525,7 +534,25 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let mut camera_move: Option<CameraMove> = None;
     let mut digits: Option<Vec<usize>> = None;
 
-    if io_manager.is_none() {
+    if let Some(io_manager) = io_manager.as_ref() {
+        // attempt to load saved state
+        // TODO: config + setting which avoids this?
+        let path = io_manager.autosave_path();
+        if path.is_file() {
+            let save_file = File::open(path).map_err(|e| LoadGameError::IO(e));
+            let result = save_file.and_then(|save_file| {
+                let (initial_state, n_players, log) =
+                    parse_saved_game(BufReader::new(save_file), HEADER)?;
+                assert_eq!(n_players, 2);
+                let loaded_game_setup = GameSetup::from_key_val(initial_state.into_iter())?;
+                engine = restore_game_state(2, || Ok(game_setup.new_game_state()), log)?;
+                game_setup = loaded_game_setup;
+                Ok(())
+            });
+            // TODO: properly handle error
+            _ = result.inspect_err(|e| eprintln!("Warning: could not load saved state: {e:?}"));
+        }
+    } else {
         // TODO: proper message
         eprintln!("Warning: could not initialize game data directory");
     }

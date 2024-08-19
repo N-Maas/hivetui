@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 use directories::ProjectDirs;
 
 const APP_NAME: &'static str = "hivetui";
+const EXTENSION: &'static str = "hivetui";
 const SAVE_DIR: &'static str = "saves";
 const AUTOSAVE: &'static str = "AUTOSAVE";
 const CONFIG: &'static str = "config.json";
@@ -40,11 +41,14 @@ impl IOManager {
     pub fn save_file_path(&self, name: &str) -> PathBuf {
         let mut path = self.save_path();
         path.push(name);
-        path.set_extension("hivetui");
+        path.set_extension(EXTENSION);
         path
     }
 
     pub fn autosave_path(&self) -> PathBuf {
-        self.save_file_path(&AUTOSAVE)
+        let mut path = self.data_dir.clone();
+        path.push(AUTOSAVE);
+        path.set_extension(EXTENSION);
+        path
     }
 }
