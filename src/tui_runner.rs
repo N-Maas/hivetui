@@ -396,8 +396,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
         KeyCode::Char('q') => Some(Event::Exit),
         KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
-        KeyCode::Char('r') => Some(if top_level { Event::Help } else { Event::Redo }),
-        KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
+        KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
         KeyCode::Char('c') => Some(if top_level {
             Event::ContinueGame
         } else {

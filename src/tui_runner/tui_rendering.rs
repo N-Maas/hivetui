@@ -19,7 +19,7 @@ use core::slice;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     prelude::{CrosstermBackend, Terminal},
-    style::Color,
+    style::{Color, Stylize},
     text::{Line, Span, Text},
     widgets::{
         canvas::{Canvas, Context},
@@ -55,6 +55,15 @@ pub struct AllState<'a> {
 
 pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
+const MENU: &'static str = "\
+    [c] continue game  [↲]\n\
+    [n] new game\n\
+    [l] load game\n\
+    [h] rules summary\n\
+    \n\
+    [q] quit
+";
+
 const MENU_HELP_LONG: &'static str = "\
     This is a TUI version of the board game Hive. \
     Hive is a chess-like game where both players place and move pieces \
@@ -86,7 +95,7 @@ const IN_GAME_HELP_LONG: &'static str = "\
     (two digits: press [Space] or [↲] first)\n\
     \n\
     [↑↓←→] or [wasd] to move the screen\n\
-    [+-] or [PageDown PageUp] for zooming\n\
+    [+-] or [PgDown PgUp] for zooming\n\
     [⇆] to switch the displayed pieces\n\
     \n\
     [h] to show AI suggested moves\n   \
@@ -104,7 +113,7 @@ const IN_GAME_HELP_SHORT: &'static str = "\
     (two digits: press [Space] or [↲] first)\n\
     \n\
     [↑↓←→] or [wasd] to move the screen\n\
-    [+-] or [PageDown PageUp] for zooming\n\
+    [+-] or [PgDown PgUp] for zooming\n\
     [⇆] to switch the displayed pieces\n\
     [h] to show AI suggested moves\n\
     [u]ndo or [r]edo a move\n\
@@ -319,8 +328,11 @@ pub fn render(
         if let UIState::RulesSummary(scroll) = state.ui_state {
             let split_top_line =
                 Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).split(canvas_area);
-            let top_line = Line::raw("[ws] or [Space] to scroll, [Esc] or [r/h] to return ")
-                .alignment(Alignment::Right);
+            let top_line = Line::styled(
+                "[ws] or [Space] to scroll, [Esc] to return ",
+                ColorScheme::TEXT_GRAY,
+            )
+            .alignment(Alignment::Right);
             let paragraph = Paragraph::new(top_line)
                 .block(Block::default().borders(Borders::BOTTOM.complement()));
             frame.render_widget(paragraph, split_top_line[0]);
@@ -341,13 +353,6 @@ pub fn render(
 
             let x_len = zoom * (f64::from(canvas_area.width) - 2.5);
             let y_len = zoom * y_factor * (f64::from(canvas_area.height) - 2.5);
-
-            // use same center with the top level layout
-            // if state.ui_state.top_level() {
-            //     let alt_x_len = zoom * (f64::from(splitted_in_game[0].width) - 2.5);
-            //     let diff = x_len - alt_x_len;
-            //     center_x += diff;
-            // }
             let x_bounds = [center_x - x_len, center_x + x_len];
             let y_bounds = [center_y - y_len, center_y + y_len];
             let canvas = Canvas::default()
@@ -366,20 +371,13 @@ pub fn render(
                 UIState::GameSetup(_) | UIState::LoadScreen(_)
             );
 
-            // the actions
+            // the menu (actions)
             if !is_rules_summary && !matches!(state.ui_state, UIState::GameSetup(_)) {
                 let mut action_area = splitted_layout[1];
-                let text = Text::from(
-                    "[c]ontinue game  [↲]\n\
-                    [n]ew game\n\
-                    [l]oad game\n\
-                    [r]ules summary  [h]\n\
-                    \n\
-                    [q]uit",
-                );
+                let text = Text::from(MENU);
                 action_area.height = text.height() as u16 + 2;
                 let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Actions").borders(Borders::ALL));
+                    .block(Block::default().title("Menu").borders(Borders::ALL));
                 frame.render_widget(Clear, action_area);
                 frame.render_widget(paragraph, action_area);
             }
@@ -611,7 +609,8 @@ fn skip_turn_message(game_state: &HiveGameState) -> Paragraph<'static> {
             .alignment(Alignment::Center),
         Line::raw("and must therefore skip its turn.").alignment(Alignment::Center),
         Line::raw(""),
-        Line::raw("continue with [1] or [↲]").alignment(Alignment::Center),
+        Line::styled("continue with [1] or [↲]", ColorScheme::TEXT_GRAY)
+            .alignment(Alignment::Center),
     ]);
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL))
 }
@@ -626,7 +625,9 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
         };
         msg = Text::from(vec![
             Line::raw(""),
-            Line::styled("Victory!", primary_color).alignment(Alignment::Center),
+            Line::styled("Victory!", primary_color)
+                .bold()
+                .alignment(Alignment::Center),
             Line::raw(""),
             Line::styled(format!("The {} player has won!", player_name), Color::White)
                 .alignment(Alignment::Center),
@@ -634,7 +635,9 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
     } else {
         msg = Text::from(vec![
             Line::raw(""),
-            Line::styled("Draw!", primary_color).alignment(Alignment::Center),
+            Line::styled("Draw!", primary_color)
+                .bold()
+                .alignment(Alignment::Center),
             Line::raw(""),
             Line::styled("None of the players could get on top!", Color::White)
                 .alignment(Alignment::Center),
@@ -691,8 +694,14 @@ pub fn save_game_list(
         lines.push(Line::raw(""));
     }
     lines.push(Line::raw(""));
-    lines.push(Line::raw("[↲] to load the selected game"));
-    lines.push(Line::raw("[Esc] or [q] to return"));
+    lines.push(Line::styled(
+        "[↲] to load the selected game",
+        ColorScheme::TEXT_GRAY,
+    ));
+    lines.push(Line::styled(
+        "[Esc] or [q] to return",
+        ColorScheme::TEXT_GRAY,
+    ));
     let text = Text::from(lines);
     Paragraph::new(text).block(Block::default().title("Load Game").borders(Borders::ALL))
 }
@@ -794,8 +803,11 @@ pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<
     }
     text.extend([
         Line::raw(""),
-        Line::raw("press a number to apply the according move"),
-        Line::raw("[Esc] or [h] to return"),
+        Line::styled(
+            "press a number to apply the according move",
+            ColorScheme::TEXT_GRAY,
+        ),
+        Line::styled("[Esc] or [h] to return", ColorScheme::TEXT_GRAY),
     ]);
     text
 }

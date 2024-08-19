@@ -367,20 +367,21 @@ pub fn create_menu_setting<
 >(
     prefix: &'static str,
     texts: Vec<&'static str>,
+    offset: usize,
     get_setting_fn: F,
 ) -> Box<dyn MenuSetting + 'a>
 where
     <E as TryFrom<u8>>::Error: Debug,
 {
     Box::new(MenuSettingImpl {
-        prefix,
+        prefix: format!("{prefix:<width$}", width = offset),
         texts,
         get_setting_fn,
     })
 }
 
 struct MenuSettingImpl<E, F: Fn(&mut Settings) -> &mut E> {
-    prefix: &'static str,
+    prefix: String,
     texts: Vec<&'static str>,
     get_setting_fn: F,
 }
@@ -411,7 +412,7 @@ where
     }
 
     fn get_line(&self, state: &mut Settings, highlight: bool) -> Line<'static> {
-        let mut spans = vec![Span::raw(self.prefix)];
+        let mut spans = vec![Span::raw(self.prefix.clone())];
         spans.extend((0..self.texts.len()).map(|i| self.get_entry(state, highlight, i)));
         Line::from(spans)
     }
@@ -512,38 +513,52 @@ impl SettingRenderer {
     }
 
     pub fn build() -> Self {
+        let general_offset = 24;
+        let graphics_offset = 17;
         Self {
             players: [
-                create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), |state| {
+                create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), 0, |state| {
                     &mut state.white_player_type
                 }),
-                create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), |state| {
+                create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), 0, |state| {
                     &mut state.black_player_type
                 }),
             ],
             general: vec![
-                create_menu_setting("automatic camera movement: ", vec!["on", "off"], |state| {
-                    &mut state.automatic_camera_moves
-                }),
-                create_menu_setting("automatic AI moves: ", vec!["on", "off"], |state| {
-                    &mut state.ai_moves
-                }),
+                create_menu_setting(
+                    "automatic camera moves: ",
+                    vec!["on", "off"],
+                    general_offset,
+                    |state| &mut state.automatic_camera_moves,
+                ),
+                create_menu_setting(
+                    "automatic AI moves: ",
+                    vec!["on", "off"],
+                    general_offset,
+                    |state| &mut state.ai_moves,
+                ),
                 create_menu_setting(
                     "AI assistant level: ",
                     vec!["1", "2", "3", "4", "5"],
+                    general_offset,
                     |state| &mut state.ai_assistant,
                 ),
-                create_menu_setting("filter suggested moves: ", vec!["yes", "no"], |state| {
-                    &mut state.filter_ai_suggestions
-                }),
                 create_menu_setting(
-                    "available pieces display size: ",
+                    "filter suggested moves: ",
+                    vec!["yes", "no"],
+                    general_offset,
+                    |state| &mut state.filter_ai_suggestions,
+                ),
+                create_menu_setting(
+                    "available pieces size: ",
                     vec!["1", "2", "3", "4", "5"],
+                    general_offset,
                     |state| &mut state.piece_zoom_level,
                 ),
                 create_menu_setting(
                     "screen splitting: ",
                     vec!["auto", "1", "2", "3", "4", "5"],
+                    general_offset,
                     |state| &mut state.splitting,
                 ),
             ],
@@ -551,31 +566,37 @@ impl SettingRenderer {
                 create_menu_setting(
                     "color scheme: ",
                     vec!["red", "blue", "green", "purple"],
+                    graphics_offset,
                     |state| &mut state.color_scheme,
                 ),
                 create_menu_setting(
                     "animation speed: ",
                     vec!["1", "2", "3", "4", "5", "6", "off"],
+                    graphics_offset,
                     |state| &mut state.animation_speed,
                 ),
                 create_menu_setting(
                     "animation style: ",
                     vec!["blink", "only-ai", "plain", "rainbow"],
+                    graphics_offset,
                     |state| &mut state.animation_style,
                 ),
                 create_menu_setting(
-                    "border drawing style: ",
+                    "border style: ",
                     vec!["complete", "partial", "none"],
+                    graphics_offset,
                     |state| &mut state.borders_style,
                 ),
                 create_menu_setting(
-                    "moving tile style: ",
+                    "movement style: ",
                     vec!["filled", "transparent", "minimal"],
+                    graphics_offset,
                     |state| &mut state.moving_tile_style,
                 ),
                 create_menu_setting(
-                    "white tiles filling style: ",
+                    "filling style: ",
                     vec!["full", "border", "hybrid"],
+                    graphics_offset,
                     |state| &mut state.white_tiles_style,
                 ),
             ],
@@ -644,8 +665,10 @@ impl SettingRenderer {
         };
         let mut text = self.render_settings(settings, &self.general, index);
         text.lines.push(Line::raw(""));
-        text.lines
-            .push(Line::raw("[⇆] to switch to graphic settings"));
+        text.lines.push(Line::styled(
+            "[⇆] to switch to graphic settings",
+            ColorScheme::TEXT_GRAY,
+        ));
         Paragraph::new(text).block(
             Block::default()
                 .title("General Settings")
@@ -664,8 +687,10 @@ impl SettingRenderer {
         };
         let mut text = self.render_settings(settings, &self.graphic, index);
         text.lines.push(Line::raw(""));
-        text.lines
-            .push(Line::raw("[⇆] to switch to general settings"));
+        text.lines.push(Line::styled(
+            "[⇆] to switch to general settings",
+            ColorScheme::TEXT_GRAY,
+        ));
         Paragraph::new(text).block(
             Block::default()
                 .title("Graphic Settings")
@@ -874,8 +899,14 @@ impl GameSetup {
             lines.push(Line::from(spans));
         }
         lines.push(Line::raw(""));
-        lines.push(Line::raw("[↲] to start the game"));
-        lines.push(Line::raw("[Esc] or [q] to return"));
+        lines.push(Line::styled(
+            "[↲] to start the game",
+            ColorScheme::TEXT_GRAY,
+        ));
+        lines.push(Line::styled(
+            "[Esc] or [q] to return",
+            ColorScheme::TEXT_GRAY,
+        ));
         let text = Text::from(lines);
         Paragraph::new(text).block(Block::default().title("Game Setup").borders(Borders::ALL))
     }
