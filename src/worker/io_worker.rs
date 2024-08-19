@@ -1,5 +1,5 @@
+use crate::io::HEADER;
 use crate::tui_runner::tui_settings::GameSetup;
-use crate::HEADER;
 use std::io;
 use std::path::PathBuf;
 use std::{thread, time::Duration};

@@ -4,24 +4,16 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::{CrosstermBackend, Terminal};
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::{self, BufReader},
-};
+use std::{collections::HashMap, io};
 use std::{io::stdout, panic, process};
 use tgp::{
-    engine::{
-        io::{parse_saved_game, restore_game_state, LoadGameError},
-        logging::EventLog,
-        Engine, FollowUpDecision, GameState, LoggingEngine,
-    },
+    engine::{logging::EventLog, Engine, FollowUpDecision, GameState, LoggingEngine},
     vec_context::VecContext,
 };
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
-    io::IOManager,
+    io::{load_game, IOManager},
     panic_handling::{get_panic_data, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
@@ -33,7 +25,6 @@ use crate::{
         io_worker::{start_io_worker_thread, SaveGame},
         MessageForMaster,
     },
-    HEADER,
 };
 
 use self::{
@@ -58,6 +49,8 @@ enum UIState {
     RulesSummary(u16),
     /// the currently selected option
     GameSetup(usize),
+    /// the currently selected save
+    LoadScreen(usize),
     /// 1. true if the current turn must be skipped
     /// 2. true if pieces are switched
     ShowOptions(bool, bool),
@@ -77,6 +70,7 @@ impl UIState {
             UIState::Toplevel => true,
             UIState::RulesSummary(_) => true,
             UIState::GameSetup(_) => true,
+            UIState::LoadScreen(_) => true,
             UIState::ShowOptions(_, _) => false,
             UIState::PositionSelected(_) => false,
             UIState::PieceSelected(_) => false,
@@ -91,6 +85,7 @@ impl UIState {
             UIState::Toplevel => false,
             UIState::RulesSummary(_) => false,
             UIState::GameSetup(_) => false,
+            UIState::LoadScreen(_) => false,
             UIState::ShowOptions(_, _) => true,
             UIState::PositionSelected(_) => true,
             UIState::PieceSelected(_) => true,
@@ -351,6 +346,7 @@ enum Event {
     // TODO: two-digit numbers!!
     Selection(usize),
     MenuOption(usize),
+    SelectMenuOption,
     MenuUp,
     MenuDown,
     MenuIncrease,
@@ -364,6 +360,7 @@ enum Event {
     ContinueGame,
     StartGame,
     NewGame,
+    LoadGame,
     Undo,
     Redo,
     LetAIMove,
@@ -414,6 +411,7 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
         })
         .filter(|_| !rules_summary && !game_setup),
         KeyCode::Char('h') => Some(Event::Help),
+        KeyCode::Char('l') => Some(Event::LoadGame),
         KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
         KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
         KeyCode::Char('w') => Some(if rules_summary {
@@ -433,7 +431,9 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
                 Some(Event::ContinueGame)
             } else if matches!(ui_state, UIState::GameSetup(_)) {
                 Some(Event::StartGame)
-            } else if top_level && key == KeyCode::Enter {
+            } else if matches!(ui_state, UIState::LoadScreen(_)) {
+                Some(Event::SelectMenuOption)
+            } else if matches!(ui_state, UIState::RulesSummary(_)) && key == KeyCode::Enter {
                 Some(Event::Exit)
             } else if top_level {
                 Some(Event::ScrollDown)
@@ -518,7 +518,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
     let ai_endpoint = start_ai_worker_thread();
     let io_endpoint = start_io_worker_thread();
 
-    let io_manager = IOManager::new();
+    let mut io_manager = IOManager::new();
     let setting_renderer = SettingRenderer::build();
     let mut settings = Settings::default();
     let mut game_setup = GameSetup::default();
@@ -539,24 +539,19 @@ pub fn run_in_tui_impl() -> io::Result<()> {
         // TODO: config + setting which avoids this?
         let path = io_manager.autosave_path();
         if path.is_file() {
-            let save_file = File::open(path).map_err(|e| LoadGameError::IO(e));
-            let result = save_file.and_then(|save_file| {
-                let (initial_state, n_players, log) =
-                    parse_saved_game(BufReader::new(save_file), HEADER)?;
-                assert_eq!(n_players, 2);
-                let loaded_game_setup = GameSetup::from_key_val(initial_state.into_iter())?;
-                engine = restore_game_state(2, || Ok(game_setup.new_game_state()), log)?;
-                game_setup = loaded_game_setup;
-                Ok(())
-            });
-            // TODO: properly handle error
-            _ = result.inspect_err(|e| eprintln!("Warning: could not load saved state: {e:?}"));
+            match load_game(&path) {
+                Ok(result) => (engine, game_setup) = result,
+                // TODO: properly handle error
+                Err(e) => eprintln!("Warning: could not load saved state: {e:?}"),
+            }
         }
     } else {
         // TODO: proper message
         eprintln!("Warning: could not initialize game data directory");
     }
-    let do_autosave = |setup: &GameSetup, engine: &LoggingEngine<HiveGameState>| {
+    let do_autosave = |io_manager: &Option<IOManager>,
+                       setup: &GameSetup,
+                       engine: &LoggingEngine<HiveGameState>| {
         if let Some(io_manager) = io_manager.as_ref() {
             io_endpoint.send(SaveGame(
                 io_manager.autosave_path(),
@@ -592,11 +587,20 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                 _ => digits = None,
             }
             // general event mapping
+            let mut start_game = |game_setup, engine, ui_state: &mut UIState| {
+                graphics_state.center_x = 0.0;
+                graphics_state.center_y = 0.0;
+                animation_state.reset();
+                ai_state.reset();
+                *ui_state = UIState::ShowOptions(false, false);
+                do_autosave(&io_manager, game_setup, engine);
+            };
             match e {
                 Event::Exit => match ui_state {
                     UIState::Toplevel => break,
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::GameSetup(_) => ui_state = UIState::Toplevel,
+                    UIState::LoadScreen(_) => ui_state = UIState::Toplevel,
                     UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
@@ -605,6 +609,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
                 },
                 Event::Switch => {
+                    // TODO: use similar to escape to return from some menus?
                     if let UIState::GameSetup(index) = ui_state {
                         ui_state = UIState::GameSetup(game_setup.switched_index(index, 2));
                     } else if ui_state.top_level() {
@@ -639,20 +644,25 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                 Event::NewGame => {
                     ui_state = UIState::GameSetup(2);
                 }
+                Event::LoadGame => {
+                    if let Some(io_manager) = io_manager.as_mut() {
+                        match io_manager.recompute_save_files_list() {
+                            Ok(_) => ui_state = UIState::LoadScreen(2),
+                            // TODO: proper error handling
+                            Err(e) => eprintln!("Error: could not load save files: {e}"),
+                        }
+                    }
+                }
                 Event::StartGame => {
                     engine = Engine::new_logging(2, game_setup.new_game_state());
-                    graphics_state.center_x = 0.0;
-                    graphics_state.center_y = 0.0;
-                    animation_state.reset();
-                    ai_state.reset();
-                    ui_state = UIState::ShowOptions(false, false);
+                    start_game(&game_setup, &engine, &mut ui_state);
                 }
                 Event::Undo => {
                     if engine.undo_last_decision() {
                         animation_state.reset();
                         ai_state.reset();
                         ui_state.state_changed();
-                        do_autosave(&game_setup, &engine);
+                        do_autosave(&io_manager, &game_setup, &engine);
                     }
                 }
                 Event::Redo => {
@@ -660,11 +670,13 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                         animation_state.reset();
                         ai_state.reset();
                         ui_state.state_changed();
-                        do_autosave(&game_setup, &engine);
+                        do_autosave(&io_manager, &game_setup, &engine);
                     }
                 }
                 Event::Help => match ui_state {
-                    UIState::Toplevel => ui_state = UIState::RulesSummary(0),
+                    UIState::Toplevel | UIState::LoadScreen(_) => {
+                        ui_state = UIState::RulesSummary(0)
+                    }
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::ShowOptions(false, _)
                     | UIState::PositionSelected(_)
@@ -699,16 +711,22 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                     }
                 }
                 Event::MenuUp => {
-                    if let UIState::GameSetup(index) = ui_state {
-                        ui_state = UIState::GameSetup(index.saturating_sub(1));
+                    if let UIState::GameSetup(index) = &mut ui_state {
+                        *index = index.saturating_sub(1);
+                    } else if let UIState::LoadScreen(index) = &mut ui_state {
+                        *index = index.saturating_sub(1);
                     } else if menu_selection.index() > 0 {
                         *menu_selection.index_mut() -= 1;
                     }
                 }
                 Event::MenuDown => {
-                    if let UIState::GameSetup(index) = ui_state {
-                        if index + 1 < game_setup.max_index() + 2 {
-                            ui_state = UIState::GameSetup(index + 1);
+                    if let UIState::GameSetup(index) = &mut ui_state {
+                        if *index + 1 < game_setup.max_index() + 2 {
+                            *index += 1;
+                        }
+                    } else if let UIState::LoadScreen(index) = &mut ui_state {
+                        if *index + 1 < io_manager.as_ref().unwrap().save_files_list().len() + 2 {
+                            *index += 1;
                         }
                     } else if menu_selection.index() + 1
                         < setting_renderer.max_index(menu_selection)
@@ -723,13 +741,16 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                         } else {
                             setting_renderer.get_player(index).increase(&mut settings);
                             ai_state.reset();
-                            // TODO: start AI?
+                        }
+                    } else if let UIState::LoadScreen(index) = ui_state {
+                        if index < 2 {
+                            setting_renderer.get_player(index).increase(&mut settings);
+                            ai_state.reset();
                         }
                     } else {
                         setting_renderer.get(menu_selection).increase(&mut settings);
                         if setting_renderer.is_ai_setting(menu_selection) {
                             ai_state.reset();
-                            // TODO: start AI?
                         }
                     }
                 }
@@ -738,6 +759,11 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                         if index >= 2 {
                             game_setup.decrease_at(index, 2);
                         } else {
+                            setting_renderer.get_player(index).decrease(&mut settings);
+                            ai_state.reset();
+                        }
+                    } else if let UIState::LoadScreen(index) = ui_state {
+                        if index < 2 {
                             setting_renderer.get_player(index).decrease(&mut settings);
                             ai_state.reset();
                         }
@@ -756,6 +782,27 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                 Event::ScrollDown => {
                     if let UIState::RulesSummary(i) = ui_state {
                         ui_state = UIState::RulesSummary(i + 1);
+                    }
+                }
+                Event::SelectMenuOption => {
+                    if let UIState::LoadScreen(index) = ui_state {
+                        let io_manager = io_manager.as_ref().unwrap();
+                        if index >= 2 {
+                            let name = io_manager
+                                .save_files_list()
+                                .get(index - 2)
+                                .map(|(name, _)| name);
+                            name.map(|name| {
+                                let path = io_manager.save_file_path(name);
+                                match load_game(&path) {
+                                    Ok(result) => {
+                                        (engine, game_setup) = result;
+                                        start_game(&game_setup, &engine, &mut ui_state);
+                                    }
+                                    Err(e) => eprintln!("Error: could not load game: {e:?}"),
+                                }
+                            });
+                        }
                     }
                 }
                 Event::Selection(_) => (),
@@ -784,7 +831,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
             input,
         );
         if state_change == GameStateChange::DecisionCompleted {
-            do_autosave(&game_setup, &engine);
+            do_autosave(&io_manager, &game_setup, &engine);
         }
 
         // update ui state if an animation was started
@@ -830,6 +877,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
             state,
             &mut settings,
             &game_setup,
+            &io_manager,
         )?;
 
         // update animation state
@@ -933,13 +981,23 @@ fn update_game_state_and_fill_input_mapping(
             }
 
             match (*ui_state, follow_up) {
-                (UIState::Toplevel | UIState::RulesSummary(_) | UIState::GameSetup(_), Ok(d)) => {
+                (
+                    UIState::Toplevel
+                    | UIState::RulesSummary(_)
+                    | UIState::GameSetup(_)
+                    | UIState::LoadScreen(_),
+                    Ok(d),
+                ) => {
                     d.retract_all();
                     GameStateChange::None
                 }
-                (UIState::Toplevel | UIState::RulesSummary(_) | UIState::GameSetup(_), Err(_)) => {
-                    GameStateChange::None
-                }
+                (
+                    UIState::Toplevel
+                    | UIState::RulesSummary(_)
+                    | UIState::GameSetup(_)
+                    | UIState::LoadScreen(_),
+                    Err(_),
+                ) => GameStateChange::None,
                 (UIState::ShowOptions(_, _), Ok(d)) => {
                     d.retract_all();
                     GameStateChange::None

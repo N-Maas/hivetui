@@ -13,8 +13,6 @@ mod tui_graphics;
 mod tui_runner;
 mod worker;
 
-const HEADER: &str = "hive-tui version 0.1.0";
-
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {

@@ -7,11 +7,14 @@ use super::{
     AIResult, AIState, AnimationState, UIState,
 };
 use crate::{
+    io::IOManager,
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
     tui_graphics::{self, piece_color},
     tui_runner::tui_settings::FilterAISuggestions,
 };
+use chrono::offset::Local;
+use chrono::DateTime;
 use core::slice;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
@@ -25,8 +28,10 @@ use ratatui::{
 };
 use std::{
     collections::{HashMap, HashSet},
+    ffi::OsString,
     io::{self, Stdout},
     iter,
+    time::SystemTime,
 };
 use tgp_ai::RatingType;
 use tgp_board::{
@@ -270,6 +275,7 @@ pub fn render(
     // we don't actually mutate anything, this is just an API limitation
     settings: &mut Settings,
     game_setup: &GameSetup,
+    io_manager: &Option<IOManager>,
 ) -> io::Result<([f64; 2], [f64; 2])> {
     let mut output_bound = ([0.0, 0.0], [0.0, 0.0]);
     terminal.draw(|frame| {
@@ -299,8 +305,10 @@ pub fn render(
         let splitted_in_game =
             Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).split(area);
 
-        let splitted_layout = if matches!(state.ui_state, UIState::Toplevel | UIState::GameSetup(_))
-        {
+        let splitted_layout = if matches!(
+            state.ui_state,
+            UIState::Toplevel | UIState::GameSetup(_) | UIState::LoadScreen(_)
+        ) {
             splitted_top_level
         } else {
             splitted_in_game.clone()
@@ -353,14 +361,18 @@ pub fn render(
 
         if state.ui_state.top_level() {
             let is_rules_summary = matches!(state.ui_state, UIState::RulesSummary(_));
-            let is_game_setup = matches!(state.ui_state, UIState::GameSetup(_));
+            let render_setup_area = matches!(
+                state.ui_state,
+                UIState::GameSetup(_) | UIState::LoadScreen(_)
+            );
 
             // the actions
-            if !is_rules_summary && !is_game_setup {
+            if !is_rules_summary && !matches!(state.ui_state, UIState::GameSetup(_)) {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(
                     "[c]ontinue game  [↲]\n\
                     [n]ew game\n\
+                    [l]oad game\n\
                     [r]ules summary  [h]\n\
                     \n\
                     [q]uit",
@@ -373,10 +385,10 @@ pub fn render(
             }
 
             let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
-            if is_game_setup {
+            if render_setup_area {
                 settings_size += 5;
             }
-            let both_settings = menu_area.height >= 27 + help_size && !is_game_setup;
+            let both_settings = menu_area.height >= 27 + help_size && !render_setup_area;
             let small_help = menu_area.height < player_size + settings_size + help_size;
             assert!(!(both_settings && small_help));
             if both_settings {
@@ -393,9 +405,17 @@ pub fn render(
             .split(menu_area) else {
                 unreachable!()
             };
+            let remaining_size = menu_area
+                .height
+                .saturating_sub(player_size)
+                .saturating_sub(settings_size)
+                .saturating_sub(help_size);
+
             // the players
             {
                 let selection = if let UIState::GameSetup(index) = state.ui_state {
+                    Some(index)
+                } else if let UIState::LoadScreen(index) = state.ui_state {
                     Some(index)
                 } else {
                     state.menu_selection.player_index()
@@ -409,10 +429,20 @@ pub fn render(
                 frame.render_widget(paragraph, player_area);
             }
 
-            // the settings (or game setup)
+            // the settings (or game setup/load/save)
             {
                 if let UIState::GameSetup(index) = state.ui_state {
                     let par = game_setup.render_game_setup(settings, index, 2);
+                    frame.render_widget(par, settings_area);
+                } else if let UIState::LoadScreen(index) = state.ui_state {
+                    let save_games = io_manager.as_ref().unwrap().save_files_list();
+                    let available_size = settings_size
+                        + if small_help {
+                            remaining_size.saturating_sub(3) / 3
+                        } else {
+                            (remaining_size + 1) / 2
+                        };
+                    let par = save_game_list(settings, available_size, save_games, index, 2);
                     frame.render_widget(par, settings_area);
                 } else if both_settings {
                     let [general, graphic] =
@@ -611,6 +641,60 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
         ]);
     }
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))
+}
+
+pub fn save_game_list(
+    settings: &Settings,
+    available_size: u16,
+    save_games: &[(OsString, SystemTime)],
+    selection: usize,
+    offset: usize,
+) -> Paragraph<'static> {
+    let mut lines = vec![Line::raw("Select game to load:"), Line::raw("")];
+    let n_displayable = usize::from((available_size - 8) / 2);
+    let n_skip = (selection + 1).saturating_sub(offset + n_displayable);
+    let iter = save_games
+        .iter()
+        .enumerate()
+        .skip(n_skip)
+        .take(n_displayable);
+
+    for (i, (name, time)) in iter {
+        let selected = selection == offset + i;
+        let name = name.to_string_lossy();
+        let datetime = DateTime::<Local>::from(*time);
+        if selected {
+            lines.push(Line::styled(
+                format!("<{name}>"),
+                settings.color_scheme.primary(),
+            ));
+        } else {
+            lines.push(Line::raw(format!(" {name} ")));
+        }
+        lines.push(
+            Line::styled(
+                datetime.format("%Y-%m-%d %H:%M        ").to_string(),
+                ColorScheme::TEXT_GRAY,
+            )
+            .alignment(Alignment::Right),
+        );
+    }
+    if save_games.is_empty() {
+        lines.push(Line::styled(
+            " (no saved game found)",
+            ColorScheme::TEXT_GRAY,
+        ));
+    }
+    if n_displayable + n_skip < save_games.len() {
+        lines.push(Line::raw(" ..."));
+    } else {
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("[↲] to load the selected game"));
+    lines.push(Line::raw("[Esc] or [q] to return"));
+    let text = Text::from(lines);
+    Paragraph::new(text).block(Block::default().title("Load Game").borders(Borders::ALL))
 }
 
 pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings) {
