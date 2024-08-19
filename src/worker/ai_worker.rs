@@ -42,7 +42,7 @@ pub fn start_ai_worker_thread() -> AIEndpoint {
 
         endpoint.send_if_no_msg(Box::new(AIResult {
             player,
-            best_move: best_move,
+            best_move,
             all_ratings: ratings,
             annotations: Default::default(),
         }));

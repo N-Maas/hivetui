@@ -430,8 +430,8 @@ where
     }
 }
 
-const PLAYER_PREFIXES: [&'static str; 2] = ["white player: ", "black player: "];
-const PLAYER_TYPES: [&'static str; 6] = ["human", "beginner", "easy", "normal", "hard", "master"];
+const PLAYER_PREFIXES: [&str; 2] = ["white player: ", "black player: "];
+const PLAYER_TYPES: [&str; 6] = ["human", "beginner", "easy", "normal", "hard", "master"];
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SettingSelection {
@@ -796,7 +796,7 @@ impl GameSetup {
                 selection -= self.num_rows();
                 self.black_pieces.as_mut().expect("selection index invalid")
             };
-            let (_, count) = no_queen(pieces.iter_mut()).skip(selection).next().unwrap();
+            let (_, count) = no_queen(pieces.iter_mut()).nth(selection).unwrap();
             *count = count.saturating_sub(1);
         }
     }
@@ -827,7 +827,7 @@ impl GameSetup {
                 selection -= self.num_rows();
                 self.black_pieces.as_mut().expect("selection index invalid")
             };
-            let (_, count) = no_queen(pieces.iter_mut()).skip(selection).next().unwrap();
+            let (_, count) = no_queen(pieces.iter_mut()).nth(selection).unwrap();
             *count += 1;
         }
     }
@@ -940,7 +940,7 @@ impl GameSetup {
                 .collect::<Result<_, String>>()
         };
 
-        let (white, black): (Vec<_>, Vec<_>) = input.partition(|(k, _)| k.starts_with("W"));
+        let (white, black): (Vec<_>, Vec<_>) = input.partition(|(k, _)| k.starts_with('W'));
         let white_pieces: BTreeMap<PieceType, u32> = parse(white)?;
         let black_pieces: BTreeMap<PieceType, u32> = parse(black)?;
         let white_queen_valid = white_pieces.get(&PieceType::Queen) == Some(&1);
@@ -951,7 +951,7 @@ impl GameSetup {
         }
         Ok(Self {
             white_pieces,
-            black_pieces: (!black_pieces.is_empty()).then(|| black_pieces),
+            black_pieces: (!black_pieces.is_empty()).then_some(black_pieces),
         })
     }
 }

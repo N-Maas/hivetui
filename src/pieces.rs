@@ -215,7 +215,7 @@ impl PieceType {
             .filter(|_| val.len() == 1)
     }
 
-    fn get_mosquito_piece_set<'a, B>(field: Field<'a, B>, top_piece_removed: bool) -> PieceSet
+    fn get_mosquito_piece_set<B>(field: Field<'_, B>, top_piece_removed: bool) -> PieceSet
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: NeighborhoodStructure<B>,

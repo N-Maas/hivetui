@@ -15,14 +15,14 @@ use tgp::engine::{
 use crate::{state::HiveGameState, tui_runner::tui_settings::GameSetup};
 
 pub const HEADER: &str = "hive-tui version 0.1.0";
-pub const APP_NAME: &'static str = "hivetui";
-const EXTENSION: &'static str = "hivetui";
-const SAVE_DIR: &'static str = "saves";
-const AUTOSAVE: &'static str = "AUTOSAVE";
-const CONFIG: &'static str = "config.json";
+pub const APP_NAME: &str = "hivetui";
+const EXTENSION: &str = "hivetui";
+const SAVE_DIR: &str = "saves";
+const AUTOSAVE: &str = "AUTOSAVE";
+const CONFIG: &str = "config.json";
 
 pub fn load_game(path: &Path) -> Result<(LoggingEngine<HiveGameState>, GameSetup), LoadGameError> {
-    let save_file = File::open(path).map_err(|e| LoadGameError::IO(e))?;
+    let save_file = File::open(path).map_err(LoadGameError::IO)?;
     let (initial_state, n_players, log) = parse_saved_game(BufReader::new(save_file), HEADER)?;
     assert_eq!(n_players, 2);
     let game_setup = GameSetup::from_key_val(initial_state.into_iter())?;
@@ -37,14 +37,12 @@ pub struct IOManager {
 
 impl IOManager {
     pub fn new() -> Option<Self> {
-        let result = ProjectDirs::from("", "", APP_NAME).and_then(|p| {
-            Some(Self {
-                data_dir: p.data_dir().to_path_buf(),
-                cached_save_files: Vec::new(),
-            })
+        let result = ProjectDirs::from("", "", APP_NAME).map(|p| Self {
+            data_dir: p.data_dir().to_path_buf(),
+            cached_save_files: Vec::new(),
         });
         result.filter(|io| {
-            fs::create_dir_all(&io.save_path())
+            fs::create_dir_all(io.save_path())
                 .inspect_err(|e| eprintln!("Error accessing game data directory: {e}"))
                 .is_ok()
         })

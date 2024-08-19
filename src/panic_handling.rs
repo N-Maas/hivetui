@@ -13,9 +13,9 @@ pub fn setup_panic_reporting() {
                 .downcast_ref::<&'static str>()
                 .map(|s| s.to_string())
         });
-        msg.map(|value| {
+        if let Some(value) = msg {
             MSG.with(|b| b.borrow_mut().replace(value));
-        });
+        }
         let trace = Backtrace::force_capture();
         BACKTRACE.with(move |b| b.borrow_mut().replace(trace));
     }));

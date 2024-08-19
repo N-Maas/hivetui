@@ -157,8 +157,8 @@ impl HiveGameState {
         board.extend_and_insert(OpenIndex::from((0, 0)), HiveContent::new());
         Self {
             current_player: Player::White,
-            white_pieces: white_pieces,
-            black_pieces: black_pieces,
+            white_pieces,
+            black_pieces,
             board,
             white_pieces_on_board: 0,
             black_pieces_on_board: 0,

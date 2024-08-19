@@ -502,10 +502,10 @@ pub fn build_complete_piece_move_animation(
             let content = state.board().get(target);
             content
                 .filter(|c| step <= fly_steps && !c.is_empty())
-                .and_then(|_| {
+                .map(|_| {
                     let mut cloned = state.clone();
                     cloned.remove_piece(target);
-                    Some(cloned)
+                    cloned
                 })
         },
     )

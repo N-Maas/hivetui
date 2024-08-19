@@ -293,9 +293,9 @@ impl AIState {
                 self.animation_progress += 1;
             }
             if self.animation_progress < Self::AI_DELAY || self.result.is_none() {
-                animation
-                    .try_set()
-                    .map(|s| s.set_animation(Animation::new(loader(settings, 30)), None));
+                if let Some(s) = animation.try_set() {
+                    s.set_animation(Animation::new(loader(settings, 30)), None)
+                }
             }
         }
     }
@@ -493,7 +493,7 @@ pub fn run_in_tui() -> io::Result<()> {
     enable_raw_mode()?;
     setup_panic_reporting();
 
-    let result = panic::catch_unwind(|| run_in_tui_impl());
+    let result = panic::catch_unwind(run_in_tui_impl);
 
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
@@ -861,7 +861,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
         // finally we render the UI
         let state = tui_rendering::AllState {
             game_state: engine.data(),
-            settings: settings,
+            settings,
             board_annotations: &board_annotations,
             piece_annotations: &piece_annotations,
             ui_state,

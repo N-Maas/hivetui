@@ -30,7 +30,6 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
     io::{self, Stdout},
-    iter,
     time::SystemTime,
 };
 use tgp_ai::RatingType;
@@ -55,7 +54,7 @@ pub struct AllState<'a> {
 
 pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
-const MENU: &'static str = "\
+const MENU: &str = "\
     [c] continue game  [↲]\n\
     [n] new game\n\
     [l] load game\n\
@@ -64,7 +63,7 @@ const MENU: &'static str = "\
     [q] quit
 ";
 
-const MENU_HELP_LONG: &'static str = "\
+const MENU_HELP_LONG: &str = "\
     This is a TUI version of the board game Hive. \
     Hive is a chess-like game where both players place and move pieces \
     that correspond to insects. More information is available in the \
@@ -80,7 +79,7 @@ const MENU_HELP_LONG: &'static str = "\
     [←→] to change the current setting
 ";
 
-const MENU_HELP_SHORT: &'static str = "\
+const MENU_HELP_SHORT: &str = "\
     This is a TUI version of the board game Hive \
     (press [h] or [r] for rules).\
     Everything is controlled with the keyboard. The general rule is: \
@@ -90,7 +89,7 @@ const MENU_HELP_SHORT: &'static str = "\
     [←→] to change the current setting
 ";
 
-const IN_GAME_HELP_LONG: &'static str = "\
+const IN_GAME_HELP_LONG: &str = "\
     press a number to select a move\n   \
     (two digits: press [Space] or [↲] first)\n\
     \n\
@@ -108,7 +107,7 @@ const IN_GAME_HELP_LONG: &'static str = "\
     [q/Esc] to get back to the menu\
 ";
 
-const IN_GAME_HELP_SHORT: &'static str = "\
+const IN_GAME_HELP_SHORT: &str = "\
     press a number to select a move\n   \
     (two digits: press [Space] or [↲] first)\n\
     \n\
@@ -122,7 +121,7 @@ const IN_GAME_HELP_SHORT: &'static str = "\
     [q/Esc] to get back to the menu\
 ";
 
-const INTRODUCTION_BEFORE_QUEEN: &'static str = "\
+const INTRODUCTION_BEFORE_QUEEN: &str = "\
     Hive is a chess-like game played with hexagonal pieces. \
     Unlike chess, there is no explicit board. Instead, the board \
     is implicitely represented by the placed pieces. At the start \
@@ -131,19 +130,19 @@ const INTRODUCTION_BEFORE_QUEEN: &'static str = "\
     or move an already placed piece. \
     Victory is achieved by surrounding the enemy \
 ";
-const INTRODUCTION_AFTER_QUEEN: &'static str = " with six pieces (can be friend or enemy).";
+const INTRODUCTION_AFTER_QUEEN: &str = " with six pieces (can be friend or enemy).";
 
-const PLACEMENT: &'static str = "\
+const PLACEMENT: &str = "\
     Any available piece can be placed at a position that is not yet \
     occupied. The position must be adjacent to one of your own pieces \
     and must not be adjacent to an enemy piece.\
 ";
 
-const MOVEMENT_BEFORE_QUEEN: &'static str = "\
+const MOVEMENT_BEFORE_QUEEN: &str = "\
     Moving a piece is only possible if you have already placed your \
 ";
 
-const MOVEMENT_AFTER_QUEEN: &'static str = ". \
+const MOVEMENT_AFTER_QUEEN: &str = ". \
     You can move pieces that have at least one valid destination according \
     to their specific movement rules. However, the movement must obey the \
     one hive rule: at any point in time, all pieces must be connected to \
@@ -154,32 +153,32 @@ const MOVEMENT_AFTER_QUEEN: &'static str = ". \
     does not \"fit\" through the bottleneck.\
 ";
 
-const QUEEN: [&'static str; 3] = [
+const QUEEN: [&str; 3] = [
     "The most important piece, since you loose the game if the ",
     " is surrounded. She must be placed within your first four turns. \
     Once placed, the ",
     " can move to any adjacent non-occupied position.",
 ];
 
-const ANT: [&'static str; 2] = [
+const ANT: [&str; 2] = [
     "Flexible pieces that travel the edge of the hive. The ",
     " can move to any position that is reachable via a non-occupied path.",
 ];
 
-const SPIDER: [&'static str; 4] = [
+const SPIDER: [&str; 4] = [
     "Similar to ",
     ", ",
     " crawl along the hive. However, the ",
     " is much more restricted: it must move exactly three steps.",
 ];
 
-const GRASSHOPPER: [&'static str; 2] = [
+const GRASSHOPPER: [&str; 2] = [
     "Less flexible, but ignores obstacles. The ",
     " jumps over adjacent pieces (at least one!) in a straight line, \
     moving to the first non-occupied position in the line.",
 ];
 
-const BEETLE: [&'static str; 5] = [
+const BEETLE: [&str; 5] = [
     "Slow but powerful. The ",
     " moves only one position at a time. However, he has a super-power: the ",
     " can crawl atop another piece and travel along the top of the hive. \
@@ -190,7 +189,7 @@ const BEETLE: [&'static str; 5] = [
     a piece next to it even if the piece below is not yours).",
 ];
 
-const REMARKS: &'static str = "\
+const REMARKS: &str = "\
     Notes: This is a summary, not a comprehensive explanation of the \
     rules. Please refer to the official rules of Hive instead.\
 ";
@@ -770,31 +769,31 @@ pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<
                 let &from = ctx.inner();
                 let piece = game_state.board()[from].top().unwrap();
                 let p_color = tui_graphics::piece_color(piece.p_type);
-                let line = Line::from(vec![
+
+                Line::from(vec![
                     Span::styled(format!("[{}] ", i + 1), color_palette(i)),
                     Span::raw("move "),
                     Span::styled(piece.p_type.name(), p_color),
                     Span::raw(" according to "),
                     Span::styled(format!("({})", i + 1), color_palette(i)),
-                ]);
-                line
+                ])
             }
             HiveContext::Piece(ctx) => {
                 let (p_type, _) = ctx[*indizes.last().unwrap()];
                 let p_color = tui_graphics::piece_color(p_type);
-                let line = Line::from(vec![
+
+                Line::from(vec![
                     Span::styled(format!("[{}] ", i + 1), color_palette(i)),
                     Span::raw("place "),
                     Span::styled(p_type.name(), p_color),
                     Span::raw(" at field "),
                     Span::styled(format!("({}{})", p_type.letter(), i + 1), color_palette(i)),
-                ]);
-                line
+                ])
             }
             _ => unreachable!("this context should not be possible here"),
         };
         let offset = desired_width - usize::min(line.width(), desired_width - 1);
-        let placeholder = iter::repeat(" ").take(offset).collect::<String>();
+        let placeholder = " ".repeat(offset);
         line.spans.extend([
             Span::raw(placeholder),
             Span::styled(format!("{:>3}", rating), color_palette(i)),
@@ -844,7 +843,7 @@ fn draw_level_of_board(
         let (x_mid, y_mid) = translate_index(field.index());
         field
             .content_checked()
-            .and_then(|content| get_piece(content))
+            .and_then(get_piece)
             .inspect(|piece| {
                 let is_white = piece.player == Player::White;
                 if is_white || level > 0 {

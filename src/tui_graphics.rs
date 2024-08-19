@@ -65,7 +65,7 @@ pub fn draw_restricted_hex_border(
         x_mid,
         y_mid,
         &HEX_BORDER_POINTS,
-        &orientations,
+        orientations,
         Color::DarkGray,
         1.0,
     );
