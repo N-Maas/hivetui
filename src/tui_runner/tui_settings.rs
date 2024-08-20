@@ -6,14 +6,26 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
-use std::{collections::BTreeMap, fmt::Debug, iter};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, fmt::Debug, io::Read, iter};
 
 use crate::{
     pieces::{PieceType, Player},
     tui_graphics,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum ZoomLevel {
     Bird = 0,
@@ -60,7 +72,18 @@ impl ZoomLevel {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum PlayerType {
     #[default]
@@ -79,7 +102,18 @@ impl PlayerType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum AILevel {
     Beginner = 0,
@@ -102,7 +136,18 @@ impl AILevel {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum AutomaticCameraMoves {
     #[default]
@@ -110,7 +155,18 @@ pub enum AutomaticCameraMoves {
     Off = 1,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum AIMoves {
     #[default]
@@ -118,7 +174,18 @@ pub enum AIMoves {
     Manual = 1,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum FilterAISuggestions {
     #[default]
@@ -126,7 +193,18 @@ pub enum FilterAISuggestions {
     No = 1,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum WhiteTilesStyle {
     Full = 0,
@@ -135,7 +213,18 @@ pub enum WhiteTilesStyle {
     Hybrid = 2,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum BordersStyle {
     Complete = 0,
@@ -144,7 +233,18 @@ pub enum BordersStyle {
     None = 2,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum ScreenSplitting {
     #[default]
@@ -156,7 +256,18 @@ pub enum ScreenSplitting {
     FarRight = 5,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum AnimationSpeed {
     Slower = 0,
@@ -202,7 +313,18 @@ impl AnimationSpeed {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum MovingTileStyle {
     #[default]
@@ -211,7 +333,18 @@ pub enum MovingTileStyle {
     Minimal = 2,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum AnimationStyle {
     #[default]
@@ -221,7 +354,18 @@ pub enum AnimationStyle {
     Rainbow = 3,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, TryFromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
 #[repr(u8)]
 pub enum ColorScheme {
     #[default]
@@ -311,21 +455,33 @@ impl GraphicsState {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Settings {
     pub white_player_type: PlayerType,
     pub black_player_type: PlayerType,
+    #[serde(default)]
     pub automatic_camera_moves: AutomaticCameraMoves,
+    #[serde(default)]
     pub ai_moves: AIMoves,
+    #[serde(default)]
     pub ai_assistant: AILevel,
+    #[serde(default)]
     pub filter_ai_suggestions: FilterAISuggestions,
+    #[serde(default)]
     pub piece_zoom_level: ZoomLevel,
+    #[serde(default)]
     pub white_tiles_style: WhiteTilesStyle,
+    #[serde(default)]
     pub borders_style: BordersStyle,
+    #[serde(default)]
     pub splitting: ScreenSplitting,
+    #[serde(default)]
     pub animation_speed: AnimationSpeed,
+    #[serde(default)]
     pub animation_style: AnimationStyle,
+    #[serde(default)]
     pub moving_tile_style: MovingTileStyle,
+    #[serde(default)]
     pub color_scheme: ColorScheme,
 }
 
@@ -354,6 +510,15 @@ impl Settings {
 
     pub fn should_play_animation(&self, _player: Player) -> bool {
         self.animation_speed != AnimationSpeed::Off
+    }
+
+    pub fn from_json<R: Read>(input: R) -> Result<Self, serde_json::Error> {
+        serde_json::from_reader(input)
+    }
+
+    pub fn to_json(self) -> String {
+        // only would fail if the (derived) serialize impl fails
+        serde_json::to_string_pretty(&self).unwrap()
     }
 }
 
@@ -497,11 +662,6 @@ impl SettingRenderer {
                 }
             }
         }
-    }
-
-    pub fn get_player(&self, index: usize) -> &dyn MenuSetting {
-        assert!(index < 2);
-        self.players[index].as_ref()
     }
 
     pub fn max_index(&self, selection: SettingSelection) -> usize {
