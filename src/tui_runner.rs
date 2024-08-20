@@ -279,7 +279,7 @@ impl AIState {
         settings: &Settings,
         player: Player,
         animation: &mut AnimationState,
-    ) -> Result<(), TUIError> {
+    ) -> Result<(), FatalError> {
         // TODO: interaction with undo
         assert!(self.current_player == player || !self.is_started);
         if !self.is_started {
@@ -305,7 +305,7 @@ impl AIState {
                 }
                 Some(MessageForMaster::Killed(msg, trace)) => {
                     report_panic(Some(msg), trace);
-                    return Err(TUIError::PanicOccured);
+                    return Err(FatalError::PanicOccured);
                 }
                 None => (),
             }
@@ -533,14 +533,14 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     }))
 }
 
-enum TUIError {
+enum FatalError {
     IOError(io::Error),
     PanicOccured,
 }
 
-impl From<io::Error> for TUIError {
+impl From<io::Error> for FatalError {
     fn from(value: io::Error) -> Self {
-        TUIError::IOError(value)
+        FatalError::IOError(value)
     }
 }
 
@@ -555,8 +555,8 @@ pub fn run_in_tui() -> io::Result<()> {
     disable_raw_mode()?;
 
     match result {
-        Ok(Err(TUIError::IOError(e))) => Err(e), // propagate I/O error
-        Err(_) | Ok(Err(TUIError::PanicOccured)) => {
+        Ok(Err(FatalError::IOError(e))) => Err(e), // propagate I/O error
+        Err(_) | Ok(Err(FatalError::PanicOccured)) => {
             let (msg, trace) = get_panic_data();
             eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
             process::exit(1);
@@ -566,7 +566,7 @@ pub fn run_in_tui() -> io::Result<()> {
 }
 
 /// this implements the main event loop
-fn run_in_tui_impl() -> Result<(), TUIError> {
+fn run_in_tui_impl() -> Result<(), FatalError> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.hide_cursor()?;
     terminal.clear()?;
@@ -1033,7 +1033,7 @@ fn update_game_state_and_fill_input_mapping(
     settings: &Settings,
     animation_state: &mut AnimationState,
     input: Option<usize>,
-) -> Result<GameStateChange, TUIError> {
+) -> Result<GameStateChange, FatalError> {
     Ok(match engine.pull() {
         GameState::PendingEffect(pe) => {
             ai_state.reset();
