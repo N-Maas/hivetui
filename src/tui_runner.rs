@@ -29,6 +29,7 @@ use crate::{
     worker::{
         ai_worker::{start_ai_worker_thread, AIResult},
         io_worker::{start_io_worker_thread, WriteTask},
+        MessageForMaster,
     },
     FatalError,
 };
@@ -123,6 +124,40 @@ impl UIState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MessageType {
+    Success,
+    Info,
+    Warning,
+    Error,
+}
+
+struct Message {
+    pub msg_type: MessageType,
+    pub content: String,
+}
+
+impl Message {
+    fn new<S: ToString>(msg_type: MessageType, content: S) -> Self {
+        Self {
+            msg_type,
+            content: content.to_string(),
+        }
+    }
+    fn success<S: ToString>(content: S) -> Self {
+        Self::new(MessageType::Success, content)
+    }
+    fn info<S: ToString>(content: S) -> Self {
+        Self::new(MessageType::Info, content)
+    }
+    fn warning<S: ToString>(content: S) -> Self {
+        Self::new(MessageType::Warning, content)
+    }
+    fn error<S: ToString>(content: S) -> Self {
+        Self::new(MessageType::Error, content)
+    }
+}
+
 pub fn run_in_tui() -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -171,6 +206,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
     let mut ui_state = UIState::Toplevel;
     let mut graphics_state = GraphicsState::new();
     let mut ai_state = AIState::new(ai_endpoint);
+    let mut messages = Vec::new();
     let mut menu_selection = SettingSelection::General(2);
     let mut text_input = TextInput::new("".to_string());
     let mut digits: Option<Vec<usize>> = None;
@@ -179,16 +215,22 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
 
     if let Some(io_manager) = io_manager.as_ref() {
         // attempt to load saved state
-        // TODO: config + setting which avoids this?
+        // TODO: CLI flag which avoids this?
         let game_path = io_manager.autosave_path();
+        let mut restored_state = false;
         if game_path.is_file() {
             match load_game(&game_path) {
-                Ok(result) => (engine, game_setup) = result,
-                // TODO: properly handle error
-                Err(e) => eprintln!("Warning: could not load saved state: {e:?}"),
+                Ok(result) => {
+                    (engine, game_setup) = result;
+                    restored_state = true;
+                }
+                Err(e) => {
+                    messages.push(Message::warning(format!("Could not load saved state: {e}")))
+                }
             }
         }
         let conf_path = io_manager.config_path();
+        let mut restored_settngs = false;
         if conf_path.is_file() {
             let result = File::open(conf_path)
                 .map_err(|e| e.to_string())
@@ -197,14 +239,23 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     Settings::from_json(reader).map_err(|e| e.to_string())
                 });
             match result {
-                Ok(new_settings) => settings = new_settings,
-                // TODO: properly handle error
-                Err(e) => eprintln!("Warning: could not load saved settings: {e}"),
+                Ok(new_settings) => {
+                    settings = new_settings;
+                    restored_settngs = true;
+                }
+                Err(e) => messages.push(Message::warning(format!(
+                    "Could not load saved settings: {e}"
+                ))),
             }
         }
+        match (restored_state, restored_settngs) {
+            (true, true) => messages.push(Message::info("Restored game state and settings.")),
+            (true, false) => messages.push(Message::info("Restored game state.")),
+            (false, true) => messages.push(Message::info("Restored settings.")),
+            (false, false) => (),
+        }
     } else {
-        // TODO: proper message
-        eprintln!("Warning: could not initialize game data directory");
+        messages.push(Message::warning("Could not initialize game data directory"));
     }
     let do_autosave = |io_manager: &Option<IOManager>,
                        setup: &GameSetup,
@@ -225,7 +276,18 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
-        let mut event = pull_event(ui_state, digits.is_some(), animation_state.runs())?;
+        let (mut event, removes_msg) = pull_event(
+            ui_state,
+            digits.is_some(),
+            animation_state.runs(),
+            !messages.is_empty(),
+        )?;
+        if removes_msg {
+            messages.pop();
+        } else if let Some(MessageForMaster::Msg(error)) = io_endpoint.get_msg() {
+            messages.push(Message::error(format!("Could not save game: {error}")));
+        }
+        // TODO: success messages
         if let Some(e) = event {
             // two digit handling happens first
             match e {
@@ -308,8 +370,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     if let Some(io_manager) = io_manager.as_mut() {
                         match io_manager.recompute_save_files_list() {
                             Ok(_) => ui_state = UIState::LoadScreen(2),
-                            // TODO: proper error handling
-                            Err(e) => eprintln!("Error: could not load save files: {e}"),
+                            Err(e) => messages
+                                .push(Message::error(format!("Could not load save files: {e}"))),
                         }
                     }
                 }
@@ -323,8 +385,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                                     format!("{APP_NAME} {}", Local::now().format("%Y-%m-%d %H:%M"));
                                 text_input = TextInput::new(name);
                             }
-                            // TODO: proper error handling
-                            Err(e) => eprintln!("Error: could not load save files: {e}"),
+                            Err(e) => messages
+                                .push(Message::error(format!("Could not load save files: {e}"))),
                         }
                     }
                 }
@@ -460,7 +522,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                                         (engine, game_setup) = result;
                                         start_game(&game_setup, &engine, &mut ui_state);
                                     }
-                                    Err(e) => eprintln!("Error: could not load game: {e:?}"),
+                                    Err(e) => messages
+                                        .push(Message::error(format!("Could not load game: {e}"))),
                                 }
                             }
                         }
@@ -554,6 +617,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
             &mut terminal,
             &setting_renderer,
             state,
+            &messages,
             &mut settings,
             &game_setup,
             &io_manager,

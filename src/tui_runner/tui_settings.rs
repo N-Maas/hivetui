@@ -385,6 +385,7 @@ impl ColorScheme {
     pub const PURPLE: Color = Color::from_u32(0x009030DA);
     pub const PINK: Color = Color::from_u32(0x00D830B0);
     pub const TEXT_GRAY: Color = Color::from_u32(0x00A0A0A0);
+    pub const TEXT_YELLOW: Color = Color::from_u32(0x00D8D830);
 
     pub fn primary(&self) -> Color {
         match self {

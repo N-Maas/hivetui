@@ -6,14 +6,14 @@ use super::{
         BordersStyle, ColorScheme, GameSetup, GraphicsState, ScreenSplitting, SettingRenderer,
         SettingSelection, Settings, WhiteTilesStyle,
     },
-    AIResult, UIState,
+    AIResult, Message, UIState,
 };
 use crate::{
     io_manager::IOManager,
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
     tui_graphics::{self, piece_color},
-    tui_runner::tui_settings::FilterAISuggestions,
+    tui_runner::{tui_settings::FilterAISuggestions, MessageType},
 };
 use chrono::offset::Local;
 use chrono::DateTime;
@@ -285,6 +285,7 @@ pub fn render(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     setting_renderer: &SettingRenderer,
     state: AllState<'_>,
+    messages: &[Message],
     // we don't actually mutate anything, this is just an API limitation
     settings: &mut Settings,
     game_setup: &GameSetup,
@@ -311,7 +312,7 @@ pub fn render(
         };
         let splitted_top_level = Layout::horizontal(vec![
             Constraint::Fill(1),
-            Constraint::Max(25),
+            Constraint::Max(35),
             menu_contraint,
         ])
         .split(area);
@@ -379,16 +380,21 @@ pub fn render(
             );
 
             // the menu (actions)
+            let mut y_offset = 0;
             if !is_rules_summary
                 && !matches!(state.ui_state, UIState::GameSetup(_) | UIState::SaveScreen)
             {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(MENU);
                 action_area.height = text.height() as u16 + 2;
+                y_offset += action_area.height;
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Menu").borders(Borders::ALL));
                 frame.render_widget(Clear, action_area);
                 frame.render_widget(paragraph, action_area);
+            }
+            if !is_rules_summary {
+                render_messages(frame, messages, splitted_layout[1], y_offset + 1);
             }
 
             let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
@@ -663,6 +669,53 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
         ]);
     }
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))
+}
+
+pub fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offset: u16) {
+    for msg in messages {
+        let mut msg_area = area;
+        let msg_len = msg.content.len() as u16;
+        let line_estimate = if msg_len <= msg_area.width - 2 {
+            1
+        } else {
+            msg_len / (msg_area.width - 5) + 1
+        };
+        msg_area.y = offset;
+        msg_area.height = line_estimate + 5;
+        offset += msg_area.height;
+        if offset > area.height {
+            break;
+        }
+        let header = match msg.msg_type {
+            MessageType::Success => "Success",
+            MessageType::Info => "Info",
+            MessageType::Warning => "Warning",
+            MessageType::Error => "Error",
+        };
+        let color = match msg.msg_type {
+            MessageType::Success => ColorScheme::GREEN,
+            MessageType::Info => Color::White,
+            MessageType::Warning => ColorScheme::TEXT_YELLOW,
+            MessageType::Error => ColorScheme::RED,
+        };
+        let lines = vec![
+            Line::styled(header.to_string(), color)
+                .bold()
+                .alignment(Alignment::Center),
+            Line::raw(msg.content.clone()).alignment(if line_estimate == 1 {
+                Alignment::Center
+            } else {
+                Alignment::Left
+            }),
+            Line::raw(""),
+            Line::styled("[Esc] to confirm", ColorScheme::TEXT_GRAY).alignment(Alignment::Right),
+        ];
+        let paragraph = Paragraph::new(Text::from(lines))
+            .block(Block::default().borders(Borders::ALL).border_style(color))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(Clear, msg_area);
+        frame.render_widget(paragraph, msg_area);
+    }
 }
 
 pub fn load_game_widget(

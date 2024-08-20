@@ -4,7 +4,7 @@ use crossterm::event::{self, KeyCode, KeyEventKind};
 
 use super::UIState;
 
-pub fn pull_key_event() -> io::Result<Option<KeyCode>> {
+fn pull_key_event() -> io::Result<Option<KeyCode>> {
     if event::poll(std::time::Duration::from_millis(16))? {
         if let event::Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
@@ -69,13 +69,15 @@ pub fn pull_event(
     ui_state: UIState,
     two_digit: bool,
     animation: bool,
-) -> io::Result<Option<Event>> {
+    has_message: bool,
+) -> io::Result<(Option<Event>, bool)> {
     let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
     let game_setup = matches!(ui_state, UIState::GameSetup(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
-    Ok(pull_key_event()?.and_then(|key| {
+    let key = pull_key_event()?;
+    let event = key.and_then(|key| {
         if ui_state == UIState::SaveScreen {
             let result = match key {
                 KeyCode::Char(c) => Some(Event::EnterChar(c)),
@@ -90,7 +92,9 @@ pub fn pull_event(
             }
         }
         match key {
-            KeyCode::Esc => Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel),
+            KeyCode::Esc => {
+                Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel && !has_message)
+            }
             KeyCode::Char('q') => Some(Event::Exit),
             KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
             KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
@@ -184,5 +188,16 @@ pub fn pull_event(
             KeyCode::PageUp => Some(Event::ZoomOut).filter(|_| !rules_summary),
             _ => None,
         }
-    }))
+    });
+    let removes_msg = key.map_or(false, |key| match key {
+        KeyCode::Esc | KeyCode::Char('q') => true,
+        KeyCode::Enter
+        | KeyCode::Char('c')
+        | KeyCode::Char('n')
+        | KeyCode::Char('k')
+        | KeyCode::Char('l') => top_level && event.is_some(),
+        KeyCode::Char(' ') => top_level && !rules_summary && event.is_some(),
+        _ => false,
+    });
+    Ok((event, removes_msg))
 }
