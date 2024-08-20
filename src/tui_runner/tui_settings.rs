@@ -330,6 +330,13 @@ pub struct Settings {
 }
 
 impl Settings {
+    pub fn default_settings() -> Self {
+        Self {
+            black_player_type: PlayerType::AI2,
+            ..Default::default()
+        }
+    }
+
     pub fn player_type(&self, player: Player) -> PlayerType {
         match player {
             Player::White => self.white_player_type,

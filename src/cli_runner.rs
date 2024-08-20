@@ -18,30 +18,24 @@ use crate::{
 pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
     let mut ais = [HiveAI::new(Difficulty::Easy), HiveAI::new(Difficulty::Easy)];
     for &player in [Player::White, Player::Black].iter() {
-        println!("Choose level for {} AI: [0] [1] [2] [3]", player);
+        println!("Choose level for {} AI: [0] [1] [2] [3] [4]", player);
         let level = loop {
             let input: Result<String, _> = try_read!();
-            match input {
-                Ok(val) => {
-                    let to_num = val.parse::<usize>();
-                    match to_num {
-                        Ok(index) => {
-                            if index < 4 {
-                                break index;
-                            }
-                        }
-                        Err(_) => {}
+            if let Ok(val) = input {
+                if let Ok(index) = val.parse::<usize>() {
+                    if index < 5 {
+                        break index;
                     }
                 }
-                Err(_) => {}
             }
-            println!("Please enter a number between 0 and 3.");
+            println!("Please enter a number between 0 and 4.");
         };
         let level = match level {
             0 => Difficulty::Easy,
             1 => Difficulty::QuiteEasy,
             2 => Difficulty::Medium,
             3 => Difficulty::Hard,
+            4 => Difficulty::VeryHard,
             _ => unreachable!(),
         };
         ais[usize::from(player)] = HiveAI::new(level);

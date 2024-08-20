@@ -1222,14 +1222,10 @@ fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &GameSetu
                             Line::raw(format!("{count}/{intial_count}")),
                         );
                     } else {
-                        let content;
-                        let x_shift;
-                        if zoom < 1.5 {
-                            x_shift = zoom * 4.0;
-                            content = format!("{count} / {intial_count}")
+                        let (x_shift, content) = if zoom < 1.5 {
+                            (zoom * 4.0, format!("{count} / {intial_count}"))
                         } else {
-                            x_shift = zoom + 1.0;
-                            content = format!("{count}/{intial_count}")
+                            (zoom + 1.0, format!("{count}/{intial_count}"))
                         };
                         ctx.print(x - x_shift, y_pos, Line::styled(content, Color::White));
                     }

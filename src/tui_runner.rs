@@ -32,8 +32,7 @@ use self::{
     tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
     tui_rendering::{find_losing_queen, translate_index},
     tui_settings::{
-        AutomaticCameraMoves, GameSetup, GraphicsState, PlayerType, SettingRenderer,
-        SettingSelection, Settings,
+        AutomaticCameraMoves, GameSetup, GraphicsState, SettingRenderer, SettingSelection, Settings,
     },
 };
 
@@ -550,23 +549,21 @@ pub fn run_in_tui_impl() -> io::Result<()> {
 
     let ai_endpoint = start_ai_worker_thread();
     let io_endpoint = start_io_worker_thread();
-
-    let mut io_manager = IOManager::new();
     let setting_renderer = SettingRenderer::build();
-    let mut settings = Settings::default();
+    let mut io_manager = IOManager::new();
+
+    // this is the ugly pile of mutable state, which is said to be the heart of any non-trivial UI...
+    let mut settings = Settings::default_settings();
     let mut game_setup = GameSetup::default();
-    settings.black_player_type = PlayerType::AI2;
     let mut engine = Engine::new_logging(2, game_setup.new_game_state());
-    let mut board_annotations = HashMap::new();
-    let mut piece_annotations = HashMap::new();
-    let mut graphics_state = GraphicsState::new();
     let mut ui_state = UIState::Toplevel;
+    let mut graphics_state = GraphicsState::new();
     let mut ai_state = AIState::new(ai_endpoint);
     let mut menu_selection = SettingSelection::General(2);
     let mut text_input = TextInput::new("".to_string());
+    let mut digits: Option<Vec<usize>> = None;
     let mut animation_state: AnimationState = AnimationState::default();
     let mut camera_move: Option<CameraMove> = None;
-    let mut digits: Option<Vec<usize>> = None;
 
     if let Some(io_manager) = io_manager.as_ref() {
         // attempt to load saved state
@@ -596,6 +593,8 @@ pub fn run_in_tui_impl() -> io::Result<()> {
         // TODO: what about errors?
     };
 
+    let mut board_annotations = HashMap::new();
+    let mut piece_annotations = HashMap::new();
     loop {
         let board = engine.data().board();
         let (boundaries_x, boundaries_y) = compute_view_boundaries(board);
@@ -844,7 +843,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                                 .save_files_list()
                                 .get(index - 2)
                                 .map(|(name, _)| name);
-                            name.map(|name| {
+                            if let Some(name) = name {
                                 let path = io_manager.save_file_path(name);
                                 match load_game(&path) {
                                     Ok(result) => {
@@ -853,7 +852,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
                                     }
                                     Err(e) => eprintln!("Error: could not load game: {e:?}"),
                                 }
-                            });
+                            }
                         }
                     } else if let UIState::SaveScreen = ui_state {
                         let name = text_input.get_text_or_default();
@@ -1238,15 +1237,17 @@ fn apply_computed_move(
     decision.select_option(path[0]);
 
     if let GameState::PendingDecision(next) = engine.pull() {
-        next.into_follow_up_decision().map(|d| match d.context() {
-            HiveContext::TargetField(targets) => {
-                handle_moved_piece(d, targets, path[1], position, settings, animation_state);
+        if let Some(d) = next.into_follow_up_decision() {
+            match d.context() {
+                HiveContext::TargetField(targets) => {
+                    handle_moved_piece(d, targets, path[1], position, settings, animation_state);
+                }
+                HiveContext::Piece(_) => {
+                    handle_placed_piece(d, path[1], position, settings, animation_state);
+                }
+                _ => unreachable!(""),
             }
-            HiveContext::Piece(_) => {
-                handle_placed_piece(d, path[1], position, settings, animation_state);
-            }
-            _ => unreachable!(""),
-        });
+        };
     }
 }
 
