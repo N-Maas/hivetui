@@ -8,7 +8,7 @@ use ratatui::prelude::{CrosstermBackend, Terminal};
 use std::{
     collections::HashMap,
     ffi::OsString,
-    fs::File,
+    fs::{self, File},
     io::{self, BufReader},
 };
 use std::{io::stdout, panic, process};
@@ -20,7 +20,7 @@ use tgp::{
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
-    io_manager::{load_game, IOManager},
+    io_manager::{load_game, IOManager, AUTOSAVE},
     panic_handling::{get_panic_data, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
@@ -324,6 +324,15 @@ pub fn run_in_tui() -> io::Result<()> {
         Err(_) | Ok(Err(FatalError::PanicOccured)) => {
             let (msg, trace) = get_panic_data();
             eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
+            if let Some(io_manager) = IOManager::new() {
+                let autosave = io_manager.autosave_path();
+                let save_path = io_manager.save_file_path(&OsString::from(AUTOSAVE));
+                if fs::rename(autosave, save_path).is_ok() {
+                    eprintln!("");
+                    eprintln!("Note: disabled automatic game loading since it might be corrupted");
+                    eprintln!("Note: instead available as saved game ({AUTOSAVE})",);
+                }
+            }
             process::exit(1);
         }
         Ok(_) => Ok(()),

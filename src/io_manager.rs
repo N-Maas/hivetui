@@ -16,9 +16,9 @@ use crate::{state::HiveGameState, tui_runner::tui_settings::GameSetup};
 
 pub const HEADER: &str = "hive-tui version 0.1.0";
 pub const APP_NAME: &str = "hivetui";
+pub const AUTOSAVE: &str = "AUTOSAVE";
 const EXTENSION: &str = "hivetui";
 const SAVE_DIR: &str = "saves";
-const AUTOSAVE: &str = "AUTOSAVE";
 const CONFIG: &str = "config.json";
 
 pub fn load_game(path: &Path) -> Result<(LoggingEngine<HiveGameState>, GameSetup), LoadGameError> {
