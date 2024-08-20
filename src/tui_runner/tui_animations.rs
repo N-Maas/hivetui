@@ -89,11 +89,11 @@ impl<F: Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> BaseEffect<
         })
     }
 
-    fn disabled(mut self) -> Self {
-        self.disabled = true;
-        self.total_steps = 0;
-        self
-    }
+    // fn disabled(mut self) -> Self {
+    //     self.disabled = true;
+    //     self.total_steps = 0;
+    //     self
+    // }
 }
 
 impl<F: Fn(&mut Context<'_>, AnimationContext<'_>, f64, (f64, f64))> AnimationEffect

@@ -1071,31 +1071,21 @@ fn update_game_state_and_fill_input_mapping(
                 return Ok(GameStateChange::None); // don't risk a weird decision state
             }
 
+            use UIState::*;
             match (*ui_state, follow_up) {
-                (
-                    UIState::Toplevel
-                    | UIState::RulesSummary(_)
-                    | UIState::GameSetup(_)
-                    | UIState::LoadScreen(_)
-                    | UIState::SaveScreen,
-                    Ok(d),
-                ) => {
+                (Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen, Ok(d)) => {
                     d.retract_all();
                     GameStateChange::None
                 }
                 (
-                    UIState::Toplevel
-                    | UIState::RulesSummary(_)
-                    | UIState::GameSetup(_)
-                    | UIState::LoadScreen(_)
-                    | UIState::SaveScreen,
+                    Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen,
                     Err(_),
                 ) => GameStateChange::None,
-                (UIState::ShowOptions(_, _), Ok(d)) => {
+                (ShowOptions(_, _), Ok(d)) => {
                     d.retract_all();
                     GameStateChange::None
                 }
-                (UIState::ShowOptions(is_skip, switch), Err(d)) => {
+                (ShowOptions(is_skip, switch), Err(d)) => {
                     match d.context() {
                         HiveContext::BaseField(board_indizes) => {
                             if let Some(index) = input.filter(|&index| index < d.option_count()) {
@@ -1105,9 +1095,9 @@ fn update_game_state_and_fill_input_mapping(
                                 let b_index = board_indizes[index];
                                 let board = d.data().board();
                                 if board[b_index].is_empty() {
-                                    *ui_state = UIState::PositionSelected(b_index);
+                                    *ui_state = PositionSelected(b_index);
                                 } else {
-                                    *ui_state = UIState::PieceSelected(b_index);
+                                    *ui_state = PieceSelected(b_index);
                                 }
                                 d.select_option(index);
                             } else {
@@ -1115,7 +1105,7 @@ fn update_game_state_and_fill_input_mapping(
                                 for (i, &board_index) in board_indizes.into_iter().enumerate() {
                                     board_annotations.insert(board_index, i);
                                 }
-                                *ui_state = UIState::ShowOptions(false, switch);
+                                *ui_state = ShowOptions(false, switch);
                             }
                             // selecting a subdecision is not an actual state change
                             GameStateChange::None
@@ -1125,14 +1115,14 @@ fn update_game_state_and_fill_input_mapping(
                                 d.select_option(0);
                                 GameStateChange::DecisionCompleted
                             } else {
-                                *ui_state = UIState::ShowOptions(true, switch);
+                                *ui_state = ShowOptions(true, switch);
                                 GameStateChange::None
                             }
                         }
                         _ => unreachable!("this can not be a follow-up decision"),
                     }
                 }
-                (UIState::PositionSelected(b_index), Ok(d)) => match d.context() {
+                (PositionSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::Piece(pieces) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             animation_state.stop();
@@ -1149,11 +1139,11 @@ fn update_game_state_and_fill_input_mapping(
                     HiveContext::TargetField(_) => panic!("this should never happen"),
                     _ => unreachable!("this must be a follow-up decision"),
                 },
-                (UIState::PositionSelected(_), Err(_)) => {
-                    *ui_state = UIState::ShowOptions(false, false);
+                (PositionSelected(_), Err(_)) => {
+                    *ui_state = ShowOptions(false, false);
                     GameStateChange::None
                 }
-                (UIState::PieceSelected(b_index), Ok(d)) => match d.context() {
+                (PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             animation_state.stop();
@@ -1177,28 +1167,28 @@ fn update_game_state_and_fill_input_mapping(
                     HiveContext::Piece(_) => panic!("this should never happen"),
                     _ => unreachable!("this must be a follow-up decision"),
                 },
-                (UIState::PieceSelected(_), Err(_)) => {
-                    *ui_state = UIState::ShowOptions(false, false);
+                (PieceSelected(_), Err(_)) => {
+                    *ui_state = ShowOptions(false, false);
                     GameStateChange::None
                 }
-                (UIState::GameFinished(_), follow_up) => {
-                    *ui_state = UIState::ShowOptions(false, false);
+                (GameFinished(_), follow_up) => {
+                    *ui_state = ShowOptions(false, false);
                     if let Ok(d) = follow_up {
                         d.retract_all();
                     }
                     GameStateChange::None
                 }
-                (UIState::PlaysAnimation(is_ai), Ok(d)) => {
+                (PlaysAnimation(is_ai), Ok(d)) => {
                     assert!(is_ai, "selection during animation should be impossible");
                     d.retract_all();
                     GameStateChange::None
                 }
-                (UIState::PlaysAnimation(_), Err(_)) => GameStateChange::None,
-                (UIState::ShowAIMoves, Ok(d)) => {
+                (PlaysAnimation(_), Err(_)) => GameStateChange::None,
+                (ShowAIMoves, Ok(d)) => {
                     d.retract_all();
                     GameStateChange::None
                 }
-                (UIState::ShowAIMoves, Err(_)) => {
+                (ShowAIMoves, Err(_)) => {
                     if let Some(index) = input {
                         let choice = ai_state
                             .actual_result()
