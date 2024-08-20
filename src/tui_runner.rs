@@ -141,7 +141,7 @@ pub fn run_in_tui() -> io::Result<()> {
                 let autosave = io_manager.autosave_path();
                 let save_path = io_manager.save_file_path(&OsString::from(AUTOSAVE));
                 if fs::rename(autosave, save_path).is_ok() {
-                    eprintln!("");
+                    eprintln!();
                     eprintln!("Note: disabled automatic game loading since it might be corrupted");
                     eprintln!("Note: instead available as saved game ({AUTOSAVE})",);
                 }
