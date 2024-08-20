@@ -1,11 +1,11 @@
 use clap::Parser;
 use pieces::PieceType;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, io};
 
 mod ai;
 mod cli_runner;
 mod display;
-mod io;
+mod io_manager;
 mod panic_handling;
 mod pieces;
 mod state;
@@ -19,6 +19,17 @@ struct Args {
     /// Run with textual CLI output instead of TUI
     #[arg(short, long)]
     cli: bool,
+}
+
+enum FatalError {
+    IOError(io::Error),
+    PanicOccured,
+}
+
+impl From<io::Error> for FatalError {
+    fn from(value: io::Error) -> Self {
+        FatalError::IOError(value)
+    }
 }
 
 fn main() -> std::io::Result<()> {

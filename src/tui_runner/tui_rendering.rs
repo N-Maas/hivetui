@@ -1,14 +1,15 @@
 use super::{
+    animation_and_ai_state::{AIState, AnimationState},
     text_input::TextInput,
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
         BordersStyle, ColorScheme, GameSetup, GraphicsState, ScreenSplitting, SettingRenderer,
         SettingSelection, Settings, WhiteTilesStyle,
     },
-    AIResult, AIState, AnimationState, UIState,
+    AIResult, UIState,
 };
 use crate::{
-    io::IOManager,
+    io_manager::IOManager,
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
     tui_graphics::{self, piece_color},

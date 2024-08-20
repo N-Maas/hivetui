@@ -1,3 +1,4 @@
+use animation_and_ai_state::{AIState, AnimationState, CameraMove};
 use crossterm::{
     event::{self, KeyCode, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -19,22 +20,20 @@ use tgp::{
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
-    io::{load_game, IOManager},
-    panic_handling::{get_panic_data, report_panic, setup_panic_reporting},
+    io_manager::{load_game, IOManager},
+    panic_handling::{get_panic_data, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
-    tui_runner::{
-        tui_animations::loader, tui_rendering::postprocess_ai_suggestions, tui_settings::AIMoves,
-    },
+    tui_runner::tui_rendering::postprocess_ai_suggestions,
     worker::{
-        ai_worker::{start_ai_worker_thread, AIEndpoint, AIResult, AIStart},
+        ai_worker::{start_ai_worker_thread, AIResult},
         io_worker::{start_io_worker_thread, WriteTask},
-        MessageForMaster,
     },
+    FatalError,
 };
 
 use self::{
-    tui_animations::{build_blink_animation, build_complete_piece_move_animation, Animation},
+    tui_animations::{build_blink_animation, build_complete_piece_move_animation},
     tui_rendering::{find_losing_queen, translate_index},
     tui_settings::{
         AutomaticCameraMoves, GameSetup, GraphicsState, SettingRenderer, SettingSelection, Settings,
@@ -42,6 +41,7 @@ use self::{
 };
 
 // mod dynamic_layout;
+mod animation_and_ai_state;
 mod text_input;
 mod tui_animations;
 mod tui_rendering;
@@ -130,229 +130,6 @@ impl UIState {
     }
 }
 
-struct CameraMove {
-    current_step: usize,
-    max_steps: usize,
-    from: (f64, f64),
-    to: (f64, f64),
-}
-
-impl CameraMove {
-    fn build(steps: usize, from: (f64, f64), to: (f64, f64)) -> Self {
-        Self {
-            current_step: 0,
-            max_steps: steps,
-            from,
-            to,
-        }
-    }
-
-    fn make_step(&mut self) -> Option<(f64, f64)> {
-        if self.current_step >= self.max_steps {
-            return None;
-        }
-
-        let pos_from_frac = |fraction| {
-            let progress = 2.0
-                * if fraction <= 0.5 {
-                    fraction * fraction
-                } else {
-                    0.5 - (1.0 - fraction) * (1.0 - fraction)
-                };
-            (
-                (1.0 - progress) * self.from.0 + progress * self.to.0,
-                (1.0 - progress) * self.from.1 + progress * self.to.1,
-            )
-        };
-
-        let frac_old = self.current_step as f64 / self.max_steps as f64;
-        self.current_step += 1;
-        let frac = self.current_step as f64 / self.max_steps as f64;
-        let (x_old, y_old) = pos_from_frac(frac_old);
-        let (x_new, y_new) = pos_from_frac(frac);
-        Some((x_new - x_old, y_new - y_old))
-    }
-}
-
-#[derive(Default)]
-struct AnimationState {
-    animation: Option<Animation>,
-    count: usize,
-    center: Option<(f64, f64)>,
-}
-
-struct AnimationStateSetter<'a> {
-    animation: &'a mut Option<Animation>,
-    count: &'a mut usize,
-    center: &'a mut Option<(f64, f64)>,
-}
-
-impl AnimationStateSetter<'_> {
-    fn set_animation(self, a: Animation, center: Option<(f64, f64)>) {
-        *self.animation = Some(a);
-        *self.count += 1;
-        *self.center = center;
-    }
-}
-
-impl AnimationState {
-    fn animation(&self) -> Option<&Animation> {
-        self.animation.as_ref()
-    }
-
-    fn runs(&self) -> bool {
-        self.animation.is_some()
-    }
-
-    fn next_step(&mut self) {
-        if let Some(animation) = self.animation.as_mut() {
-            if animation.is_finished() {
-                self.stop();
-            } else {
-                animation.next_step();
-            }
-        }
-    }
-
-    fn try_set(&mut self) -> Option<AnimationStateSetter<'_>> {
-        match self.animation {
-            Some(_) => None,
-            None => Some(AnimationStateSetter {
-                animation: &mut self.animation,
-                count: &mut self.count,
-                center: &mut self.center,
-            }),
-        }
-    }
-
-    fn stop(&mut self) {
-        self.animation = None;
-        self.center = None;
-    }
-
-    fn reset(&mut self) {
-        self.stop();
-        self.count = 0;
-    }
-
-    fn reset_count(&mut self) {
-        self.count = 0;
-    }
-}
-
-struct AIState {
-    endpoint: AIEndpoint,
-    current_player: Player,
-    is_started: bool,
-    // TODO: update in case of menu changes?!
-    should_use_ai: bool,
-    should_show_animation: bool,
-    result: Option<AIResult>,
-    animation_progress: usize,
-}
-
-impl AIState {
-    const AI_DELAY: usize = 40;
-
-    fn new(endpoint: AIEndpoint) -> Self {
-        Self {
-            endpoint,
-            current_player: Player::White,
-            is_started: false,
-            should_use_ai: false,
-            should_show_animation: false,
-            result: None,
-            animation_progress: 0,
-        }
-    }
-
-    fn reset(&mut self) {
-        self.endpoint.cancel();
-        self.is_started = false;
-        self.result = None;
-        self.animation_progress = 0;
-    }
-
-    fn update(
-        &mut self,
-        state: &HiveGameState,
-        settings: &Settings,
-        player: Player,
-        animation: &mut AnimationState,
-    ) -> Result<(), FatalError> {
-        // TODO: interaction with undo
-        assert!(self.current_player == player || !self.is_started);
-        if !self.is_started {
-            assert!(self.result.is_none() && self.animation_progress == 0);
-            let level = if settings.is_ai(player) {
-                settings.player_type(player).into_ai_level()
-            } else {
-                settings.ai_assistant
-            };
-            self.endpoint
-                .send(AIStart(level.as_difficulty(), Box::new(state.clone())));
-            self.current_player = player;
-            self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::Automatic;
-            self.should_show_animation = settings.is_ai(player);
-            self.is_started = true;
-        }
-
-        {
-            match self.endpoint.get_msg() {
-                Some(MessageForMaster::Msg(mut result)) => {
-                    postprocess_ai_suggestions(result.as_mut(), settings);
-                    self.result = Some(*result);
-                }
-                Some(MessageForMaster::Killed(msg, trace)) => {
-                    report_panic(Some(msg), trace);
-                    return Err(FatalError::PanicOccured);
-                }
-                None => (),
-            }
-        }
-        if self.should_show_animation {
-            if self.animation_progress > 0 || !animation.runs() {
-                self.animation_progress += 1;
-            }
-            if self.animation_progress < Self::AI_DELAY || self.result.is_none() {
-                if let Some(s) = animation.try_set() {
-                    s.set_animation(Animation::new(loader(settings, 30)), None)
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn use_ai(&mut self, settings: &Settings) {
-        if settings.is_ai(self.current_player) {
-            self.should_use_ai = true;
-            self.should_show_animation = true;
-        }
-    }
-
-    fn dont_use_ai(&mut self) {
-        self.should_use_ai = false;
-        self.should_show_animation = false;
-        self.animation_progress = 0;
-    }
-
-    fn result(&self) -> Option<&AIResult> {
-        if self.animation_progress >= Self::AI_DELAY {
-            self.result.as_ref()
-        } else {
-            None
-        }
-    }
-
-    fn actual_result(&self) -> Option<&AIResult> {
-        self.result.as_ref()
-    }
-
-    fn animation_has_started(&self) -> bool {
-        self.animation_progress > 0
-    }
-}
-
 fn pull_key_event() -> io::Result<Option<KeyCode>> {
     if event::poll(std::time::Duration::from_millis(16))? {
         if let event::Event::Key(key) = event::read()? {
@@ -366,7 +143,6 @@ fn pull_key_event() -> io::Result<Option<KeyCode>> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Event {
-    // TODO: two-digit numbers!!
     Selection(usize),
     MenuOption(usize),
     SelectMenuOption,
@@ -533,17 +309,6 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     }))
 }
 
-enum FatalError {
-    IOError(io::Error),
-    PanicOccured,
-}
-
-impl From<io::Error> for FatalError {
-    fn from(value: io::Error) -> Self {
-        FatalError::IOError(value)
-    }
-}
-
 pub fn run_in_tui() -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -586,7 +351,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
     let mut menu_selection = SettingSelection::General(2);
     let mut text_input = TextInput::new("".to_string());
     let mut digits: Option<Vec<usize>> = None;
-    let mut animation_state: AnimationState = AnimationState::default();
+    let mut animation_state = AnimationState::default();
     let mut camera_move: Option<CameraMove> = None;
 
     if let Some(io_manager) = io_manager.as_ref() {
@@ -983,7 +748,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         {
             continue;
         }
-        if let Some((x_to, y_to)) = animation_state.center {
+        if let Some((x_to, y_to)) = animation_state.center() {
             let x_range = (x_bounds[1] - x_bounds[0]).abs();
             let y_range = (y_bounds[1] - y_bounds[0]).abs();
             let x_mid = graphics_state.center_x;
@@ -1048,9 +813,10 @@ fn update_game_state_and_fill_input_mapping(
                 settings,
                 Player::from(decision.player()),
                 animation_state,
+                postprocess_ai_suggestions,
             )?;
             let follow_up = decision.try_into_follow_up_decision();
-            if ai_state.should_use_ai && ui_state.show_game() {
+            if ai_state.should_use_ai() && ui_state.show_game() {
                 let decision = match follow_up {
                     Ok(d) => {
                         d.retract_all();
