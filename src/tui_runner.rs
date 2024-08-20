@@ -1,4 +1,5 @@
 use animation_and_ai_state::{AIState, AnimationState, CameraMove};
+use chrono::Local;
 use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
@@ -20,7 +21,7 @@ use tgp::{
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
-    io_manager::{load_game, IOManager, AUTOSAVE},
+    io_manager::{load_game, IOManager, APP_NAME, AUTOSAVE},
     panic_handling::{get_panic_data, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
@@ -317,8 +318,10 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                         match io_manager.recompute_save_files_list() {
                             Ok(_) => {
                                 ui_state = UIState::SaveScreen;
-                                // TODO: proper name (e.g. using a timestamp)
-                                text_input = TextInput::new("My Save Game".to_string());
+                                // suggest hivetui <timestamp> as default name
+                                let name =
+                                    format!("{APP_NAME} {}", Local::now().format("%Y-%m-%d %H:%M"));
+                                text_input = TextInput::new(name);
                             }
                             // TODO: proper error handling
                             Err(e) => eprintln!("Error: could not load save files: {e}"),

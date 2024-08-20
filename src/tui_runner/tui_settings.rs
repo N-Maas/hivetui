@@ -529,7 +529,13 @@ pub trait MenuSetting {
 
     fn get_line(&self, state: &mut Settings, highlight: bool) -> Line<'static>;
 
-    fn get_spans(&self, state: &mut Settings, out: &mut Vec<Span<'static>>, highlight: bool, at: usize);
+    fn get_spans(
+        &self,
+        state: &mut Settings,
+        out: &mut Vec<Span<'static>>,
+        highlight: bool,
+        at: usize,
+    );
 }
 
 pub fn create_menu_setting<
@@ -591,11 +597,20 @@ where
         Line::from(spans)
     }
 
-    fn get_spans(&self, state: &mut Settings, spans: &mut Vec<Span<'static>>, highlight: bool, at: usize) {
+    fn get_spans(
+        &self,
+        state: &mut Settings,
+        spans: &mut Vec<Span<'static>>,
+        highlight: bool,
+        at: usize,
+    ) {
         let current_val = self.val(state);
         let str = self.texts[at];
         if usize::from(current_val) == at && highlight {
-            spans.push(Span::styled(format!("<{str}>"), state.color_scheme.primary()));
+            spans.push(Span::styled(
+                format!("<{str}>"),
+                state.color_scheme.primary(),
+            ));
         } else if usize::from(current_val) == at {
             spans.push(Span::styled("<", ColorScheme::TEXT_GRAY));
             spans.push(Span::raw(str));
