@@ -20,7 +20,7 @@ use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
     io::{load_game, IOManager},
-    panic_handling::{get_panic_data, setup_panic_reporting},
+    panic_handling::{get_panic_data, report_panic, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_runner::{
@@ -279,7 +279,7 @@ impl AIState {
         settings: &Settings,
         player: Player,
         animation: &mut AnimationState,
-    ) {
+    ) -> Result<(), TUIError> {
         // TODO: interaction with undo
         assert!(self.current_player == player || !self.is_started);
         if !self.is_started {
@@ -304,11 +304,8 @@ impl AIState {
                     self.result = Some(*result);
                 }
                 Some(MessageForMaster::Killed(msg, trace)) => {
-                    // try to print the ai error
-                    stdout().execute(LeaveAlternateScreen).unwrap();
-                    disable_raw_mode().unwrap();
-                    eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
-                    process::exit(1);
+                    report_panic(Some(msg), trace);
+                    return Err(TUIError::PanicOccured);
                 }
                 None => (),
             }
@@ -323,6 +320,7 @@ impl AIState {
                 }
             }
         }
+        Ok(())
     }
 
     fn use_ai(&mut self, settings: &Settings) {
@@ -535,6 +533,17 @@ fn pull_event(ui_state: UIState, two_digit: bool, animation: bool) -> io::Result
     }))
 }
 
+enum TUIError {
+    IOError(io::Error),
+    PanicOccured,
+}
+
+impl From<io::Error> for TUIError {
+    fn from(value: io::Error) -> Self {
+        TUIError::IOError(value)
+    }
+}
+
 pub fn run_in_tui() -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -546,17 +555,18 @@ pub fn run_in_tui() -> io::Result<()> {
     disable_raw_mode()?;
 
     match result {
-        Ok(val) => val, // just propagate I/O error
-        Err(_) => {
+        Ok(Err(TUIError::IOError(e))) => Err(e), // propagate I/O error
+        Err(_) | Ok(Err(TUIError::PanicOccured)) => {
             let (msg, trace) = get_panic_data();
             eprintln!("Oh no! A panic (i.e. internal error) occured:\n{msg}\n{trace}");
             process::exit(1);
         }
+        Ok(_) => Ok(()),
     }
 }
 
 /// this implements the main event loop
-pub fn run_in_tui_impl() -> io::Result<()> {
+fn run_in_tui_impl() -> Result<(), TUIError> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.hide_cursor()?;
     terminal.clear()?;
@@ -909,7 +919,7 @@ pub fn run_in_tui_impl() -> io::Result<()> {
             &settings,
             &mut animation_state,
             input,
-        );
+        )?;
         if state_change == GameStateChange::DecisionCompleted {
             do_autosave(&io_manager, &game_setup, &engine);
         }
@@ -1023,8 +1033,8 @@ fn update_game_state_and_fill_input_mapping(
     settings: &Settings,
     animation_state: &mut AnimationState,
     input: Option<usize>,
-) -> GameStateChange {
-    match engine.pull() {
+) -> Result<GameStateChange, TUIError> {
+    Ok(match engine.pull() {
         GameState::PendingEffect(pe) => {
             ai_state.reset();
             animation_state.reset_count();
@@ -1038,13 +1048,13 @@ fn update_game_state_and_fill_input_mapping(
                 settings,
                 Player::from(decision.player()),
                 animation_state,
-            );
+            )?;
             let follow_up = decision.try_into_follow_up_decision();
             if ai_state.should_use_ai && ui_state.show_game() {
                 let decision = match follow_up {
                     Ok(d) => {
                         d.retract_all();
-                        return GameStateChange::None;
+                        return Ok(GameStateChange::None);
                     }
                     Err(d) => d,
                 };
@@ -1054,11 +1064,11 @@ fn update_game_state_and_fill_input_mapping(
                     assert!(result.player == Player::from(decision.player()));
                     let best = &result.best_move;
                     apply_computed_move(engine, best, settings, animation_state);
-                    return GameStateChange::DecisionCompleted;
+                    return Ok(GameStateChange::DecisionCompleted);
                 } else {
                     *ui_state = UIState::PlaysAnimation(ai_state.animation_has_started());
                 }
-                return GameStateChange::None; // don't risk a weird decision state
+                return Ok(GameStateChange::None); // don't risk a weird decision state
             }
 
             match (*ui_state, follow_up) {
@@ -1195,7 +1205,7 @@ fn update_game_state_and_fill_input_mapping(
                             .and_then(|result| result.all_ratings.get(index));
                         if let Some((_, path, _)) = choice {
                             apply_computed_move(engine, path, settings, animation_state);
-                            return GameStateChange::DecisionCompleted;
+                            return Ok(GameStateChange::DecisionCompleted);
                         }
                     }
                     GameStateChange::None
@@ -1227,7 +1237,7 @@ fn update_game_state_and_fill_input_mapping(
             }
             GameStateChange::None
         }
-    }
+    })
 }
 
 fn apply_computed_move(
