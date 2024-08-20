@@ -529,7 +529,7 @@ pub trait MenuSetting {
 
     fn get_line(&self, state: &mut Settings, highlight: bool) -> Line<'static>;
 
-    fn get_entry(&self, state: &mut Settings, highlight: bool, at: usize) -> Span<'static>;
+    fn get_spans(&self, state: &mut Settings, out: &mut Vec<Span<'static>>, highlight: bool, at: usize);
 }
 
 pub fn create_menu_setting<
@@ -585,19 +585,23 @@ where
 
     fn get_line(&self, state: &mut Settings, highlight: bool) -> Line<'static> {
         let mut spans = vec![Span::raw(self.prefix.clone())];
-        spans.extend((0..self.texts.len()).map(|i| self.get_entry(state, highlight, i)));
+        for i in 0..self.texts.len() {
+            self.get_spans(state, &mut spans, highlight, i);
+        }
         Line::from(spans)
     }
 
-    fn get_entry(&self, state: &mut Settings, highlight: bool, at: usize) -> Span<'static> {
+    fn get_spans(&self, state: &mut Settings, spans: &mut Vec<Span<'static>>, highlight: bool, at: usize) {
         let current_val = self.val(state);
         let str = self.texts[at];
         if usize::from(current_val) == at && highlight {
-            Span::styled(format!("<{str}>"), state.color_scheme.primary())
+            spans.push(Span::styled(format!("<{str}>"), state.color_scheme.primary()));
         } else if usize::from(current_val) == at {
-            Span::raw(format!("<{str}>"))
+            spans.push(Span::styled("<", ColorScheme::TEXT_GRAY));
+            spans.push(Span::raw(str));
+            spans.push(Span::styled(">", ColorScheme::TEXT_GRAY));
         } else {
-            Span::raw(format!(" {str} "))
+            spans.push(Span::raw(format!(" {str} ")));
         }
     }
 }
@@ -799,10 +803,10 @@ impl SettingRenderer {
             spans = Vec::new();
             if is_selected {
                 spans.push(Span::raw("   "));
-                spans.push(option.get_entry(settings, true, 0));
+                option.get_spans(settings, &mut spans, true, 0);
                 spans.push(Span::raw(" or AI: "));
                 for level in 1..PLAYER_TYPES.len() {
-                    spans.push(option.get_entry(settings, true, level));
+                    option.get_spans(settings, &mut spans, true, level);
                 }
             }
             lines.push(Line::from(spans));

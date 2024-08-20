@@ -95,4 +95,15 @@ impl IOManager {
     pub fn save_files_list(&self) -> &[(OsString, SystemTime)] {
         &self.cached_save_files
     }
+
+    pub fn load_from_index(
+        &self,
+        index: usize,
+    ) -> Option<Result<(LoggingEngine<HiveGameState>, GameSetup), LoadGameError>> {
+        let entry = self.save_files_list().get(index);
+        entry.map(|(name, _)| {
+            let path = self.save_file_path(name);
+            load_game(&path)
+        })
+    }
 }

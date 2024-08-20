@@ -448,14 +448,11 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 Event::SelectMenuOption => {
                     let io_manager = io_manager.as_ref().unwrap();
                     if let UIState::LoadScreen(index) = ui_state {
+                        // load the selected game
                         if index >= 2 {
-                            let name = io_manager
-                                .save_files_list()
-                                .get(index - 2)
-                                .map(|(name, _)| name);
-                            if let Some(name) = name {
-                                let path = io_manager.save_file_path(name);
-                                match load_game(&path) {
+                            let result = io_manager.load_from_index(index - 2);
+                            if let Some(result) = result {
+                                match result {
                                     Ok(result) => {
                                         (engine, game_setup) = result;
                                         start_game(&game_setup, &engine, &mut ui_state);
@@ -465,6 +462,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                             }
                         }
                     } else if let UIState::SaveScreen = ui_state {
+                        // save the current game
                         let name = text_input.get_text_or_default();
                         let path = io_manager.save_file_path(&OsString::from(name));
                         io_endpoint.send(WriteTask::save_game(
