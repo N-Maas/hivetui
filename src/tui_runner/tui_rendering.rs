@@ -294,7 +294,13 @@ pub fn render(
     let mut output_bound = ([0.0, 0.0], [0.0, 0.0]);
     terminal.draw(|frame| {
         let area = frame.size();
-        let menu_min_width = 57;
+        let menu_desired_width = 57;
+        let menu_min_width = 45;
+        let action_min_width = 24;
+        let menu_width = u16::min(
+            menu_desired_width,
+            u16::max(menu_min_width, area.width.saturating_sub(action_min_width)),
+        );
         let menu_contraint = match state.settings.splitting {
             ScreenSplitting::Auto => {
                 let cutoff_low = 125;
@@ -303,7 +309,7 @@ pub fn render(
                 let added = max_bonus
                     * u16::min(area.width, cutoff_high).saturating_sub(cutoff_low)
                     / (cutoff_high - cutoff_low);
-                Constraint::Max(57 + added)
+                Constraint::Max(menu_width + added)
             }
             ScreenSplitting::FarLeft => Constraint::Percentage(50),
             ScreenSplitting::Left => Constraint::Percentage(42),
@@ -314,13 +320,13 @@ pub fn render(
         let splitted_layout = Layout::horizontal(vec![
             Constraint::Fill(1),
             Constraint::Max(
-                if menu_min_width + 35 <= area.width
+                if menu_width + 35 <= area.width
                     || state.settings.splitting != ScreenSplitting::Auto
                 {
                     35
                 } else {
                     // ensure well-behavedness for very small screen
-                    area.width.saturating_sub(menu_min_width)
+                    area.width.saturating_sub(menu_width)
                 },
             ),
             menu_contraint,
