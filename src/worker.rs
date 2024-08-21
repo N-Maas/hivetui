@@ -15,13 +15,13 @@ enum MessageForWorker<T> {
 }
 
 #[derive(Debug)]
-pub enum MessageForMaster<T> {
+pub enum WorkerResult<T> {
     Msg(T),
     Killed(String, String),
 }
 
 struct Exchange<M, W> {
-    for_master: Option<MessageForMaster<M>>,
+    for_master: Option<WorkerResult<M>>,
     for_worker: Option<MessageForWorker<W>>,
 }
 
@@ -37,7 +37,7 @@ impl<M, W> Default for Exchange<M, W> {
 pub struct MasterEndpoint<M, W>(Arc<Mutex<Exchange<M, W>>>);
 
 impl<M, W> MasterEndpoint<M, W> {
-    pub fn get_msg(&self) -> Option<MessageForMaster<M>> {
+    pub fn get_msg(&self) -> Option<WorkerResult<M>> {
         self.0.lock().unwrap().for_master.take()
     }
 
@@ -69,12 +69,12 @@ impl<M, W> WorkerEndpoint<M, W> {
         let mut exchange = self.0.lock().unwrap();
         let has_msg = exchange.for_worker.is_some();
         if !has_msg {
-            exchange.for_master = Some(MessageForMaster::Msg(message));
+            exchange.for_master = Some(WorkerResult::Msg(message));
         }
     }
 
     fn killed(&self, msg: String, trace: String) {
-        self.0.lock().unwrap().for_master = Some(MessageForMaster::Killed(msg, trace));
+        self.0.lock().unwrap().for_master = Some(WorkerResult::Killed(msg, trace));
     }
 }
 

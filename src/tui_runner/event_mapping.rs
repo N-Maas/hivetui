@@ -78,7 +78,7 @@ pub fn pull_event(
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
     let key = pull_key_event()?;
     let event = key.and_then(|key| {
-        if ui_state == UIState::SaveScreen {
+        if matches!(ui_state, UIState::SaveScreen(_)) {
             let result = match key {
                 KeyCode::Char(c) => Some(Event::EnterChar(c)),
                 KeyCode::Left => Some(Event::CursorLeft),
@@ -132,7 +132,7 @@ pub fn pull_event(
                     Some(Event::ContinueGame)
                 } else if matches!(ui_state, UIState::GameSetup(_)) {
                     Some(Event::StartGame)
-                } else if matches!(ui_state, UIState::LoadScreen(_) | UIState::SaveScreen) {
+                } else if matches!(ui_state, UIState::LoadScreen(_) | UIState::SaveScreen(_)) {
                     Some(Event::SelectMenuOption)
                 } else if matches!(ui_state, UIState::RulesSummary(_)) && key == KeyCode::Enter {
                     Some(Event::Exit)

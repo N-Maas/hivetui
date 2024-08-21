@@ -22,14 +22,14 @@ use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 
 use crate::{
     io_manager::{load_game, IOManager, APP_NAME, AUTOSAVE},
-    panic_handling::{get_panic_data, setup_panic_reporting},
+    panic_handling::{get_panic_data, report_panic, setup_panic_reporting},
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContext, HiveGameState, HiveResult},
     tui_runner::tui_rendering::postprocess_ai_suggestions,
     worker::{
         ai_worker::{start_ai_worker_thread, AIResult},
         io_worker::{start_io_worker_thread, WriteTask},
-        MessageForMaster,
+        WorkerResult,
     },
     FatalError,
 };
@@ -60,7 +60,8 @@ enum UIState {
     GameSetup(usize),
     /// the currently selected save
     LoadScreen(usize),
-    SaveScreen,
+    /// true if previous screen was toplevel
+    SaveScreen(bool),
     /// 1. true if the current turn must be skipped
     /// 2. true if pieces are switched
     ShowOptions(bool, bool),
@@ -75,26 +76,17 @@ enum UIState {
 }
 
 impl UIState {
-    fn top_level(&self) -> bool {
+    fn top_level(self) -> bool {
         use UIState::*;
         match self {
-            Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen => true,
+            Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen(_) => true,
             ShowOptions(_, _) | PositionSelected(_) | PieceSelected(_) => false,
             GameFinished(_) | PlaysAnimation(_) | ShowAIMoves => false,
         }
     }
 
-    fn show_game(&self) -> bool {
-        use UIState::*;
-        match self {
-            Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen => false,
-            ShowOptions(_, _)
-            | PositionSelected(_)
-            | PieceSelected(_)
-            | GameFinished(_)
-            | PlaysAnimation(_) => true,
-            ShowAIMoves => false,
-        }
+    fn show_game(self) -> bool {
+        !self.top_level() && self != UIState::ShowAIMoves
     }
 
     fn alternative_index(&mut self) -> Option<&mut usize> {
@@ -284,10 +276,20 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         )?;
         if removes_msg {
             messages.pop();
-        } else if let Some(MessageForMaster::Msg(error)) = io_endpoint.get_msg() {
-            messages.push(Message::error(format!("Could not save game: {error}")));
+        } else if let Some(msg) = io_endpoint.get_msg() {
+            match msg {
+                WorkerResult::Msg(Ok(())) => {
+                    messages.push(Message::success("Saving game completed."))
+                }
+                WorkerResult::Msg(Err(e)) => {
+                    messages.push(Message::error(format!("Could not save game: {e}")))
+                }
+                WorkerResult::Killed(msg, trace) => {
+                    report_panic(Some(msg), trace);
+                    return Err(FatalError::PanicOccured);
+                }
+            }
         }
-        // TODO: success messages
         if let Some(e) = event {
             // two digit handling happens first
             match e {
@@ -322,7 +324,13 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::GameSetup(_) => ui_state = UIState::Toplevel,
                     UIState::LoadScreen(_) => ui_state = UIState::Toplevel,
-                    UIState::SaveScreen => ui_state = UIState::Toplevel,
+                    UIState::SaveScreen(top_level) => {
+                        if top_level {
+                            ui_state = UIState::Toplevel;
+                        } else {
+                            ui_state = UIState::ShowOptions(false, false);
+                        }
+                    }
                     UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
@@ -379,7 +387,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     if let Some(io_manager) = io_manager.as_mut() {
                         match io_manager.recompute_save_files_list() {
                             Ok(_) => {
-                                ui_state = UIState::SaveScreen;
+                                ui_state = UIState::SaveScreen(ui_state.top_level());
                                 // suggest hivetui <timestamp> as default name
                                 let name =
                                     format!("{APP_NAME} {}", Local::now().format("%Y-%m-%d %H:%M"));
@@ -411,7 +419,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     }
                 }
                 Event::Help => match ui_state {
-                    UIState::Toplevel | UIState::LoadScreen(_) | UIState::SaveScreen => {
+                    UIState::Toplevel | UIState::LoadScreen(_) => {
                         ui_state = UIState::RulesSummary(0)
                     }
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
@@ -422,7 +430,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     UIState::ShowOptions(true, _)
                     | UIState::GameSetup(_)
                     | UIState::PlaysAnimation(_)
-                    | UIState::GameFinished(_) => (),
+                    | UIState::GameFinished(_)
+                    | UIState::SaveScreen(_) => (),
                 },
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
@@ -527,7 +536,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                                 }
                             }
                         }
-                    } else if let UIState::SaveScreen = ui_state {
+                    } else if let UIState::SaveScreen(toplevel) = ui_state {
                         // save the current game
                         let name = text_input.get_text_or_default();
                         let path = io_manager.save_file_path(&OsString::from(name));
@@ -537,8 +546,11 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                             engine.serialized_log(),
                             true,
                         ));
-                        // TODO what about errors?
-                        ui_state = UIState::Toplevel;
+                        if toplevel {
+                            ui_state = UIState::Toplevel;
+                        } else {
+                            ui_state = UIState::ShowOptions(false, false);
+                        }
                     }
                 }
                 Event::EnterChar(c) => text_input.insert_char(c),
@@ -726,12 +738,15 @@ fn update_game_state_and_fill_input_mapping(
 
             use UIState::*;
             match (*ui_state, follow_up) {
-                (Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen, Ok(d)) => {
+                (
+                    Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen(_),
+                    Ok(d),
+                ) => {
                     d.retract_all();
                     GameStateChange::None
                 }
                 (
-                    Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen,
+                    Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen(_),
                     Err(_),
                 ) => GameStateChange::None,
                 (ShowOptions(_, _), Ok(d)) => {

@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use std::{thread, time::Duration};
 use tgp::engine::io::{save_game_to_file, SerializedLog};
 
-use super::{start_worker_thread, MasterEndpoint};
+use super::{start_worker_thread, MasterEndpoint, WorkerEndpoint};
 
 #[derive(Debug)]
 pub struct WriteTask {
     path: PathBuf,
     content: WriteContent,
-    should_report_err: bool,
+    report_result: bool,
 }
 
 impl WriteTask {
@@ -20,19 +20,19 @@ impl WriteTask {
         path: PathBuf,
         setup: GameSetup,
         log: SerializedLog,
-        should_report_err: bool,
+        report_result: bool,
     ) -> Self {
         Self {
             path,
             content: WriteContent::Game(setup, log),
-            should_report_err,
+            report_result,
         }
     }
-    pub fn save_settings(path: PathBuf, settings: Settings, should_report_err: bool) -> Self {
+    pub fn save_settings(path: PathBuf, settings: Settings, report_result: bool) -> Self {
         Self {
             path,
             content: WriteContent::Settings(settings),
-            should_report_err,
+            report_result,
         }
     }
 }
@@ -43,31 +43,23 @@ enum WriteContent {
     Settings(Settings),
 }
 
-pub type IOEndpoint = MasterEndpoint<io::Error, WriteTask>;
+pub type IOEndpoint = MasterEndpoint<Result<(), io::Error>, WriteTask>;
 
 pub fn start_io_worker_thread() -> IOEndpoint {
-    start_worker_thread(|endpoint| loop {
+    start_worker_thread(|endpoint: &WorkerEndpoint<_, WriteTask>| loop {
         thread::sleep(Duration::from_millis(10));
-        let result = endpoint.get_new_msg().map(
-            |WriteTask {
-                 path,
-                 content,
-                 should_report_err,
-             }| {
-                match content {
-                    WriteContent::Game(setup, log) => (
-                        save_game_to_file(&path, HEADER, setup.into_key_val(), 2, log),
-                        should_report_err,
-                    ),
-                    WriteContent::Settings(settings) => (
-                        File::create(path).and_then(|mut f| write!(f, "{}", settings.to_json())),
-                        should_report_err,
-                    ),
+        if let Some(task) = endpoint.get_new_msg() {
+            let result = match task.content {
+                WriteContent::Game(setup, log) => {
+                    save_game_to_file(&task.path, HEADER, setup.into_key_val(), 2, log)
                 }
-            },
-        );
-        if let Some((Err(e), true)) = result {
-            endpoint.send_if_no_msg(e);
+                WriteContent::Settings(settings) => {
+                    File::create(task.path).and_then(|mut f| write!(f, "{}", settings.to_json()))
+                }
+            };
+            if task.report_result {
+                endpoint.send_if_no_msg(result);
+            }
         }
     })
 }

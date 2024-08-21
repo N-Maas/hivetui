@@ -310,7 +310,7 @@ pub fn render(
             ScreenSplitting::Right => Constraint::Percentage(30),
             ScreenSplitting::FarRight => Constraint::Percentage(25),
         };
-        let splitted_top_level = Layout::horizontal(vec![
+        let splitted_layout = Layout::horizontal(vec![
             Constraint::Fill(1),
             Constraint::Max(35),
             menu_contraint,
@@ -319,17 +319,6 @@ pub fn render(
         let splitted_in_game =
             Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).split(area);
 
-        let splitted_layout = if matches!(
-            state.ui_state,
-            UIState::Toplevel
-                | UIState::GameSetup(_)
-                | UIState::LoadScreen(_)
-                | UIState::SaveScreen
-        ) {
-            splitted_top_level
-        } else {
-            splitted_in_game.clone()
-        };
         let canvas_area = splitted_in_game[0];
         let &menu_area = splitted_layout.last().unwrap();
         // the rules summary
@@ -376,13 +365,16 @@ pub fn render(
             let is_rules_summary = matches!(state.ui_state, UIState::RulesSummary(_));
             let render_setup_area = matches!(
                 state.ui_state,
-                UIState::GameSetup(_) | UIState::LoadScreen(_) | UIState::SaveScreen
+                UIState::GameSetup(_) | UIState::LoadScreen(_) | UIState::SaveScreen(_)
             );
 
             // the menu (actions)
             let mut y_offset = 0;
             if !is_rules_summary
-                && !matches!(state.ui_state, UIState::GameSetup(_) | UIState::SaveScreen)
+                && !matches!(
+                    state.ui_state,
+                    UIState::GameSetup(_) | UIState::SaveScreen(_)
+                )
             {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(MENU);
@@ -399,7 +391,7 @@ pub fn render(
 
             let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
             if render_setup_area {
-                settings_size += 5;
+                settings_size = 15;
             }
             let both_settings = menu_area.height >= 27 + help_size && !render_setup_area;
             let small_help = menu_area.height < player_size + settings_size + help_size;
@@ -457,7 +449,7 @@ pub fn render(
                     let save_games = io_manager.as_ref().unwrap().save_files_list();
                     let par = load_game_widget(settings, available_size, save_games, index, 2);
                     frame.render_widget(par, settings_area);
-                } else if let UIState::SaveScreen = state.ui_state {
+                } else if let UIState::SaveScreen(_) = state.ui_state {
                     let save_games = io_manager.as_ref().unwrap().save_files_list();
                     render_save_game_widget(
                         frame,
@@ -572,7 +564,10 @@ pub fn render(
                 frame.render_widget(paragraph, tooltip_area);
             }
 
-            // the message that might be shown at the top of the board
+            // the messages
+            render_messages(frame, messages, splitted_layout[1], 0);
+
+            // the in-game message that might be shown at the top of the board
             {
                 let message_hor = Layout::horizontal(vec![
                     Constraint::Fill(1),

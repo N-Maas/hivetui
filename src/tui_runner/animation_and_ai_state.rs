@@ -8,7 +8,7 @@ use crate::{
     },
     worker::{
         ai_worker::{AIEndpoint, AIResult, AIStart},
-        MessageForMaster,
+        WorkerResult,
     },
     FatalError,
 };
@@ -193,11 +193,11 @@ impl AIState {
 
         {
             match self.endpoint.get_msg() {
-                Some(MessageForMaster::Msg(mut result)) => {
+                Some(WorkerResult::Msg(mut result)) => {
                     postprocess_fn(result.as_mut(), settings);
                     self.result = Some(*result);
                 }
-                Some(MessageForMaster::Killed(msg, trace)) => {
+                Some(WorkerResult::Killed(msg, trace)) => {
                     report_panic(Some(msg), trace);
                     return Err(FatalError::PanicOccured);
                 }
