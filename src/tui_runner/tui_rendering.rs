@@ -294,6 +294,7 @@ pub fn render(
     let mut output_bound = ([0.0, 0.0], [0.0, 0.0]);
     terminal.draw(|frame| {
         let area = frame.size();
+        let menu_min_width = 57;
         let menu_contraint = match state.settings.splitting {
             ScreenSplitting::Auto => {
                 let cutoff_low = 125;
@@ -312,7 +313,16 @@ pub fn render(
         };
         let splitted_layout = Layout::horizontal(vec![
             Constraint::Fill(1),
-            Constraint::Max(35),
+            Constraint::Max(
+                if menu_min_width + 35 <= area.width
+                    || state.settings.splitting != ScreenSplitting::Auto
+                {
+                    35
+                } else {
+                    // ensure well-behavedness for very small screen
+                    area.width.saturating_sub(menu_min_width)
+                },
+            ),
             menu_contraint,
         ])
         .split(area);
@@ -378,7 +388,7 @@ pub fn render(
             {
                 let mut action_area = splitted_layout[1];
                 let text = Text::from(MENU);
-                action_area.height = text.height() as u16 + 2;
+                action_area.height = u16::min(action_area.height, text.height() as u16 + 2);
                 y_offset += action_area.height;
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Menu").borders(Borders::ALL));
@@ -667,6 +677,9 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
 }
 
 pub fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offset: u16) {
+    if area.width <= 10 {
+        return;
+    }
     for msg in messages {
         let mut msg_area = area;
         let msg_len = msg.content.len() as u16;
@@ -774,7 +787,12 @@ pub fn render_save_game_widget(
     let par = Paragraph::new(text).block(Block::default().title("Save Game").borders(Borders::ALL));
     frame.render_widget(par, area);
     let plen = prefix.len() as u16;
-    let input_area = Rect::new(area.x + plen + 3, area.y + 1, area.width - plen - 11, 3);
+    let input_area = Rect::new(
+        area.x + plen + 3,
+        area.y + u16::min(1, area.height),
+        area.width.saturating_sub(plen + 11),
+        u16::min(3, area.height),
+    );
     frame.render_widget(Clear, input_area);
     text_input.render(frame, input_area, settings.color_scheme.primary());
 }
