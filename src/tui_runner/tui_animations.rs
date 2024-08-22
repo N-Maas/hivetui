@@ -11,8 +11,10 @@ use crate::{
 };
 
 use super::{
-    tui_rendering::{self, translate_index, DARK_WHITE},
-    tui_settings::{AnimationStyle, GraphicsState, MovingTileStyle, Settings, WhiteTilesStyle},
+    tui_rendering::{self, translate_index},
+    tui_settings::{
+        AnimationStyle, ColorScheme, FillingStyle, GraphicsState, MovingTileStyle, Settings,
+    },
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -367,7 +369,7 @@ pub fn flying_piece(
     draw_border: bool,
     color_interior: Color,
     draw_interior: bool,
-    style: WhiteTilesStyle,
+    style: FillingStyle,
 ) -> impl AnimationEffect {
     let start = translate_index(start);
     let end = translate_index(end);
@@ -479,8 +481,8 @@ pub fn build_complete_piece_move_animation(
     let fly_steps = fly_steps.round() as usize;
 
     let color = match player {
-        Player::White => DARK_WHITE,
-        Player::Black => Color::from_u32(0),
+        Player::White => ColorScheme::DARK_WHITE,
+        Player::Black => settings.dark_tile_color.color(),
     };
     let flying = flying_piece(
         fly_steps,
@@ -491,7 +493,7 @@ pub fn build_complete_piece_move_animation(
         settings.moving_tile_style != MovingTileStyle::Minimal,
         color,
         settings.moving_tile_style == MovingTileStyle::Filled,
-        settings.white_tiles_style,
+        settings.filling_style,
     );
     let mark = mark_field(fly_steps, target, settings.color_scheme.secondary(), 0);
     let blink = build_blink_animation(settings, player, target, true, target_level);

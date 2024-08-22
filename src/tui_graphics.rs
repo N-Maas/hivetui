@@ -42,14 +42,14 @@ fn interior_border_points(offset: f64) -> [(f64, f64); 7] {
     [p0, p1, p2, p3, p4, p5, p6]
 }
 
-pub fn draw_hex_border(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64) {
+pub fn draw_hex_border(ctx: &mut Context<'_>, x_mid: f64, y_mid: f64, color: Color) {
     draw_hex_border_impl(
         ctx,
         x_mid,
         y_mid,
         &HEX_BORDER_POINTS,
         &HEX_BORDER_ORIENTATIONS,
-        Color::DarkGray,
+        color,
         1.0,
     );
 }
@@ -58,6 +58,7 @@ pub fn draw_restricted_hex_border(
     ctx: &mut Context<'_>,
     x_mid: f64,
     y_mid: f64,
+    color: Color,
     orientations: &[HexaDirection],
 ) {
     draw_hex_border_impl(
@@ -66,7 +67,7 @@ pub fn draw_restricted_hex_border(
         y_mid,
         &HEX_BORDER_POINTS,
         orientations,
-        Color::DarkGray,
+        color,
         1.0,
     );
 }

@@ -3,8 +3,8 @@ use super::{
     text_input::TextInput,
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
-        BordersStyle, ColorScheme, GameSetup, GraphicsState, ScreenSplitting, SettingRenderer,
-        SettingSelection, Settings, WhiteTilesStyle,
+        BordersStyle, ColorScheme, FillingStyle, GameSetup, GraphicsState, ScreenSplitting,
+        SettingRenderer, SettingSelection, Settings,
     },
     AIResult, Message, UIState,
 };
@@ -13,7 +13,10 @@ use crate::{
     pieces::{PieceType, Player},
     state::{HiveBoard, HiveContent, HiveContext, HiveGameState, HiveResult},
     tui_graphics::{self, piece_color},
-    tui_runner::{tui_settings::FilterAISuggestions, MessageType},
+    tui_runner::{
+        tui_settings::{DarkTileColor, FilterAISuggestions},
+        MessageType,
+    },
 };
 use chrono::offset::Local;
 use chrono::DateTime;
@@ -55,8 +58,6 @@ pub struct AllState<'a> {
     pub text_input: &'a TextInput,
     pub graphics_state: GraphicsState,
 }
-
-pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
 
 const MENU: &str = "\
     [c] continue game  [↲]\n\
@@ -318,7 +319,8 @@ pub fn render(
                 // try to further increase the height to better display available pieces
                 let max_bonus = 6;
                 let cutoff = 12;
-                final_help_height += max_bonus * (area.height / 2).saturating_sub(final_help_height) / cutoff;
+                final_help_height +=
+                    max_bonus * (area.height / 2).saturating_sub(final_help_height) / cutoff;
             }
             let constraints = [Constraint::Fill(1), Constraint::Max(final_help_height)];
             let [canvas_area, menu_area] = *Layout::vertical(constraints).split(area) else {
@@ -1051,14 +1053,14 @@ fn draw_level_of_board(
             .and_then(get_piece)
             .inspect(|piece| {
                 let is_white = piece.player == Player::White;
-                if is_white || level > 0 {
+                if is_white || state.settings.dark_tile_color != DarkTileColor::Black || level > 0 {
                     let color = if is_white {
-                        DARK_WHITE
+                        ColorScheme::DARK_WHITE
                     } else {
-                        Color::from_u32(0)
+                        state.settings.dark_tile_color.color()
                     };
                     if level == 0 {
-                        draw_interior(ctx, state.settings.white_tiles_style, x_mid, y_mid, color);
+                        draw_interior(ctx, state.settings.filling_style, x_mid, y_mid, color);
                     } else {
                         let y_offset = (1.0 - scale) * 10.0 + level as f64 * 0.5;
                         tui_graphics::draw_hex_interior(
@@ -1139,9 +1141,15 @@ pub fn draw_board(
                 }
                 to_draw.sort();
                 to_draw.dedup();
-                tui_graphics::draw_restricted_hex_border(ctx, x_mid, y_mid, &to_draw);
+                tui_graphics::draw_restricted_hex_border(
+                    ctx,
+                    x_mid,
+                    y_mid,
+                    ColorScheme::GRAY,
+                    &to_draw,
+                );
             } else if state.settings.borders_style != BordersStyle::None {
-                tui_graphics::draw_hex_border(ctx, x_mid, y_mid);
+                tui_graphics::draw_hex_border(ctx, x_mid, y_mid, ColorScheme::GRAY);
             }
             // which sides should be drawn?
         }
@@ -1277,8 +1285,8 @@ fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &GameSetu
     let player = available_pieces_player(state);
     let (pieces, _) = state.game_state.pieces_for_player(player);
     let interior_color = match player {
-        Player::White => DARK_WHITE,
-        Player::Black => Color::from_u32(0x00303030),
+        Player::White => ColorScheme::DARK_WHITE,
+        Player::Black => state.settings.dark_tile_color.color(),
     };
 
     let pieces_with_counts = if let UIState::PositionSelected(_) = state.ui_state {
@@ -1325,7 +1333,7 @@ fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &GameSetu
         for (i, (_, count)) in it.clone() {
             if count > max_depth - depth {
                 let (x, y) = get_coords(i, depth);
-                draw_interior(ctx, state.settings.white_tiles_style, x, y, interior_color);
+                draw_interior(ctx, state.settings.filling_style, x, y, interior_color);
             }
         }
         ctx.layer();
@@ -1368,13 +1376,11 @@ fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &GameSetu
     }
 }
 
-pub fn draw_interior(ctx: &mut Context<'_>, style: WhiteTilesStyle, x: f64, y: f64, color: Color) {
+pub fn draw_interior(ctx: &mut Context<'_>, style: FillingStyle, x: f64, y: f64, color: Color) {
     match style {
-        WhiteTilesStyle::Full => tui_graphics::draw_hex_interior(ctx, x, y, color, false, 1.0),
-        WhiteTilesStyle::Border => {
-            tui_graphics::draw_interior_hex_border(ctx, x, y, 1.5, 1.5, color)
-        }
-        WhiteTilesStyle::Hybrid => tui_graphics::draw_hex_interior(ctx, x, y, color, true, 1.0),
+        FillingStyle::Full => tui_graphics::draw_hex_interior(ctx, x, y, color, false, 1.0),
+        FillingStyle::Border => tui_graphics::draw_interior_hex_border(ctx, x, y, 1.5, 1.5, color),
+        FillingStyle::Hybrid => tui_graphics::draw_hex_interior(ctx, x, y, color, true, 1.0),
     }
 }
 

@@ -206,11 +206,41 @@ pub enum FilterAISuggestions {
     Deserialize,
 )]
 #[repr(u8)]
-pub enum WhiteTilesStyle {
+pub enum FillingStyle {
     Full = 0,
     Border = 1,
     #[default]
     Hybrid = 2,
+}
+
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
+#[repr(u8)]
+pub enum DarkTileColor {
+    #[default]
+    Black = 0,
+    DarkGray = 1,
+    DarkBlue = 2,
+}
+
+impl DarkTileColor {
+    pub fn color(self) -> Color {
+        match self {
+            DarkTileColor::Black => ColorScheme::SOFT_BLACK,
+            DarkTileColor::DarkGray => ColorScheme::DARK_GRAY,
+            DarkTileColor::DarkBlue => ColorScheme::DARK_BLUE,
+        }
+    }
 }
 
 #[derive(
@@ -376,6 +406,8 @@ pub enum ColorScheme {
 }
 
 impl ColorScheme {
+    pub const DARK_WHITE: Color = Color::from_u32(0x00DADADA);
+    pub const GRAY: Color = Color::from_u32(0x00808080);
     pub const RED: Color = Color::from_u32(0x00E03030);
     pub const ORANGE: Color = Color::from_u32(0x00D89030);
     pub const BLUE: Color = Color::from_u32(0x00308AEA);
@@ -386,6 +418,9 @@ impl ColorScheme {
     pub const PINK: Color = Color::from_u32(0x00D830B0);
     pub const TEXT_GRAY: Color = Color::from_u32(0x00A0A0A0);
     pub const TEXT_YELLOW: Color = Color::from_u32(0x00D8D830);
+    pub const DARK_GRAY: Color = Color::from_u32(0x003A3A3A);
+    pub const SOFT_BLACK: Color = Color::from_u32(0x002A2A2A);
+    pub const DARK_BLUE: Color = Color::from_u32(0x00303090);
 
     pub fn primary(&self) -> Color {
         match self {
@@ -471,7 +506,9 @@ pub struct Settings {
     #[serde(default)]
     pub piece_zoom_level: ZoomLevel,
     #[serde(default)]
-    pub white_tiles_style: WhiteTilesStyle,
+    pub filling_style: FillingStyle,
+    #[serde(default)]
+    pub dark_tile_color: DarkTileColor,
     #[serde(default)]
     pub borders_style: BordersStyle,
     #[serde(default)]
@@ -784,7 +821,13 @@ impl SettingRenderer {
                     "filling style: ",
                     vec!["full", "border", "hybrid"],
                     graphics_offset,
-                    |state| &mut state.white_tiles_style,
+                    |state| &mut state.filling_style,
+                ),
+                create_menu_setting(
+                    "dark tile color: ",
+                    vec!["black", "gray", "dark-blue"],
+                    graphics_offset,
+                    |state| &mut state.dark_tile_color,
                 ),
             ],
         }
