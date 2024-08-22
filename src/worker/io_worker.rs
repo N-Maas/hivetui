@@ -58,7 +58,7 @@ pub fn start_io_worker_thread() -> IOEndpoint {
                 }
             };
             if task.report_result {
-                endpoint.send_if_no_msg(result);
+                endpoint.send_overwrite(result);
             }
         }
     })

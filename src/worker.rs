@@ -1,5 +1,6 @@
 use crate::panic_handling::{get_panic_data, setup_panic_reporting};
 use std::{
+    collections::VecDeque,
     panic::{catch_unwind, UnwindSafe},
     sync::{Arc, Mutex},
     thread,
@@ -22,14 +23,14 @@ pub enum WorkerResult<T> {
 
 struct Exchange<M, W> {
     for_master: Option<WorkerResult<M>>,
-    for_worker: Option<MessageForWorker<W>>,
+    for_worker: VecDeque<MessageForWorker<W>>,
 }
 
 impl<M, W> Default for Exchange<M, W> {
     fn default() -> Self {
         Self {
             for_master: None,
-            for_worker: None,
+            for_worker: VecDeque::new(),
         }
     }
 }
@@ -42,11 +43,20 @@ impl<M, W> MasterEndpoint<M, W> {
     }
 
     pub fn cancel(&self) {
-        self.0.lock().unwrap().for_worker = Some(MessageForWorker::Cancel);
+        let queue = &mut self.0.lock().unwrap().for_worker;
+        queue.clear();
+        queue.push_back(MessageForWorker::Cancel);
     }
 
     pub fn send(&self, message: W) {
-        self.0.lock().unwrap().for_worker = Some(MessageForWorker::Msg(message));
+        let queue = &mut self.0.lock().unwrap().for_worker;
+        queue.push_back(MessageForWorker::Msg(message));
+    }
+
+    pub fn send_overwrite(&self, message: W) {
+        let queue = &mut self.0.lock().unwrap().for_worker;
+        queue.clear();
+        queue.push_back(MessageForWorker::Msg(message));
     }
 }
 
@@ -55,22 +65,26 @@ struct WorkerEndpoint<M, W>(Arc<Mutex<Exchange<M, W>>>);
 impl<M, W> WorkerEndpoint<M, W> {
     fn get_new_msg(&self) -> Option<W> {
         let mut exchange = self.0.lock().unwrap();
-        exchange.for_worker.take().and_then(|m| match m {
+        exchange.for_worker.pop_front().and_then(|m| match m {
             MessageForWorker::Msg(msg) => Some(msg),
             MessageForWorker::Cancel => None,
         })
     }
 
     fn has_msg(&self) -> bool {
-        self.0.lock().unwrap().for_worker.is_some()
+        !self.0.lock().unwrap().for_worker.is_empty()
     }
 
     fn send_if_no_msg(&self, message: M) {
         let mut exchange = self.0.lock().unwrap();
-        let has_msg = exchange.for_worker.is_some();
+        let has_msg = !exchange.for_worker.is_empty();
         if !has_msg {
             exchange.for_master = Some(WorkerResult::Msg(message));
         }
+    }
+
+    fn send_overwrite(&self, message: M) {
+        self.0.lock().unwrap().for_master = Some(WorkerResult::Msg(message));
     }
 
     fn killed(&self, msg: String, trace: String) {

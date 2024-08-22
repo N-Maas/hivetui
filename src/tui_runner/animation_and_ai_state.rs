@@ -184,7 +184,7 @@ impl AIState {
                 settings.ai_assistant
             };
             self.endpoint
-                .send(AIStart(level.as_difficulty(), Box::new(state.clone())));
+                .send_overwrite(AIStart(level.as_difficulty(), Box::new(state.clone())));
             self.current_player = player;
             self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::Automatic;
             self.should_show_animation = settings.is_ai(player);
