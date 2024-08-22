@@ -191,11 +191,8 @@ pub fn pull_event(
     });
     let removes_msg = key.map_or(false, |key| match key {
         KeyCode::Esc | KeyCode::Char('q') => true,
-        KeyCode::Enter
-        | KeyCode::Char('c')
-        | KeyCode::Char('n')
-        | KeyCode::Char('k')
-        | KeyCode::Char('l') => top_level && event.is_some(),
+        KeyCode::Enter => event.is_some() || !top_level,
+        KeyCode::Char('c') | KeyCode::Char('n') => top_level && event.is_some(),
         KeyCode::Char(' ') => top_level && !rules_summary && event.is_some(),
         _ => false,
     });
