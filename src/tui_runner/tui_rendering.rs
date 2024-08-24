@@ -323,12 +323,10 @@ pub fn render(
                     max_bonus * (area.height / 2).saturating_sub(final_help_height) / cutoff;
             }
             let constraints = [Constraint::Fill(1), Constraint::Max(final_help_height)];
-            let [canvas_area, menu_area] = *Layout::vertical(constraints).split(area) else {
-                unreachable!()
-            };
-            let action_area =
+            let [canvas_area, menu_area] = Layout::vertical(constraints).areas(area);
+            let [_, action_area] =
                 Layout::horizontal([Constraint::Fill(1), Constraint::Max(action_desired_width)])
-                    .split(canvas_area)[1];
+                    .areas(canvas_area);
             (canvas_area, action_area, menu_area)
         } else {
             let menu_desired_width = 57;
@@ -355,7 +353,7 @@ pub fn render(
                 ScreenSplitting::Right => Constraint::Percentage(30),
                 ScreenSplitting::FarRight => Constraint::Percentage(25),
             };
-            let splitted_layout = Layout::horizontal(vec![
+            let [_, action_area, menu_area] = Layout::horizontal(vec![
                 Constraint::Fill(1),
                 Constraint::Max(
                     if menu_width + action_desired_width <= area.width
@@ -369,10 +367,10 @@ pub fn render(
                 ),
                 menu_contraint,
             ])
-            .split(area);
-            let canvas_area =
-                Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).split(area)[0];
-            (canvas_area, splitted_layout[1], splitted_layout[2])
+            .areas(area);
+            let [canvas_area, _] =
+                Layout::horizontal(vec![Constraint::Fill(1), menu_contraint]).areas(area);
+            (canvas_area, action_area, menu_area)
         };
 
         // the rules summary
@@ -441,14 +439,12 @@ pub fn render(
             if small_help {
                 (settings_size, help_size) = (settings_size - 2, 8);
             }
-            let [player_area, settings_area, help_area] = *Layout::vertical([
+            let [player_area, settings_area, help_area] = Layout::vertical([
                 Constraint::Max(player_size),
                 Constraint::Min(settings_size),
                 Constraint::Min(help_size),
             ])
-            .split(menu_area) else {
-                unreachable!()
-            };
+            .areas(menu_area);
             let remaining_size = menu_area
                 .height
                 .saturating_sub(player_size)
@@ -500,11 +496,8 @@ pub fn render(
                     );
                 } else if both_settings {
                     let [general, graphic] =
-                        *Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)])
-                            .split(settings_area)
-                    else {
-                        unreachable!()
-                    };
+                        Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)])
+                            .areas(settings_area);
                     let par =
                         setting_renderer.render_general_settings(settings, state.menu_selection);
                     frame.render_widget(par, general);
@@ -535,13 +528,11 @@ pub fn render(
             let mut render_both = false;
             let (piece_area, suggestion_area, help_area) = if vertical_split {
                 // TODO: make this more refined?
-                let [piece_area, help_area] = *Layout::horizontal([
+                let [piece_area, help_area] = Layout::horizontal([
                     Constraint::Fill(1),
                     Constraint::Max(ingame_help_min_width),
                 ])
-                .split(menu_area) else {
-                    unreachable!()
-                };
+                .areas(menu_area);
                 (piece_area, piece_area, help_area)
             } else {
                 let piece_height = 10;
@@ -559,20 +550,15 @@ pub fn render(
                         Constraint::Max(ingame_help_height),
                     ]
                 };
-                let [piece_area, help_area] = *Layout::vertical(constraints).split(menu_area)
-                else {
-                    unreachable!()
-                };
+                let [piece_area, help_area] = Layout::vertical(constraints).areas(menu_area);
                 let suggestion_height = 12;
                 render_both = state.ui_state == UIState::ShowAIMoves
                     && piece_area.height >= suggestion_height + piece_height;
-                let (piece_area, suggestion_area) = if render_both {
-                    let split =
-                        Layout::vertical([Constraint::Fill(1), Constraint::Max(suggestion_height)])
-                            .split(piece_area);
-                    (split[0], split[1])
+                let [piece_area, suggestion_area] = if render_both {
+                    Layout::vertical([Constraint::Fill(1), Constraint::Max(suggestion_height)])
+                        .areas(piece_area)
                 } else {
-                    (piece_area, piece_area)
+                    [piece_area, piece_area]
                 };
                 (piece_area, suggestion_area, help_area)
             };
@@ -626,19 +612,18 @@ pub fn render(
 
             // the in-game message that might be shown at the top of the board
             {
-                let message_hor = Layout::horizontal(vec![
+                let [_, message_hor, _] = Layout::horizontal(vec![
                     Constraint::Fill(1),
                     Constraint::Max(42),
                     Constraint::Fill(1),
                 ])
-                .split(canvas_area);
-                let message_vert = Layout::vertical(vec![
+                .areas(canvas_area);
+                let [_, msg_area, _] = Layout::vertical(vec![
                     Constraint::Fill(1),
                     Constraint::Max(6),
                     Constraint::Fill(20),
                 ])
-                .split(message_hor[1]);
-                let msg_area = message_vert[1];
+                .areas(message_hor);
                 match state.ui_state {
                     UIState::ShowOptions(true, _) => {
                         frame.render_widget(Clear, msg_area);
@@ -724,8 +709,8 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
 }
 
 fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scroll: u16) {
-    let split_top_line =
-        Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).split(area);
+    let [top_area, body_area] =
+        Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).areas(area);
     let top_line = Line::styled(
         "[ws] or [Space] to scroll, [Esc] to return ",
         ColorScheme::TEXT_GRAY,
@@ -733,14 +718,14 @@ fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scro
     .alignment(Alignment::Right);
     let paragraph =
         Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
-    frame.render_widget(paragraph, split_top_line[0]);
+    frame.render_widget(paragraph, top_area);
 
     let text = build_help_text(settings);
     let paragraph = Paragraph::new(text)
         .block(Block::default().borders(Borders::TOP.complement()))
         .wrap(Wrap { trim: true })
         .scroll((scroll, 0));
-    frame.render_widget(paragraph, split_top_line[1]);
+    frame.render_widget(paragraph, body_area);
 }
 
 fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offset: u16) {
