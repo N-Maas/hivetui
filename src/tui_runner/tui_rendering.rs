@@ -907,6 +907,7 @@ pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings)
     let mut seen_pieces = HashSet::new();
     let (best_rating, _, _) = ratings[0];
     ratings.retain(|(r, _, _)| best_rating - r <= MOVES_CUTOFF);
+    ratings.truncate(MAX_SHOWN);
 
     let filter_moves = settings.filter_ai_suggestions == FilterAISuggestions::Yes;
     annotations.clear();
@@ -946,9 +947,6 @@ pub fn postprocess_ai_suggestions(ai_result: &mut AIResult, settings: &Settings)
         } else {
             ratings.remove(index);
         }
-    }
-    while ratings.len() > MAX_SHOWN {
-        ratings.pop();
     }
 }
 
