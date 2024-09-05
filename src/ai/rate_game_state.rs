@@ -303,9 +303,9 @@ fn single_piece_rating(
             }
             MovabilityType::Blocked(_) => {
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
-                    22
+                    16
                 } else {
-                    14
+                    12
                 }
             }
             MovabilityType::AtQueen => 8,
