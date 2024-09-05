@@ -130,8 +130,9 @@ impl HiveAI {
                     vec![24, 20, 12, 8, 5, 5, 3, 3, 3, 3],
                     vec![17, 14, 11, 11, 8, 8, 7, 7, 7, 7],
                     vec![50, 10, 3, 3, 2, 2, 1, 1],
+                    vec![3, 2, 1, 1, 1, 1, 1, 1],
                 );
-                Params::new(5, sliding)
+                Params::new(5, sliding, 5)
             }
             Difficulty::Hard => {
                 let sliding = SlidingParams::new(
@@ -140,8 +141,9 @@ impl HiveAI {
                     vec![15, 12, 8, 6, 5, 5],
                     vec![14, 10, 7, 7, 6, 6],
                     vec![50, 3, 2, 2],
+                    vec![2, 1, 1, 1],
                 );
-                Params::new(3, sliding)
+                Params::new(3, sliding, 5)
             }
             Difficulty::Medium => {
                 let sliding = SlidingParams::new(
@@ -150,8 +152,9 @@ impl HiveAI {
                     vec![12, 8, 6, 6],
                     vec![14, 9, 7, 7],
                     vec![50, 3],
+                    vec![1, 1],
                 );
-                Params::new(2, sliding)
+                Params::new(2, sliding, 4)
             }
             _ => {
                 // TODO: make this AI easier??
@@ -161,8 +164,9 @@ impl HiveAI {
                     vec![6, 3],
                     vec![8, 4],
                     vec![50, 2],
+                    vec![1, 1],
                 );
-                Params::new(1, sliding)
+                Params::new(1, sliding, 4)
             }
         };
         let rater = match level {

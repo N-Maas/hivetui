@@ -119,9 +119,8 @@ enum Equivalency {
     AntToBlocking(OpenIndex, OpenIndex),
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
-    PlaceAnt, // TODO: reduce this equivalency class to:
-    // - place ant no-blocking
-    // - place ant blocking(blocked piece)
+    PlaceAntFree,
+    PlaceAntBlocking(OpenIndex),
     PlaceBeetle(u32),
     // TODO: placement equiv. class similar to beetle for ladybug?
     // ---> include position rating (own blocked, own queen) to placements!
@@ -597,10 +596,15 @@ fn handle_placement_ratings(
                 PieceType::Queen => {
                     rater.rate(i, j, 11);
                 }
-                PieceType::Ant => {
-                    let is_better = meta == MetaInterest::Uninteresting;
-                    set_eq(i, j, rater, eq_map, PlaceAnt, 11, is_better);
-                }
+                PieceType::Ant => match meta {
+                    MetaInterest::Uninteresting => {
+                        set_eq(i, j, rater, eq_map, PlaceAntFree, 11, false)
+                    }
+                    MetaInterest::Blocks(field, p) | MetaInterest::AdjacentToQueen(field, p) => {
+                        assert_eq!(p, player);
+                        set_eq(i, j, rater, eq_map, PlaceAntBlocking(field), 9, false)
+                    }
+                },
                 PieceType::Spider | PieceType::Grasshopper => {
                     // for spiders and grasshoppers, it highly depends on whether they can reach something useful
                     let reachable_fields: Vec<_> = if *piece_t == PieceType::Spider {
@@ -612,7 +616,6 @@ fn handle_placement_ratings(
                     let rating = reachable_fields
                         .into_iter()
                         .map(|f| {
-                            // TODO: defensive placement
                             let interest = meta_data.interest(f);
                             match interest_to_type(&meta_data.map, player, interest).0 {
                                 PositionType::NeutralOrBad => 1,
