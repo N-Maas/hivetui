@@ -165,7 +165,7 @@ fn rate_piece_movability(
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
             let player = usize::from(piece.player);
             rating[player] += if is_only_half_movable(data, meta, piece, field) {
-                val * 3 / 4
+                val * 2 / 3
             } else {
                 val
             };
