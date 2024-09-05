@@ -357,7 +357,7 @@ fn handle_move_ratings(
             // moving the queen only makes sense when it is endangered
             let num_neighbors = meta_data.q_neighbors(data.player()) as RatingType;
             if meta_data.queen_endangered || meta_data.queen_should_move {
-                rater.rate(i, j, 10 + num_neighbors);
+                rater.rate(i, j, 8 + num_neighbors);
             } else {
                 rater.rate(i, j, 5 + num_neighbors);
             }
@@ -497,9 +497,11 @@ fn rate_usual_move(
 
     let rating = match (from_type, to_type) {
         (PositionType::NeutralOrBad, PositionType::NeutralOrBad) => {
-            if matches!(piece.p_type, PieceType::Grasshopper | PieceType::Spider) {
+            if !matches!(piece.p_type, PieceType::Ant | PieceType::Beetle) {
                 if meta.is_endgame {
                     5
+                } else if matches!(from, MetaInterest::Blocks(_, _)) {
+                    4
                 } else {
                     2
                 }
@@ -512,7 +514,7 @@ fn rate_usual_move(
             if meta.defensive {
                 10
             } else {
-                15
+                14
             }
         }
         (PositionType::Blocking, PositionType::NeutralOrBad) => {
@@ -541,7 +543,13 @@ fn rate_usual_move(
                 10
             }
         }
-        (PositionType::AtQueen, PositionType::NeutralOrBad) => -6,
+        (PositionType::AtQueen, PositionType::NeutralOrBad) => {
+            if meta.is_endgame {
+                -1
+            } else {
+                -6
+            }
+        }
         (PositionType::AtQueen, PositionType::Blocking) => {
             if meta.want_to_block {
                 9
@@ -549,7 +557,13 @@ fn rate_usual_move(
                 4
             }
         }
-        (PositionType::AtQueen, PositionType::AtQueen) => 2,
+        (PositionType::AtQueen, PositionType::AtQueen) => {
+            if meta.is_endgame {
+                5
+            } else {
+                2
+            }
+        }
     };
     rating + total_modifier
 }
