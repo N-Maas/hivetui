@@ -127,8 +127,8 @@ impl HiveAI {
                 let sliding = SlidingParams::new(
                     vec![15, 10, 6, 6, 3, 3, 2, 2],
                     vec![50, 35, 22, 22, 16, 16, 16, 16],
-                    vec![24, 20, 12, 8, 5, 5, 3, 3, 3, 3],
-                    vec![17, 14, 11, 11, 8, 8, 7, 7, 7, 7],
+                    vec![22, 18, 12, 8, 5, 5, 3, 3, 3, 3],
+                    vec![17, 14, 12, 11, 9, 9, 7, 7, 7, 7],
                     vec![50, 10, 3, 3, 2, 2, 1, 1],
                     vec![3, 2, 1, 1, 1, 1, 1, 1],
                 );
@@ -157,7 +157,6 @@ impl HiveAI {
                 Params::new(2, sliding, 4)
             }
             _ => {
-                // TODO: make this AI easier??
                 let sliding = SlidingParams::new(
                     vec![3, 2],
                     vec![20, 10],
@@ -187,16 +186,16 @@ impl HiveAI {
             Difficulty::VeryHard => Algorithm::with_pruning(params, rater, |input| {
                 if input.total_depth <= 2 {
                     match input.current_depth {
-                        0 => PruningKind::WithinBounds(5, 9, 30),
+                        0 => PruningKind::WithinBounds(5, 10, 30),
                         1 => PruningKind::WithinBounds(3, 6, 22),
                         _ => unreachable!(),
                     }
                 } else if input.total_depth <= 4 {
                     match input.current_depth {
-                        0 => PruningKind::WithinBounds(3, 5, 20),
-                        1 => PruningKind::WithinBounds(2, 4, 14),
-                        2 => PruningKind::WithinBounds(1, 3, 12),
-                        3 => PruningKind::WithinBounds(1, 3, 12),
+                        0 => PruningKind::WithinBounds(3, 7, 20),
+                        1 => PruningKind::WithinBounds(2, 4, 16),
+                        2 => PruningKind::WithinBounds(1, 3, 14),
+                        3 => PruningKind::WithinBounds(1, 3, 14),
                         _ => unreachable!(),
                     }
                 } else if input.total_depth <= 6 {
