@@ -526,7 +526,7 @@ fn rate_usual_move(
         (PositionType::Blocking, PositionType::Blocking) => {
             if meta.want_to_block {
                 8
-            } else if piece.p_type == PieceType::Ant {
+            } else if piece.p_type == PieceType::Ant && !meta.is_endgame {
                 4
             } else {
                 6

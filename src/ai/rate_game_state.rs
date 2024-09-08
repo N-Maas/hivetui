@@ -296,9 +296,9 @@ fn single_piece_rating(
             MovabilityType::Movable => {
                 if meta.flags(piece.player.switched()).queen_is_ant_reachable {
                     could_reach_queen = true;
-                    24
+                    23
                 } else {
-                    16
+                    18
                 }
             }
             MovabilityType::Blocked(_) => {
@@ -531,6 +531,7 @@ fn rate_queen_situation(
     enemies_reaching_queen: u32,
 ) -> RatingType {
     const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 80, 120];
+    let is_less_endangered = less_endangered == Some(player);
     let mut can_move = false;
     let mut num_neighbors = 0_u32;
     let mut num_friendly_movable = 0;
@@ -550,7 +551,9 @@ fn rate_queen_situation(
         }
     }
 
-    let mut val = -QUEEN_VAL[num_neighbors as usize];
+    let enough = num_neighbors + enemies_reaching_queen >= 6;
+    let exactly_enough = num_neighbors + enemies_reaching_queen == 6;
+    let mut val = 6 - QUEEN_VAL[num_neighbors as usize];
     if val < 0 {
         if num_friendly_movable > 0 && player == data.player() {
             val += 18;
@@ -563,16 +566,18 @@ fn rate_queen_situation(
     }
     val -= enemy_beetle_bonus;
     if meta.flags(player).queen_endangered {
-        val -= 12;
+        val -= 10;
     }
-    if !meta.flags(player).queen_is_ant_reachable {
-        val += 8;
+    if meta.flags(player).queen_is_ant_reachable && !enough && less_endangered != Some(player.switched()) {
+        val -= 4;
+    } else if meta.flags(player).queen_is_ant_reachable {
+        val -= 8;
+    }
+    if val >= 0 {
+        return val;
     }
 
     // TODO: still unclear whether this is good
-    let enough = num_neighbors + enemies_reaching_queen >= 6;
-    let exactly_enough = num_neighbors + enemies_reaching_queen == 6;
-    let is_less_endangered = less_endangered == Some(player);
     if !enough && less_endangered != Some(player.switched()) {
         val * 3 / 5
     } else if can_move && (player == data.player() || !meta.flags(player).queen_endangered) {
