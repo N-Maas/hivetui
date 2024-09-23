@@ -142,7 +142,7 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 
 fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     let ants = 10 * data.remaining_pieces(player, PieceType::Ant);
-    let ladybugs = 8 * data.remaining_pieces(player, PieceType::Ladybug);
+    let ladybugs = 7 * data.remaining_pieces(player, PieceType::Ladybug);
     let mosquitos = 6 * data.remaining_pieces(player, PieceType::Mosquito);
     let spiders = 5 * data.remaining_pieces(player, PieceType::Spider);
     let grasshoppers = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
@@ -156,12 +156,13 @@ fn rate_piece_movability(
     meta: &mut MetaData,
 ) -> (RatingType, RatingType, RatingType, RatingType, u32, u32) {
     let mut rating = [0; 2];
-    let mut beetle_bonus = [0; 2]; // TODO: beetle bonus should not stack
+    let mut beetle_bonus = [0; 2];
+    let mut other_bonus = [0; 2];
     let mut pieces_reaching_queen = [0; 2];
     for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
         let &piece = field.content().top().unwrap();
         if field.content().len() == 1 && data.is_movable(field, false) {
-            let (val, bonus, could_reach_queen) =
+            let (val, bonus, o_bonus, could_reach_queen) =
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
             let player = usize::from(piece.player);
             rating[player] += if is_only_half_movable(data, meta, piece, field) {
@@ -170,6 +171,7 @@ fn rate_piece_movability(
                 val
             };
             beetle_bonus[player] = RatingType::max(beetle_bonus[player], bonus);
+            other_bonus[player] += o_bonus;
             pieces_reaching_queen[player] += if could_reach_queen { 1 } else { 0 };
         } else if field.content().len() == 1 && !data.is_movable(field, false) {
             // is this blocked by only one adjacent piece?
@@ -209,11 +211,12 @@ fn rate_piece_movability(
                         p_type: PieceType::Beetle,
                         ..*beetle
                     };
-                    let (val, bonus, _) =
+                    let (val, b_bonus, o_bonus, _) =
                         single_piece_rating(data, meta, beetle, field, MovabilityType::Movable);
                     let b_player = usize::from(beetle.player);
                     rating[b_player] += val;
-                    beetle_bonus[b_player] = RatingType::max(beetle_bonus[b_player], bonus);
+                    beetle_bonus[b_player] = RatingType::max(beetle_bonus[b_player], b_bonus);
+                    other_bonus[b_player] += o_bonus;
                     pieces_reaching_queen[b_player] += 1;
                 }
                 _ => unreachable!(),
@@ -226,8 +229,8 @@ fn rate_piece_movability(
     (
         rating[p1],
         rating[p2],
-        beetle_bonus[p1],
-        beetle_bonus[p2],
+        beetle_bonus[p1] + other_bonus[p1],
+        beetle_bonus[p2] + other_bonus[p2],
         pieces_reaching_queen[p1],
         pieces_reaching_queen[p2],
     )
@@ -271,14 +274,14 @@ fn is_only_half_movable(
     false
 }
 
-/// rating, beetle bonus, whether queen might be reached
+/// rating, beetle bonus, other bonus, whether queen might be reached
 fn single_piece_rating(
     data: &HiveGameState,
     meta: &mut MetaData,
     piece: Piece,
     field: Field<HiveBoard>,
     mut movability: MovabilityType,
-) -> (RatingType, RatingType, bool) {
+) -> (RatingType, RatingType, RatingType, bool) {
     let at_queen = meta.adjacent_to_queen(piece.player.switched(), field);
     if at_queen && (field.content().len() == 1 || movability != MovabilityType::Movable) {
         movability = if movability == MovabilityType::Movable {
@@ -290,6 +293,7 @@ fn single_piece_rating(
 
     let mut could_reach_queen = false;
     let mut beetle_bonus = 0;
+    let mut other_bonus = 0;
     let base_rating = match piece.p_type {
         PieceType::Queen => 10,
         PieceType::Ant => match movability {
@@ -341,6 +345,8 @@ fn single_piece_rating(
                 could_reach_queen = reaches_queen;
                 meta.flags_mut(piece.player.switched()).queen_endangered |= reaches_queen;
                 if reaches_queen && piece.player == data.player() {
+                    // TODO: does it really make sense to check the current turn here?
+                    // TODO: use other_bonus?
                     16
                 } else if reaches_queen || (can_block && piece.player == data.player()) {
                     14
@@ -455,20 +461,39 @@ fn single_piece_rating(
         },
         PieceType::Ladybug => match movability {
             MovabilityType::Movable => {
+                let mut reaches_queen = false;
+                for f in PieceType::Ladybug.get_moves(field) {
+                    if meta.adjacent_to_queen(piece.player.switched(), f) {
+                        reaches_queen = true;
+                    }
+                }
                 // TODO: should we check for blocking opportunities?
+                could_reach_queen = reaches_queen;
+                meta.flags_mut(piece.player.switched()).queen_endangered |= reaches_queen;
+
                 let dist = meta.distance_to_queen(piece.player.switched(), field);
-                if dist <= 2 {
-                    22
+                if dist <= 2 && reaches_queen {
+                    other_bonus = 10;
+                } else if dist <= 2 {
+                    other_bonus = 5;
+                } else if dist == 3 && reaches_queen {
+                    other_bonus = 8;
                 } else if dist == 3 {
-                    17
+                    other_bonus = 4;
                 } else if dist == 4 {
-                    14
+                    other_bonus = 3;
+                }
+                11
+            }
+            MovabilityType::Blocked(_) => {
+                let dist = meta.distance_to_queen(piece.player.switched(), field);
+                if dist <= 3 {
+                    20 - 2 * dist as i32
                 } else {
-                    11
+                    12
                 }
             }
-            MovabilityType::Blocked(_) => 14,
-            MovabilityType::AtQueen => 8,
+            MovabilityType::AtQueen => 7,
             MovabilityType::Unmovable => 5,
         },
         PieceType::Mosquito => match movability {
@@ -492,6 +517,7 @@ fn single_piece_rating(
             _ => base_rating,
         },
         beetle_bonus,
+        other_bonus,
         could_reach_queen,
     )
 }
@@ -568,7 +594,10 @@ fn rate_queen_situation(
     if meta.flags(player).queen_endangered {
         val -= 10;
     }
-    if meta.flags(player).queen_is_ant_reachable && !enough && less_endangered != Some(player.switched()) {
+    if meta.flags(player).queen_is_ant_reachable
+        && !enough
+        && less_endangered != Some(player.switched())
+    {
         val -= 4;
     } else if meta.flags(player).queen_is_ant_reachable {
         val -= 8;
