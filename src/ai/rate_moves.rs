@@ -471,7 +471,6 @@ fn rate_usual_move(
     modifier: RatingType,
     is_distance_one_move: bool,
 ) -> RatingType {
-    // TODO: shift moves? (i.e. move to adjacent space to make room for other piece, blocking-to-blocking)
     // TODO: endgame (spiders and grasshoppers need to find their way, including previous move)
     let mut total_modifier = modifier;
     let mut from_type =
@@ -586,7 +585,7 @@ fn handle_placement_ratings(
             if meta_data.defensive {
                 set_eq(i, j, rater, eq_map, PlaceAtEnemyQueen(is_ant), 12, false);
             } else {
-                set_eq(i, j, rater, eq_map, PlaceAtEnemyQueen(is_ant), 18, false);
+                set_eq(i, j, rater, eq_map, PlaceAtEnemyQueen(is_ant), 16, false);
             }
         } else {
             // .. otherwise, a few case distinctions are necessary
@@ -627,9 +626,9 @@ fn handle_placement_ratings(
                                             && queen.content().len() == 1
                                         {
                                             // the queen can just move away
-                                            3
+                                            4
                                         } else if meta_data.defensive {
-                                            5
+                                            6
                                         } else {
                                             9
                                         }
@@ -649,11 +648,14 @@ fn handle_placement_ratings(
                     let our_queen_pos = meta_data.q_pos(data.player());
                     if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 3) {
                         let dist = distance(target.index(), enemy_queen_pos.unwrap());
-                        let rating = match dist {
+                        let mut rating = match dist {
                             2 => 10,
-                            3 => 6,
+                            3 => 7,
                             _ => unreachable!(),
                         };
+                        if meta_data.defensive {
+                            rating -= 2;
+                        }
                         set_eq(i, j, rater, eq_map, PlaceBeetle(dist), rating, is_better);
                     } else if our_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 2)
                     {

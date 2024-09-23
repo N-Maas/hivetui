@@ -350,7 +350,7 @@ fn single_piece_rating(
                     8
                 }
             }
-            MovabilityType::Blocked(_) => 10, // TODO: seems too bad compared to ant
+            MovabilityType::Blocked(_) => 10,
             MovabilityType::AtQueen => 5,
             MovabilityType::Unmovable => {
                 // grasshoppers are more likely to escape
@@ -530,7 +530,7 @@ fn rate_queen_situation(
     less_endangered: Option<Player>,
     enemies_reaching_queen: u32,
 ) -> RatingType {
-    const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 80, 120];
+    const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 85, 135];
     let is_less_endangered = less_endangered == Some(player);
     let mut can_move = false;
     let mut num_neighbors = 0_u32;
