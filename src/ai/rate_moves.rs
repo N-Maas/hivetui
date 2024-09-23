@@ -122,7 +122,7 @@ enum Equivalency {
     PlaceAntFree,
     PlaceAntBlocking(OpenIndex),
     PlaceBeetle(u32),
-    // TODO: placement equiv. class similar to beetle for ladybug?
+    PlaceLadybug(u32),
     // ---> include position rating (own blocked, own queen) to placements!
     PlaceAtEnemyQueen(bool),
 }
@@ -666,11 +666,22 @@ fn handle_placement_ratings(
                     }
                 }
                 PieceType::Ladybug => {
-                    // TODO: refine
-                    if meta_data.defensive {
-                        rater.rate(i, j, 3);
+                    let is_better = meta == MetaInterest::Uninteresting;
+                    let enemy_queen_pos = meta_data.q_pos(data.player().switched());
+                    if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 4) {
+                        let dist = distance(target.index(), enemy_queen_pos.unwrap());
+                        let mut rating = match dist {
+                            2 => 10,
+                            3 => 8,
+                            4 => 6,
+                            _ => unreachable!(),
+                        };
+                        if meta_data.defensive {
+                            rating -= 2;
+                        }
+                        set_eq(i, j, rater, eq_map, PlaceLadybug(dist), rating, is_better);
                     } else {
-                        rater.rate(i, j, 8);
+                        rater.rate(i, j, 3);
                     }
                 }
                 PieceType::Mosquito => {
