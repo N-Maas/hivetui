@@ -68,7 +68,7 @@ impl Player {
 
 /// used to represent sets of adjacent pieces for the mosquito
 #[derive(Debug, Clone, Copy)]
-struct PieceSet {
+pub struct PieceSet {
     flags: u32,
 }
 
@@ -79,6 +79,10 @@ impl PieceSet {
 
     pub fn insert(&mut self, p_type: PieceType) {
         self.flags |= Self::piece_to_flag(p_type);
+    }
+
+    pub fn contains(&self, p_type: PieceType) -> bool {
+        (self.flags & Self::piece_to_flag(p_type)) != 0
     }
 
     #[must_use]
@@ -215,7 +219,7 @@ impl PieceType {
             .filter(|_| val.len() == 1)
     }
 
-    fn get_mosquito_piece_set<B>(field: Field<'_, B>, top_piece_removed: bool) -> PieceSet
+    pub fn get_mosquito_piece_set<B>(field: Field<'_, B>, top_piece_removed: bool) -> PieceSet
     where
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: NeighborhoodStructure<B>,
@@ -497,7 +501,9 @@ mod test {
     #[test]
     fn piece_set() {
         let mut set = PieceSet::new();
+        assert!(!set.contains(PieceType::Ant));
         set.insert(PieceType::Ant);
+        assert!(set.contains(PieceType::Ant));
         set.insert(PieceType::Ladybug);
         set.insert(PieceType::Ant);
         assert_eq!(

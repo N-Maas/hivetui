@@ -127,6 +127,20 @@ enum Equivalency {
     PlaceAtEnemyQueen(bool),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum MoveRating {
+    Val(RatingType),
+    Equiv(RatingType, Equivalency, bool),
+}
+
+impl MoveRating {
+    fn value(&self) -> RatingType {
+        match self {
+            MoveRating::Val(val) | MoveRating::Equiv(val, _, _) => *val,
+        }
+    }
+}
+
 // ------ utility functions -----
 fn no_common_neighbor(a: Field<HiveBoard>, b: OpenIndex) -> bool {
     let a_to_b = HexaDirection::from_offset(b - a.index()).unwrap();
@@ -348,6 +362,7 @@ fn handle_move_ratings(
         }
         let t_interest = meta_data.interest(to);
 
+        let dist_one = distance(from.index(), *target) == 1;
         if piece.p_type == PieceType::Queen {
             if restrictions.contains(&AIRestriction::DoNotMoveQueen) {
                 rater.rate(i, j, -100);
@@ -388,10 +403,10 @@ fn handle_move_ratings(
                     Equivalency::AntToQueen(from.index())
                 }
             };
-            let dist_one = distance(from.index(), *target) == 1;
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, dist_one);
             set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
-        } else if piece.p_type == PieceType::Beetle {
+        } else if piece.p_type == PieceType::Beetle || goes_on_top || from.content().len() > 1 {
+            // also include the mosquito cases
             let mut bonus = 0;
             let queen_pos = meta_data.q_pos(data.player().switched());
             if let Some(pos) = queen_pos {
@@ -445,19 +460,36 @@ fn handle_move_ratings(
                 );
                 continue;
             }
+            if !goes_on_top && piece.p_type != PieceType::Beetle {
+                // mosquito doesn't get the bonus when going down
+                bonus = 0;
+            }
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus, true);
             rater.rate(i, j, rating);
-        } else if piece.p_type == PieceType::Mosquito {
-            // TODO!
-            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, false);
+        } else if piece.p_type == PieceType::Ladybug {
+            let mut bonus = 0;
+            let queen_pos = meta_data.q_pos(data.player().switched());
+            if let Some(pos) = queen_pos {
+                let curr_dist = distance(from.index(), pos);
+                let new_dist = distance(to.index(), pos);
+                // note: distance == 1 is handled implicitely by the usual movement rating
+                if new_dist < curr_dist && new_dist == 2 {
+                    bonus = 6;
+                } else if curr_dist > 4 && new_dist <= 4 {
+                    bonus = 3;
+                } else if new_dist < curr_dist {
+                    bonus = 1;
+                }
+            }
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus, dist_one);
             rater.rate(i, j, rating);
         } else {
-            // TODO: ladybug handling?
+            // TODO: any additonal mosquito special handling?
             assert!(matches!(
                 piece.p_type,
-                PieceType::Grasshopper | PieceType::Spider | PieceType::Ladybug
+                PieceType::Grasshopper | PieceType::Spider | PieceType::Mosquito
             ));
-            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, false);
+            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, dist_one);
             rater.rate(i, j, rating);
         }
     }
@@ -589,106 +621,135 @@ fn handle_placement_ratings(
             }
         } else {
             // .. otherwise, a few case distinctions are necessary
-            let meta = meta_data.interest(target);
-            assert!(interest_to_type(&meta_data.map, player, meta).0 == PositionType::NeutralOrBad);
-            match piece_t {
-                PieceType::Queen => {
-                    rater.rate(i, j, 11);
+            let rating = piece_placement_rating(data, meta_data, target, *piece_t);
+            match rating {
+                MoveRating::Val(value) => {
+                    rater.rate(i, j, value);
                 }
-                PieceType::Ant => match meta {
-                    MetaInterest::Uninteresting => {
-                        set_eq(i, j, rater, eq_map, PlaceAntFree, 11, false)
-                    }
-                    MetaInterest::Blocks(field, p) | MetaInterest::AdjacentToQueen(field, p) => {
-                        assert_eq!(p, player);
-                        set_eq(i, j, rater, eq_map, PlaceAntBlocking(field), 9, false)
-                    }
-                },
-                PieceType::Spider | PieceType::Grasshopper => {
-                    // for spiders and grasshoppers, it highly depends on whether they can reach something useful
-                    let reachable_fields: Vec<_> = if *piece_t == PieceType::Spider {
-                        let tree = spider_moves(target);
-                        tree.iter_paths().map(|p| p.endpoint()).collect()
-                    } else {
-                        grasshopper_moves(target).collect()
-                    };
-                    let rating = reachable_fields
-                        .into_iter()
-                        .map(|f| {
-                            let interest = meta_data.interest(f);
-                            match interest_to_type(&meta_data.map, player, interest).0 {
-                                PositionType::NeutralOrBad => 1,
-                                PositionType::Blocking => 5,
-                                PositionType::AtQueen => match interest {
-                                    MetaInterest::AdjacentToQueen(queen, _) => {
-                                        let queen = data.board().get_field_unchecked(queen);
-                                        if data.is_movable(queen, false)
-                                            && queen.content().len() == 1
-                                        {
-                                            // the queen can just move away
-                                            4
-                                        } else if meta_data.defensive {
-                                            6
-                                        } else {
-                                            9
-                                        }
-                                    }
-                                    _ => unreachable!(),
-                                },
-                            }
-                        })
-                        .max()
-                        // unmovable placement is not that useful
-                        .unwrap_or(-3);
-                    rater.rate(i, j, rating);
-                }
-                PieceType::Beetle => {
-                    let is_better = meta == MetaInterest::Uninteresting;
-                    let enemy_queen_pos = meta_data.q_pos(data.player().switched());
-                    let our_queen_pos = meta_data.q_pos(data.player());
-                    if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 3) {
-                        let dist = distance(target.index(), enemy_queen_pos.unwrap());
-                        let mut rating = match dist {
-                            2 => 10,
-                            3 => 7,
-                            _ => unreachable!(),
-                        };
-                        if meta_data.defensive {
-                            rating -= 2;
-                        }
-                        set_eq(i, j, rater, eq_map, PlaceBeetle(dist), rating, is_better);
-                    } else if our_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 2)
-                    {
-                        // TODO: defensive placement (counter beetle)
-                        rater.rate(i, j, 3);
-                    } else {
-                        rater.rate(i, j, 1);
-                    }
-                }
-                PieceType::Ladybug => {
-                    let is_better = meta == MetaInterest::Uninteresting;
-                    let enemy_queen_pos = meta_data.q_pos(data.player().switched());
-                    if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 4) {
-                        let dist = distance(target.index(), enemy_queen_pos.unwrap());
-                        let mut rating = match dist {
-                            2 => 10,
-                            3 => 8,
-                            4 => 6,
-                            _ => unreachable!(),
-                        };
-                        if meta_data.defensive {
-                            rating -= 2;
-                        }
-                        set_eq(i, j, rater, eq_map, PlaceLadybug(dist), rating, is_better);
-                    } else {
-                        rater.rate(i, j, 3);
-                    }
-                }
-                PieceType::Mosquito => {
-                    // TODO: refine
-                    rater.rate(i, j, 7);
+                MoveRating::Equiv(value, equivalency, is_better) => {
+                    set_eq(i, j, rater, eq_map, equivalency, value, is_better);
                 }
             }
+        }
+    }
+}
+
+fn piece_placement_rating(
+    data: &HiveGameState,
+    meta_data: &MetaData,
+    target: Field<'_, HiveBoard>,
+    piece_t: PieceType,
+) -> MoveRating {
+    use Equivalency::*;
+
+    let player = data.player();
+    let meta = meta_data.interest(target);
+    assert!(interest_to_type(&meta_data.map, player, meta).0 == PositionType::NeutralOrBad);
+    match piece_t {
+        PieceType::Queen => MoveRating::Val(11),
+        PieceType::Ant => match meta {
+            MetaInterest::Uninteresting => MoveRating::Equiv(11, PlaceAntFree, false),
+            MetaInterest::Blocks(field, p) | MetaInterest::AdjacentToQueen(field, p) => {
+                assert_eq!(p, player);
+                MoveRating::Equiv(9, PlaceAntBlocking(field), false)
+            }
+        },
+        PieceType::Spider | PieceType::Grasshopper => {
+            // for spiders and grasshoppers, it highly depends on whether they can reach something useful
+            let reachable_fields: Vec<_> = if piece_t == PieceType::Spider {
+                let tree = spider_moves(target);
+                tree.iter_paths().map(|p| p.endpoint()).collect()
+            } else {
+                grasshopper_moves(target).collect()
+            };
+            let rating = reachable_fields
+                .into_iter()
+                .map(|f| {
+                    let interest = meta_data.interest(f);
+                    match interest_to_type(&meta_data.map, player, interest).0 {
+                        PositionType::NeutralOrBad => 1,
+                        PositionType::Blocking => 5,
+                        PositionType::AtQueen => match interest {
+                            MetaInterest::AdjacentToQueen(queen, _) => {
+                                let queen = data.board().get_field_unchecked(queen);
+                                if data.is_movable(queen, false) && queen.content().len() == 1 {
+                                    // the queen can just move away
+                                    4
+                                } else if meta_data.defensive {
+                                    6
+                                } else {
+                                    9
+                                }
+                            }
+                            _ => unreachable!(),
+                        },
+                    }
+                })
+                .max()
+                // unmovable placement is not that useful
+                .unwrap_or(-3);
+            MoveRating::Val(rating)
+        }
+        PieceType::Beetle => {
+            let is_better = meta == MetaInterest::Uninteresting;
+            let enemy_queen_pos = meta_data.q_pos(data.player().switched());
+            let our_queen_pos = meta_data.q_pos(data.player());
+            if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 3) {
+                let dist = distance(target.index(), enemy_queen_pos.unwrap());
+                let mut rating = match dist {
+                    2 => 10,
+                    3 => 7,
+                    _ => unreachable!(),
+                };
+                if meta_data.defensive {
+                    rating -= 2;
+                }
+                MoveRating::Equiv(rating, PlaceBeetle(dist), is_better)
+            } else if our_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 2) {
+                // TODO: defensive placement (counter beetle)
+                MoveRating::Val(3)
+            } else {
+                MoveRating::Val(1)
+            }
+        }
+        PieceType::Ladybug => {
+            let is_better = meta == MetaInterest::Uninteresting;
+            let enemy_queen_pos = meta_data.q_pos(data.player().switched());
+            if enemy_queen_pos.map_or(false, |pos| distance(target.index(), pos) <= 4) {
+                let dist = distance(target.index(), enemy_queen_pos.unwrap());
+                let mut rating = match dist {
+                    2 => 10,
+                    3 => 8,
+                    4 => 6,
+                    _ => unreachable!(),
+                };
+                if meta_data.defensive {
+                    rating -= 2;
+                }
+                MoveRating::Equiv(rating, PlaceLadybug(dist), is_better)
+            } else {
+                MoveRating::Val(3)
+            }
+        }
+        PieceType::Mosquito => {
+            use PieceType::*;
+
+            let piece_set = PieceType::get_mosquito_piece_set(target, true).moves_dominance_set();
+            let mut rating = -1;
+            for p in [Ant, Ladybug, Beetle, Grasshopper, Spider] {
+                let new_val = if piece_set.contains(p) {
+                    piece_placement_rating(data, meta_data, target, p).value()
+                } else {
+                    -1
+                };
+                let old_val = rating;
+                rating = RatingType::max(new_val, rating);
+                if old_val >= 6 {
+                    // break early since it seems unlikely it gets better
+                    break;
+                }
+            }
+            MoveRating::Val(rating)
         }
     }
 }
