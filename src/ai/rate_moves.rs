@@ -115,7 +115,6 @@ enum PositionType {
 enum Equivalency {
     AntToNeutral(OpenIndex),
     // TODO: ant works badly for circles
-    // TODO: more equivalency classes for ants?!
     AntToBlocking(OpenIndex, OpenIndex),
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
@@ -123,6 +122,7 @@ enum Equivalency {
     PlaceAntBlocking(OpenIndex),
     PlaceBeetle(u32),
     PlaceLadybug(u32),
+    PlaceMosquito(PieceType),
     // ---> include position rating (own blocked, own queen) to placements!
     PlaceAtEnemyQueen(bool),
 }
@@ -376,34 +376,9 @@ fn handle_move_ratings(
                 rater.rate(i, j, 5 + num_neighbors);
             }
         } else if piece.p_type == PieceType::Ant {
-            // to avoid combinatorial explosion, it is really important to use equivalency classes for ants
-            let mut is_better = false;
-            let (equivalency, m) = interest_to_type(&meta_data.map, data.player(), t_interest);
-            let equivalency = match equivalency {
-                PositionType::NeutralOrBad => {
-                    if m > 0 {
-                        is_better = true;
-                    }
-                    Equivalency::AntToNeutral(from.index())
-                }
-                PositionType::Blocking => {
-                    debug_assert!(m == 0);
-                    is_better = no_common_neighbor(to, t_interest.target_index());
-                    if interest_to_type(&meta_data.map, data.player(), f_interest).0
-                        == PositionType::NeutralOrBad
-                    {
-                        Equivalency::AntToBlocking(from.index(), t_interest.target_index())
-                    } else {
-                        Equivalency::AntBlockingLow(t_interest.target_index())
-                    }
-                }
-                PositionType::AtQueen => {
-                    debug_assert!(m == 0);
-                    is_better = no_common_neighbor(to, t_interest.target_index());
-                    Equivalency::AntToQueen(from.index())
-                }
-            };
-            let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, dist_one);
+            let (rating, equivalency, is_better) = rate_ant_move(
+                meta_data, data, piece, from, f_interest, to, t_interest, dist_one,
+            );
             set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
         } else if piece.p_type == PieceType::Beetle || goes_on_top || from.content().len() > 1 {
             // also include the mosquito cases
@@ -483,16 +458,85 @@ fn handle_move_ratings(
             }
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, bonus, dist_one);
             rater.rate(i, j, rating);
+        } else if piece.p_type == PieceType::Mosquito {
+            // TODO: any additonal special casing necessary?;
+            let piece_set = PieceType::get_mosquito_piece_set(from, false);
+            if piece_set.contains(PieceType::Ant) {
+                let (rating, equivalency, is_better) = rate_ant_move(
+                    meta_data,
+                    data,
+                    Piece {
+                        player: piece.player,
+                        p_type: PieceType::Ant,
+                    },
+                    from,
+                    f_interest,
+                    to,
+                    t_interest,
+                    dist_one,
+                );
+                set_eq(i, j, rater, eq_map, equivalency, rating, is_better);
+            } else {
+                let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, dist_one);
+                rater.rate(i, j, rating);
+            }
         } else {
-            // TODO: any additonal mosquito special handling?
             assert!(matches!(
                 piece.p_type,
-                PieceType::Grasshopper | PieceType::Spider | PieceType::Mosquito
+                PieceType::Grasshopper | PieceType::Spider
             ));
             let rating = rate_usual_move(meta_data, piece, f_interest, t_interest, 0, dist_one);
             rater.rate(i, j, rating);
         }
     }
+}
+
+fn rate_ant_move(
+    meta_data: &MetaData,
+    data: &HiveGameState,
+    piece: Piece,
+    from: Field<HiveBoard>,
+    f_interest: MetaInterest,
+    to: Field<HiveBoard>,
+    t_interest: MetaInterest,
+    is_distance_one_move: bool,
+) -> (RatingType, Equivalency, bool) {
+    // to avoid combinatorial explosion, it is really important to use equivalency classes for ants
+    let mut is_better = false;
+    let (equivalency, m) = interest_to_type(&meta_data.map, data.player(), t_interest);
+    let equivalency = match equivalency {
+        PositionType::NeutralOrBad => {
+            if m > 0 {
+                is_better = true;
+            }
+            Equivalency::AntToNeutral(from.index())
+        }
+        PositionType::Blocking => {
+            debug_assert!(m == 0);
+            is_better = no_common_neighbor(to, t_interest.target_index());
+            if interest_to_type(&meta_data.map, data.player(), f_interest).0
+                == PositionType::NeutralOrBad
+            {
+                Equivalency::AntToBlocking(from.index(), t_interest.target_index())
+            } else {
+                Equivalency::AntBlockingLow(t_interest.target_index())
+            }
+        }
+        PositionType::AtQueen => {
+            debug_assert!(m == 0);
+            is_better = no_common_neighbor(to, t_interest.target_index());
+            Equivalency::AntToQueen(from.index())
+        }
+    };
+    let rating = rate_usual_move(
+        meta_data,
+        piece,
+        f_interest,
+        t_interest,
+        0,
+        is_distance_one_move,
+    );
+    (rating, equivalency, is_better)
 }
 
 fn rate_usual_move(
@@ -734,22 +778,24 @@ fn piece_placement_rating(
         PieceType::Mosquito => {
             use PieceType::*;
 
+            let is_better = meta == MetaInterest::Uninteresting;
             let piece_set = PieceType::get_mosquito_piece_set(target, true).moves_dominance_set();
-            let mut rating = -1;
+            let (mut rating, mut best_type) = (-1, Queen);
             for p in [Ant, Ladybug, Beetle, Grasshopper, Spider] {
-                let new_val = if piece_set.contains(p) {
-                    piece_placement_rating(data, meta_data, target, p).value()
-                } else {
-                    -1
-                };
                 let old_val = rating;
-                rating = RatingType::max(new_val, rating);
+                if piece_set.contains(p) {
+                    let new_val = piece_placement_rating(data, meta_data, target, p).value();
+                    if new_val > old_val {
+                        rating = new_val;
+                        best_type = p;
+                    }
+                };
                 if old_val >= 6 {
                     // break early since it seems unlikely it gets better
                     break;
                 }
             }
-            MoveRating::Val(rating)
+            MoveRating::Equiv(rating, PlaceMosquito(best_type), is_better)
         }
     }
 }

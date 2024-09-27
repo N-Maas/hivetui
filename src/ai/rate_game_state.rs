@@ -497,7 +497,48 @@ fn single_piece_rating(
             MovabilityType::Unmovable => 5,
         },
         PieceType::Mosquito => match movability {
-            MovabilityType::Movable => 13,
+            MovabilityType::Movable => {
+                use PieceType::*;
+
+                let piece_set =
+                    PieceType::get_mosquito_piece_set(field, false).moves_dominance_set();
+                let mut best = (7, 0, 0);
+                for p_type in [Ant, Ladybug, Beetle, Grasshopper, Spider] {
+                    let old_val = best.0 + best.1 + best.2;
+                    if piece_set.contains(p_type) {
+                        let (mut rating, mut b_bonus, mut bonus, reaches_queen) =
+                            single_piece_rating(
+                                data,
+                                meta,
+                                Piece {
+                                    player: piece.player,
+                                    p_type,
+                                },
+                                field,
+                                MovabilityType::Movable,
+                            );
+                        could_reach_queen |= reaches_queen;
+                        // cases where the mosquito is probably worse than the original
+                        if p_type == Ant {
+                            rating -= 2;
+                        } else if p_type == Ladybug && !reaches_queen {
+                            bonus = 0;
+                        } else if p_type == Beetle && field.content().len() <= 1 {
+                            b_bonus = b_bonus.saturating_sub(2);
+                        }
+                        if rating + b_bonus + bonus > old_val {
+                            best = (rating, b_bonus, bonus);
+                        }
+                    };
+                    if old_val >= 15 {
+                        // break early since it seems unlikely it gets better
+                        break;
+                    }
+                }
+                beetle_bonus = best.1;
+                other_bonus = best.2;
+                best.0
+            }
             MovabilityType::Blocked(_) => 12,
             MovabilityType::AtQueen => 7,
             MovabilityType::Unmovable => 5,
