@@ -143,11 +143,11 @@ fn calculate_metadata(data: &HiveGameState) -> MetaData {
 fn rate_remaining_pieces(data: &HiveGameState, player: Player) -> RatingType {
     let ants = 10 * data.remaining_pieces(player, PieceType::Ant);
     let ladybugs = 7 * data.remaining_pieces(player, PieceType::Ladybug);
-    let mosquitos = 6 * data.remaining_pieces(player, PieceType::Mosquito);
+    let mosquitos = 7 * data.remaining_pieces(player, PieceType::Mosquito);
     let spiders = 5 * data.remaining_pieces(player, PieceType::Spider);
     let grasshoppers = 5 * data.remaining_pieces(player, PieceType::Grasshopper);
     // TODO: increase for beetle to 6 or 7?
-    let beetles = 5 * data.remaining_pieces(player, PieceType::Beetle);
+    let beetles = 6 * data.remaining_pieces(player, PieceType::Beetle);
     (ants + ladybugs + mosquitos + spiders + grasshoppers + beetles) as RatingType
 }
 
@@ -427,11 +427,7 @@ fn single_piece_rating(
                                 && p.p_type == PieceType::Beetle
                                 && meta.adjacent_to_queen(piece.player, field)
                             {
-                                if meta.flags(piece.player).queen_has_beetle_on_top {
-                                    Some(25)
-                                } else {
-                                    Some(20)
-                                }
+                                Some(19)
                             } else if p.player == enemy {
                                 Some(15)
                             } else {
@@ -454,8 +450,8 @@ fn single_piece_rating(
                     move_rating
                 }
             }
-            MovabilityType::Blocked(_) => 12,
-            MovabilityType::AtQueen => 5,
+            MovabilityType::Blocked(_) => 10,
+            MovabilityType::AtQueen => 7,
             // beetles are somewhat likely to escape
             MovabilityType::Unmovable => 4,
         },
@@ -488,12 +484,12 @@ fn single_piece_rating(
             MovabilityType::Blocked(_) => {
                 let dist = meta.distance_to_queen(piece.player.switched(), field);
                 if dist <= 3 {
-                    20 - 2 * dist as i32
+                    18 - 2 * dist as i32
                 } else {
-                    12
+                    10
                 }
             }
-            MovabilityType::AtQueen => 7,
+            MovabilityType::AtQueen => 8,
             MovabilityType::Unmovable => 5,
         },
         PieceType::Mosquito => match movability {
@@ -539,9 +535,9 @@ fn single_piece_rating(
                 other_bonus = best.2;
                 best.0
             }
-            MovabilityType::Blocked(_) => 12,
+            MovabilityType::Blocked(_) => 10,
             MovabilityType::AtQueen => 7,
-            MovabilityType::Unmovable => 5,
+            MovabilityType::Unmovable => 4,
         },
     };
 
