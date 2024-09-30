@@ -166,7 +166,7 @@ fn rate_piece_movability(
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
             let player = usize::from(piece.player);
             rating[player] += if is_only_half_movable(data, meta, piece, field) {
-                val * 2 / 3
+                val * 2 / 3 - 1
             } else {
                 val
             };
@@ -473,11 +473,11 @@ fn single_piece_rating(
 
                 let dist = meta.distance_to_queen(piece.player.switched(), field);
                 if dist <= 2 && reaches_queen {
-                    other_bonus = 10;
+                    other_bonus = 8;
                 } else if dist <= 2 {
                     other_bonus = 5;
                 } else if dist == 3 && reaches_queen {
-                    other_bonus = 8;
+                    other_bonus = 7;
                 } else if dist == 3 {
                     other_bonus = 4;
                 } else if dist == 4 {
@@ -597,7 +597,7 @@ fn rate_queen_situation(
     less_endangered: Option<Player>,
     enemies_reaching_queen: u32,
 ) -> RatingType {
-    const QUEEN_VAL: [RatingType; 6] = [0, 0, 25, 50, 85, 135];
+    const QUEEN_VAL: [RatingType; 6] = [0, 0, 20, 45, 80, 125];
     let is_less_endangered = less_endangered == Some(player);
     let mut can_move = false;
     let mut num_neighbors = 0_u32;
