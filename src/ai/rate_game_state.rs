@@ -398,6 +398,7 @@ fn single_piece_rating(
                         if dist == 0 {
                             beetle_bonus = 10 + 15 * num_placeable;
                         } else {
+                            // TODO: bonus if blocking an enemy piece?
                             beetle_bonus = 10 + 5 * num_placeable;
                         }
                     }

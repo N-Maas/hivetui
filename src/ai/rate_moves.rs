@@ -115,6 +115,7 @@ enum PositionType {
 enum Equivalency {
     AntToNeutral(OpenIndex),
     // TODO: ant works badly for circles
+    // TODO: make ant equivalencies even more strict?
     AntToBlocking(OpenIndex, OpenIndex),
     AntBlockingLow(OpenIndex),
     AntToQueen(OpenIndex),
