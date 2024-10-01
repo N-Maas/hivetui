@@ -1,4 +1,4 @@
-use crate::ai::{Difficulty, HiveAI};
+use crate::ai::{Character, Difficulty, HiveAI};
 use crate::{
     pieces::{PieceType, Player},
     state::{HiveContext, HiveGameState},
@@ -19,7 +19,7 @@ pub struct AIResult {
 }
 
 #[derive(Debug)]
-pub struct AIStart(pub Difficulty, pub Box<HiveGameState>);
+pub struct AIStart(pub Difficulty, pub Character, pub Box<HiveGameState>);
 
 pub type AIEndpoint = MasterEndpoint<Box<AIResult>, AIStart>;
 
@@ -27,12 +27,12 @@ pub fn start_ai_worker_thread() -> AIEndpoint {
     start_worker_thread(|endpoint| loop {
         thread::sleep(Duration::from_millis(10));
 
-        let Some(AIStart(level, state)) = endpoint.get_new_msg() else {
+        let Some(AIStart(level, character, state)) = endpoint.get_new_msg() else {
             continue;
         };
 
         let player = state.player();
-        let ai = HiveAI::new(level);
+        let ai = HiveAI::new(level, character);
         let engine = Engine::new(2, *state);
         let Some(mut ratings) = ai.run_all_ratings(&engine, || endpoint.has_msg()) else {
             continue;

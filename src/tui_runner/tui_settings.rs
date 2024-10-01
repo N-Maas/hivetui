@@ -1,4 +1,4 @@
-use crate::ai::Difficulty;
+use crate::ai::{Character, Difficulty};
 use crate::state::HiveGameState;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use ratatui::{
@@ -99,6 +99,38 @@ impl PlayerType {
     pub fn into_ai_level(self) -> AILevel {
         assert!(self != PlayerType::Human);
         AILevel::try_from(u8::from(self) - 1).unwrap()
+    }
+}
+
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
+#[repr(u8)]
+pub enum AICharacter {
+    #[default]
+    Balanced = 0,
+    Aggressive = 1,
+    Defensive = 2,
+    Strategic = 3,
+}
+
+impl AICharacter {
+    pub fn into_character(self) -> Character {
+        match self {
+            AICharacter::Balanced => Character::Balanced,
+            AICharacter::Aggressive => Character::Aggressive,
+            AICharacter::Defensive => Character::Defensive,
+            AICharacter::Strategic => Character::Strategic,
+        }
     }
 }
 
@@ -496,6 +528,10 @@ pub struct Settings {
     pub white_player_type: PlayerType,
     pub black_player_type: PlayerType,
     #[serde(default)]
+    pub white_ai_character: AICharacter,
+    #[serde(default)]
+    pub black_ai_character: AICharacter,
+    #[serde(default)]
     pub automatic_camera_moves: AutomaticCameraMoves,
     #[serde(default)]
     pub ai_moves: AIMoves,
@@ -535,6 +571,13 @@ impl Settings {
         match player {
             Player::White => self.white_player_type,
             Player::Black => self.black_player_type,
+        }
+    }
+
+    pub fn ai_character(&self, player: Player) -> AICharacter {
+        match player {
+            Player::White => self.white_ai_character,
+            Player::Black => self.black_ai_character,
         }
     }
 
@@ -661,78 +704,108 @@ where
 
 const PLAYER_PREFIXES: [&str; 2] = ["white player: ", "black player: "];
 const PLAYER_TYPES: [&str; 6] = ["human", "beginner", "easy", "normal", "hard", "master"];
+const AI_TYPES: [&str; 4] = ["balanced", "aggressive", "defensive", "strategic"];
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SettingSelection {
-    General(usize),
-    Graphics(usize),
+    General(usize, bool),
+    Graphics(usize, bool),
 }
 
 impl SettingSelection {
-    pub fn player_index(&self) -> Option<usize> {
-        Some(self.index()).filter(|&i| i <= 2)
+    pub fn unified(&self) -> SelectionUnified {
+        match *self {
+            SettingSelection::General(i, is_char) => {
+                if i < 2 {
+                    SelectionUnified::Player(i, is_char)
+                } else {
+                    SelectionUnified::General(i)
+                }
+            }
+            SettingSelection::Graphics(i, is_char) => {
+                if i < 2 {
+                    SelectionUnified::Player(i, is_char)
+                } else {
+                    SelectionUnified::Graphics(i)
+                }
+            }
+        }
+    }
+
+    pub fn player_index(&self) -> Option<(usize, bool)> {
+        match self.unified() {
+            SelectionUnified::Player(i, is_char) => Some((i, is_char)),
+            _ => None,
+        }
     }
 
     pub fn index(&self) -> usize {
         match *self {
-            SettingSelection::General(i) => i,
-            SettingSelection::Graphics(i) => i,
+            SettingSelection::General(i, _) => i,
+            SettingSelection::Graphics(i, _) => i,
         }
     }
 
     pub fn index_mut(&mut self) -> &mut usize {
+        self.pair_mut().0
+    }
+
+    pub fn pair_mut(&mut self) -> (&mut usize, &mut bool) {
         match self {
-            SettingSelection::General(i) => i,
-            SettingSelection::Graphics(i) => i,
+            SettingSelection::General(i, is_char) => (i, is_char),
+            SettingSelection::Graphics(i, is_char) => (i, is_char),
         }
     }
 
     pub fn switched(self) -> SettingSelection {
         match self {
-            SettingSelection::General(i) => SettingSelection::Graphics(i),
-            SettingSelection::Graphics(i) => SettingSelection::General(i),
+            SettingSelection::General(i, is_char) => SettingSelection::Graphics(i, is_char),
+            SettingSelection::Graphics(i, is_char) => SettingSelection::General(i, is_char),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SelectionUnified {
+    Player(usize, bool),
+    General(usize),
+    Graphics(usize),
+}
+
 pub struct SettingRenderer {
-    players: [Box<dyn MenuSetting>; 2],
+    players: [[Box<dyn MenuSetting>; 2]; 2],
     general: Vec<Box<dyn MenuSetting>>,
     graphic: Vec<Box<dyn MenuSetting>>,
 }
 
 impl SettingRenderer {
     pub fn get(&self, selection: SettingSelection) -> &dyn MenuSetting {
-        match selection {
-            SettingSelection::General(index) => {
-                if index < 2 {
-                    self.players[index].as_ref()
+        match selection.unified() {
+            SelectionUnified::Player(index, is_char) => {
+                let [player_type, ai_type] = &self.players[index];
+                if is_char {
+                    ai_type.as_ref()
                 } else {
-                    self.general[index - 2].as_ref()
+                    player_type.as_ref()
                 }
             }
-            SettingSelection::Graphics(index) => {
-                if index < 2 {
-                    self.players[index].as_ref()
-                } else {
-                    self.graphic[index - 2].as_ref()
-                }
-            }
+            SelectionUnified::General(index) => self.general[index - 2].as_ref(),
+            SelectionUnified::Graphics(index) => self.graphic[index - 2].as_ref(),
         }
     }
 
     pub fn max_index(&self, selection: SettingSelection) -> usize {
         match selection {
-            SettingSelection::General(_) => self.general.len() + 2,
-            SettingSelection::Graphics(_) => self.graphic.len() + 2,
+            SettingSelection::General(_, _) => self.general.len() + 2,
+            SettingSelection::Graphics(_, _) => self.graphic.len() + 2,
         }
     }
 
     pub fn is_ai_setting(&self, selection: SettingSelection) -> bool {
-        if let SettingSelection::General(index) = selection {
+        if let SettingSelection::General(index, _) = selection {
             [0, 1, 3, 4, 5].contains(&index)
         } else {
-            selection.index() <= 1
+            selection.index() < 2
         }
     }
 
@@ -741,12 +814,22 @@ impl SettingRenderer {
         let graphics_offset = 17;
         Self {
             players: [
-                create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), 0, |state| {
-                    &mut state.white_player_type
-                }),
-                create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), 0, |state| {
-                    &mut state.black_player_type
-                }),
+                [
+                    create_menu_setting(PLAYER_PREFIXES[0], PLAYER_TYPES.into(), 0, |state| {
+                        &mut state.white_player_type
+                    }),
+                    create_menu_setting("", AI_TYPES.into(), 0, |state| {
+                        &mut state.white_ai_character
+                    }),
+                ],
+                [
+                    create_menu_setting(PLAYER_PREFIXES[1], PLAYER_TYPES.into(), 0, |state| {
+                        &mut state.black_player_type
+                    }),
+                    create_menu_setting("", AI_TYPES.into(), 0, |state| {
+                        &mut state.black_ai_character
+                    }),
+                ],
             ],
             general: vec![
                 create_menu_setting(
@@ -836,11 +919,12 @@ impl SettingRenderer {
     pub fn render_player_settings(
         &self,
         settings: &mut Settings,
-        selection: Option<usize>,
+        selection: Option<(usize, bool)>,
     ) -> Text<'static> {
         let mut lines = Vec::new();
-        for (i, option) in self.players.iter().enumerate() {
-            let is_selected = selection == Some(i);
+        for (i, [p_type, ai_type]) in self.players.iter().enumerate() {
+            let (is_selected, is_char) =
+                selection.map_or((false, false), |(index, is_char)| (index == i, is_char));
             let color = if is_selected {
                 settings.color_scheme.primary()
             } else {
@@ -862,10 +946,19 @@ impl SettingRenderer {
             spans = Vec::new();
             if is_selected {
                 spans.push(Span::raw("   "));
-                option.get_spans(settings, &mut spans, true, 0);
+                p_type.get_spans(settings, &mut spans, !is_char, 0);
                 spans.push(Span::raw(" or AI: "));
                 for level in 1..PLAYER_TYPES.len() {
-                    option.get_spans(settings, &mut spans, true, level);
+                    p_type.get_spans(settings, &mut spans, !is_char, level);
+                }
+            }
+            lines.push(Line::from(spans));
+
+            spans = Vec::new();
+            if is_selected {
+                spans.push(Span::raw("   "));
+                for j in 0..AI_TYPES.len() {
+                    ai_type.get_spans(settings, &mut spans, is_char, j);
                 }
             }
             lines.push(Line::from(spans));
@@ -879,8 +972,8 @@ impl SettingRenderer {
         selection: SettingSelection,
     ) -> Paragraph<'static> {
         match selection {
-            SettingSelection::General(_) => self.render_general_settings(settings, selection),
-            SettingSelection::Graphics(_) => self.render_graphic_settings(settings, selection),
+            SettingSelection::General(_, _) => self.render_general_settings(settings, selection),
+            SettingSelection::Graphics(_, _) => self.render_graphic_settings(settings, selection),
         }
     }
 
@@ -890,8 +983,8 @@ impl SettingRenderer {
         selection: SettingSelection,
     ) -> Paragraph<'static> {
         let index = match selection {
-            SettingSelection::General(index) => index,
-            SettingSelection::Graphics(_) => 0,
+            SettingSelection::General(index, _) => index,
+            SettingSelection::Graphics(_, _) => 0,
         };
         let mut text = self.render_settings(settings, &self.general, index);
         text.lines.push(Line::raw(""));
@@ -912,8 +1005,8 @@ impl SettingRenderer {
         selection: SettingSelection,
     ) -> Paragraph<'static> {
         let index = match selection {
-            SettingSelection::General(_) => 0,
-            SettingSelection::Graphics(index) => index,
+            SettingSelection::General(_, _) => 0,
+            SettingSelection::Graphics(index, _) => index,
         };
         let mut text = self.render_settings(settings, &self.graphic, index);
         text.lines.push(Line::raw(""));

@@ -57,9 +57,9 @@ enum UIState {
     /// the current scrolling
     RulesSummary(u16),
     /// the currently selected option
-    GameSetup(usize),
+    GameSetup(usize, bool),
     /// the currently selected save
-    LoadScreen(usize),
+    LoadScreen(usize, bool),
     /// true if previous screen was toplevel
     SaveScreen(bool),
     /// 1. true if the current turn must be skipped
@@ -79,7 +79,7 @@ impl UIState {
     fn top_level(self) -> bool {
         use UIState::*;
         match self {
-            Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen(_) => true,
+            Toplevel | RulesSummary(_) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_) => true,
             ShowOptions(_, _) | PositionSelected(_) | PieceSelected(_) => false,
             GameFinished(_) | PlaysAnimation(_) | ShowAIMoves => false,
         }
@@ -89,17 +89,23 @@ impl UIState {
         !self.top_level() && self != UIState::ShowAIMoves
     }
 
-    fn alternative_index(&mut self) -> Option<&mut usize> {
+    fn mut_index<'a>(
+        &'a mut self,
+        selection: &'a mut SettingSelection,
+    ) -> Option<(&'a mut usize, &'a mut bool)> {
         match self {
-            UIState::GameSetup(index) | UIState::LoadScreen(index) => Some(index),
+            UIState::Toplevel => Some(selection.pair_mut()).filter(|(index, _)| **index < 2),
+            UIState::GameSetup(index, is_char) | UIState::LoadScreen(index, is_char) => {
+                Some((index, is_char))
+            }
             _ => None,
         }
     }
 
     fn get_menu_selection(self, selection: SettingSelection) -> Option<SettingSelection> {
         match self {
-            UIState::GameSetup(index) | UIState::LoadScreen(index) => {
-                (index < 2).then_some(SettingSelection::General(index))
+            UIState::GameSetup(index, is_char) | UIState::LoadScreen(index, is_char) => {
+                (index < 2).then_some(SettingSelection::General(index, is_char))
             }
             _ => self.top_level().then_some(selection),
         }
@@ -199,7 +205,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
     let mut graphics_state = GraphicsState::new();
     let mut ai_state = AIState::new(ai_endpoint);
     let mut messages = Vec::new();
-    let mut menu_selection = SettingSelection::General(2);
+    let mut menu_selection = SettingSelection::General(2, false);
     let mut text_input = TextInput::new("".to_string());
     let mut digits: Option<Vec<usize>> = None;
     let mut animation_state = AnimationState::default();
@@ -322,8 +328,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 Event::Exit => match ui_state {
                     UIState::Toplevel => break,
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
-                    UIState::GameSetup(_) => ui_state = UIState::Toplevel,
-                    UIState::LoadScreen(_) => ui_state = UIState::Toplevel,
+                    UIState::GameSetup(_, _) => ui_state = UIState::Toplevel,
+                    UIState::LoadScreen(_, _) => ui_state = UIState::Toplevel,
                     UIState::SaveScreen(top_level) => {
                         if top_level {
                             ui_state = UIState::Toplevel;
@@ -340,8 +346,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 },
                 Event::Switch => {
                     // TODO: use similar to escape to return from some menus?
-                    if let UIState::GameSetup(index) = ui_state {
-                        ui_state = UIState::GameSetup(game_setup.switched_index(index, 2));
+                    if let UIState::GameSetup(index, is_char) = ui_state {
+                        ui_state = UIState::GameSetup(game_setup.switched_index(index, 2), is_char);
                     } else if ui_state.top_level() {
                         menu_selection = menu_selection.switched();
                         let max_index = setting_renderer.max_index(menu_selection);
@@ -372,12 +378,12 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     ui_state = UIState::ShowOptions(false, false);
                 }
                 Event::NewGame => {
-                    ui_state = UIState::GameSetup(2);
+                    ui_state = UIState::GameSetup(2, false);
                 }
                 Event::LoadGame => {
                     if let Some(io_manager) = io_manager.as_mut() {
                         match io_manager.recompute_save_files_list() {
-                            Ok(_) => ui_state = UIState::LoadScreen(2),
+                            Ok(_) => ui_state = UIState::LoadScreen(2, false),
                             Err(e) => messages
                                 .push(Message::error(format!("Could not load save files: {e}"))),
                         }
@@ -419,7 +425,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     }
                 }
                 Event::Help => match ui_state {
-                    UIState::Toplevel | UIState::LoadScreen(_) => {
+                    UIState::Toplevel | UIState::LoadScreen(_, _) => {
                         ui_state = UIState::RulesSummary(0)
                     }
                     UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
@@ -428,7 +434,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
                     UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
                     UIState::ShowOptions(true, _)
-                    | UIState::GameSetup(_)
+                    | UIState::GameSetup(_, _)
                     | UIState::PlaysAnimation(_)
                     | UIState::GameFinished(_)
                     | UIState::SaveScreen(_) => (),
@@ -448,44 +454,57 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     graphics_state.move_in_step_size(0.0, -1.0, boundaries_x, boundaries_y)
                 }
                 Event::MenuOption(new_index) => {
-                    if let UIState::GameSetup(_) = ui_state {
+                    if let UIState::GameSetup(_, _) = ui_state {
                         if new_index < game_setup.max_index() + 2 {
-                            ui_state = UIState::GameSetup(new_index);
+                            ui_state = UIState::GameSetup(new_index, false);
                         }
-                    } else if let UIState::LoadScreen(_) = ui_state {
+                    } else if let UIState::LoadScreen(_, _) = ui_state {
                         let max_len = io_manager.as_ref().unwrap().save_files_list().len();
                         if new_index < max_len + 2 {
-                            ui_state = UIState::LoadScreen(new_index);
+                            ui_state = UIState::LoadScreen(new_index, false);
                         }
                     } else if new_index < setting_renderer.max_index(menu_selection) {
                         *menu_selection.index_mut() = new_index;
                     }
                 }
                 Event::MenuUp => {
-                    if let Some(index) = ui_state.alternative_index() {
-                        *index = index.saturating_sub(1);
+                    if let Some((index, is_char)) = ui_state.mut_index(&mut menu_selection) {
+                        if *is_char {
+                            *is_char = false;
+                        } else {
+                            *index = index.saturating_sub(1);
+                        }
                     } else if menu_selection.index() > 0 {
                         *menu_selection.index_mut() -= 1;
                     }
                 }
                 Event::MenuDown => {
-                    if let UIState::GameSetup(index) = &mut ui_state {
+                    if let Some((_, is_char)) = ui_state
+                        .mut_index(&mut menu_selection)
+                        .filter(|(index, is_char)| **index < 2 && !**is_char)
+                    {
+                        *is_char = true;
+                    } else if let UIState::GameSetup(index, is_char) = &mut ui_state {
                         if *index + 1 < game_setup.max_index() + 2 {
                             *index += 1;
+                            *is_char = false;
                         }
-                    } else if let UIState::LoadScreen(index) = &mut ui_state {
+                    } else if let UIState::LoadScreen(index, is_char) = &mut ui_state {
                         let max_len = io_manager.as_ref().unwrap().save_files_list().len();
                         if *index + 1 < max_len + 2 {
                             *index += 1;
+                            *is_char = false;
                         }
                     } else if menu_selection.index() + 1
                         < setting_renderer.max_index(menu_selection)
                     {
-                        *menu_selection.index_mut() += 1;
+                        let (index, is_char) = menu_selection.pair_mut();
+                        *index += 1;
+                        *is_char = false;
                     }
                 }
                 Event::MenuIncrease | Event::MenuDecrease => match ui_state {
-                    UIState::GameSetup(index) if index >= 2 => {
+                    UIState::GameSetup(index, _) if index >= 2 => {
                         if e == Event::MenuIncrease {
                             game_setup.increase_at(index, 2);
                         } else {
@@ -521,7 +540,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 }
                 Event::SelectMenuOption => {
                     let io_manager = io_manager.as_ref().unwrap();
-                    if let UIState::LoadScreen(index) = ui_state {
+                    if let UIState::LoadScreen(index, _) = ui_state {
                         // load the selected game
                         if index >= 2 {
                             let result = io_manager.load_from_index(index - 2);
@@ -739,14 +758,14 @@ fn update_game_state_and_fill_input_mapping(
             use UIState::*;
             match (*ui_state, follow_up) {
                 (
-                    Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen(_),
+                    Toplevel | RulesSummary(_) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_),
                     Ok(d),
                 ) => {
                     d.retract_all();
                     GameStateChange::None
                 }
                 (
-                    Toplevel | RulesSummary(_) | GameSetup(_) | LoadScreen(_) | SaveScreen(_),
+                    Toplevel | RulesSummary(_) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_),
                     Err(_),
                 ) => GameStateChange::None,
                 (ShowOptions(_, _), Ok(d)) => {

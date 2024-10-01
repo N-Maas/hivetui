@@ -869,7 +869,7 @@ mod test {
     use crate::{
         ai::{
             rate_moves::{blocks, distance, would_block, MetaInterest},
-            HiveRater,
+            HiveRater, RatingWeights,
         },
         display::{print_annotated_board, print_move_ratings},
         pieces::{PieceType, Player},
@@ -1108,6 +1108,7 @@ mod test {
             &state,
             &HiveRater {
                 restrictions: Vec::new(),
+                weights: RatingWeights::default(),
             },
         );
         // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
@@ -1170,6 +1171,7 @@ mod test {
             &state,
             &HiveRater {
                 restrictions: Vec::new(),
+                weights: RatingWeights::default(),
             },
         );
         // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   12
@@ -1192,6 +1194,7 @@ mod test {
             &state,
             &HiveRater {
                 restrictions: Vec::new(),
+                weights: RatingWeights::default(),
             },
         );
         // Place <A>  at  (0 , -2)             =>   18

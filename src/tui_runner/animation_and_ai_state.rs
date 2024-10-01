@@ -1,4 +1,5 @@
 use crate::{
+    ai::Character,
     panic_handling::report_panic,
     pieces::Player,
     state::HiveGameState,
@@ -183,8 +184,16 @@ impl AIState {
             } else {
                 settings.ai_assistant
             };
-            self.endpoint
-                .send_overwrite(AIStart(level.as_difficulty(), Box::new(state.clone())));
+            let character = if settings.is_ai(player) {
+                settings.ai_character(player).into_character()
+            } else {
+                Character::Balanced
+            };
+            self.endpoint.send_overwrite(AIStart(
+                level.as_difficulty(),
+                character,
+                Box::new(state.clone()),
+            ));
             self.current_player = player;
             self.should_use_ai = settings.is_ai(player) && settings.ai_moves == AIMoves::Automatic;
             self.should_show_animation = settings.is_ai(player);

@@ -402,7 +402,7 @@ pub fn render(
             let is_rules_summary = matches!(state.ui_state, UIState::RulesSummary(_));
             let render_setup_area = matches!(
                 state.ui_state,
-                UIState::GameSetup(_) | UIState::LoadScreen(_) | UIState::SaveScreen(_)
+                UIState::GameSetup(_, _) | UIState::LoadScreen(_, _) | UIState::SaveScreen(_)
             );
 
             // the menu (actions)
@@ -410,7 +410,7 @@ pub fn render(
             if !is_rules_summary
                 && !matches!(
                     state.ui_state,
-                    UIState::GameSetup(_) | UIState::SaveScreen(_)
+                    UIState::GameSetup(_, _) | UIState::SaveScreen(_)
                 )
             {
                 let mut action_area = action_area;
@@ -426,7 +426,7 @@ pub fn render(
                 render_messages(frame, messages, action_area, y_offset + 1);
             }
 
-            let (player_size, mut settings_size, mut help_size) = (5, 10, 16);
+            let (player_size, mut settings_size, mut help_size) = (7, 10, 16);
             if render_setup_area {
                 settings_size = 15;
             }
@@ -453,10 +453,10 @@ pub fn render(
 
             // the players
             {
-                let selection = if let UIState::GameSetup(index) = state.ui_state {
-                    Some(index)
-                } else if let UIState::LoadScreen(index) = state.ui_state {
-                    Some(index)
+                let selection = if let UIState::GameSetup(index, is_char) = state.ui_state {
+                    Some((index, is_char))
+                } else if let UIState::LoadScreen(index, is_char) = state.ui_state {
+                    Some((index, is_char))
                 } else {
                     state.menu_selection.player_index()
                 };
@@ -477,10 +477,10 @@ pub fn render(
                     } else {
                         (remaining_size + 1) / 2
                     };
-                if let UIState::GameSetup(index) = state.ui_state {
+                if let UIState::GameSetup(index, _) = state.ui_state {
                     let par = game_setup.render_game_setup(settings, index, 2);
                     frame.render_widget(par, settings_area);
-                } else if let UIState::LoadScreen(index) = state.ui_state {
+                } else if let UIState::LoadScreen(index, _) = state.ui_state {
                     let save_games = io_manager.as_ref().unwrap().save_files_list();
                     let par = load_game_widget(settings, available_size, save_games, index, 2);
                     frame.render_widget(par, settings_area);

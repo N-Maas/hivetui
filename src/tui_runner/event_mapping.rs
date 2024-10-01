@@ -74,7 +74,7 @@ pub fn pull_event(
     let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
-    let game_setup = matches!(ui_state, UIState::GameSetup(_));
+    let game_setup = matches!(ui_state, UIState::GameSetup(_, _));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
     let key = pull_key_event()?;
     let event = key.and_then(|key| {
@@ -130,9 +130,9 @@ pub fn pull_event(
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if ui_state == UIState::Toplevel {
                     Some(Event::ContinueGame)
-                } else if matches!(ui_state, UIState::GameSetup(_)) {
+                } else if matches!(ui_state, UIState::GameSetup(_, _)) {
                     Some(Event::StartGame)
-                } else if matches!(ui_state, UIState::LoadScreen(_) | UIState::SaveScreen(_)) {
+                } else if matches!(ui_state, UIState::LoadScreen(_, _) | UIState::SaveScreen(_)) {
                     Some(Event::SelectMenuOption)
                 } else if matches!(ui_state, UIState::RulesSummary(_)) && key == KeyCode::Enter {
                     Some(Event::Exit)

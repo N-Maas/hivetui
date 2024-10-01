@@ -13,6 +13,29 @@ use crate::{
 
 use super::{blocks, distance, would_block};
 
+#[derive(Debug, Clone)]
+pub struct RatingWeights {
+    pub own_queen: f64,
+    pub enemy_queen: f64,
+    pub own_movability: f64,
+    pub enemy_movability: f64,
+    pub own_pieces: f64,
+    pub enemy_pieces: f64,
+}
+
+impl Default for RatingWeights {
+    fn default() -> Self {
+        Self {
+            own_queen: 1.0,
+            enemy_queen: 1.0,
+            own_movability: 1.0,
+            enemy_movability: 1.0,
+            own_pieces: 1.0,
+            enemy_pieces: 1.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Flags {
     queen_endangered: bool,
@@ -662,7 +685,7 @@ fn rate_queen_situation(
     }
 }
 
-pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
+pub fn rate_game_state(data: &HiveGameState, weights: &RatingWeights, player: usize) -> RatingType {
     let player = Player::from(player);
     let enemy = player.switched();
     if let Some(result) = data.result() {
@@ -707,7 +730,12 @@ pub fn rate_game_state(data: &HiveGameState, player: usize) -> RatingType {
         less_endangered,
         my_reach_queen,
     );
-    my_remaining - enemy_remaining + my_movability - enemy_movability + my_queen - enemy_queen
+    let pieces =
+        weights.own_pieces * my_remaining as f64 - weights.enemy_pieces * enemy_remaining as f64;
+    let movability = weights.own_movability * my_movability as f64
+        - weights.enemy_movability * enemy_movability as f64;
+    let queen = weights.own_queen * my_queen as f64 - weights.enemy_queen * enemy_queen as f64;
+    (pieces + movability + queen).round() as RatingType
 }
 
 pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingType; 6]>) {

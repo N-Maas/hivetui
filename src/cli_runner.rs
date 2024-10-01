@@ -4,6 +4,7 @@ use either::Either;
 use tgp::engine::{Engine, EventListener, GameState, PendingDecision};
 use tgp_board::{index_map::HashIndexMap, prelude::*};
 
+use crate::ai::Character;
 use crate::display::print_annotated_board;
 use crate::pieces::PieceType;
 use crate::state::{HiveContext, HiveGameState};
@@ -16,7 +17,10 @@ use crate::{
 };
 
 pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
-    let mut ais = [HiveAI::new(Difficulty::Easy), HiveAI::new(Difficulty::Easy)];
+    let mut ais = [
+        HiveAI::new(Difficulty::Easy, Character::Balanced),
+        HiveAI::new(Difficulty::Easy, Character::Balanced),
+    ];
     for &player in [Player::White, Player::Black].iter() {
         println!("Choose level for {} AI: [0] [1] [2] [3] [4]", player);
         let level = loop {
@@ -38,7 +42,7 @@ pub fn run_in_cli(pieces: BTreeMap<PieceType, u32>) {
             4 => Difficulty::VeryHard,
             _ => unreachable!(),
         };
-        ais[usize::from(player)] = HiveAI::new(level);
+        ais[usize::from(player)] = HiveAI::new(level, Character::Balanced);
     }
 
     let mut engine = Engine::new_logging(2, HiveGameState::new(pieces));

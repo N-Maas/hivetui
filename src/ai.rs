@@ -18,7 +18,7 @@ pub mod rate_game_state;
 mod rate_moves;
 
 // for testing purposes
-pub use rate_game_state::print_and_compare_rating;
+pub use rate_game_state::{print_and_compare_rating, RatingWeights};
 
 pub(crate) fn distance(i: OpenIndex, j: OpenIndex) -> u32 {
     ((isize::abs(i.x - j.x) + isize::abs((i.x - j.x) - (i.y - j.y)) + isize::abs(i.y - j.y)) / 2)
@@ -113,6 +113,14 @@ pub enum Difficulty {
     VeryHard,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Character {
+    Balanced,
+    Aggressive,
+    Defensive,
+    Strategic,
+}
+
 type Algorithm = MinMaxAlgorithm<HiveGameState, HiveRater>;
 
 pub struct HiveAI {
@@ -121,7 +129,7 @@ pub struct HiveAI {
 }
 
 impl HiveAI {
-    pub fn new(level: Difficulty) -> Self {
+    pub fn new(level: Difficulty, character: Character) -> Self {
         let params = match level {
             Difficulty::VeryHard => {
                 let sliding = SlidingParams::new(
@@ -168,19 +176,44 @@ impl HiveAI {
                 Params::new(1, sliding, 4)
             }
         };
-        let rater = match level {
-            Difficulty::Easy => HiveRater {
-                restrictions: vec![
-                    AIRestriction::DoNotMoveQueen,
-                    AIRestriction::DoNotCrawlOnTop,
-                ],
+        let restrictions = match level {
+            Difficulty::Easy => vec![
+                AIRestriction::DoNotMoveQueen,
+                AIRestriction::DoNotCrawlOnTop,
+            ],
+            Difficulty::QuiteEasy => vec![AIRestriction::DoNotCrawlOnTop],
+            _ => vec![],
+        };
+        let weights = match character {
+            Character::Balanced => RatingWeights::default(),
+            Character::Aggressive => RatingWeights {
+                own_queen: 0.85,
+                enemy_queen: 1.2,
+                own_movability: 1.1,
+                enemy_movability: 0.9,
+                own_pieces: 0.9,
+                enemy_pieces: 0.9,
             },
-            Difficulty::QuiteEasy => HiveRater {
-                restrictions: vec![AIRestriction::DoNotCrawlOnTop],
+            Character::Defensive => RatingWeights {
+                own_queen: 1.2,
+                enemy_queen: 0.85,
+                own_movability: 0.9,
+                enemy_movability: 1.1,
+                own_pieces: 0.9,
+                enemy_pieces: 0.9,
             },
-            _ => HiveRater {
-                restrictions: vec![],
+            Character::Strategic => RatingWeights {
+                own_queen: 1.0,
+                enemy_queen: 0.9,
+                own_movability: 1.2,
+                enemy_movability: 1.1,
+                own_pieces: 1.1,
+                enemy_pieces: 1.1,
             },
+        };
+        let rater = HiveRater {
+            restrictions,
+            weights,
         };
         let alg = match level {
             Difficulty::VeryHard => Algorithm::with_pruning(params, rater, |input| {
@@ -271,6 +304,7 @@ enum AIRestriction {
 
 pub struct HiveRater {
     restrictions: Vec<AIRestriction>,
+    weights: RatingWeights,
 }
 
 impl RateAndMap<HiveGameState> for HiveRater {
@@ -299,6 +333,6 @@ impl RateAndMap<HiveGameState> for HiveRater {
         _old_context: &[(HiveContext, usize)],
         player: usize,
     ) -> RatingType {
-        rate_game_state::rate_game_state(data, player)
+        rate_game_state::rate_game_state(data, &self.weights, player)
     }
 }
