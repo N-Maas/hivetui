@@ -442,7 +442,7 @@ pub fn render(
             let [player_area, settings_area, help_area] = Layout::vertical([
                 Constraint::Max(player_size),
                 Constraint::Min(settings_size),
-                Constraint::Min(help_size),
+                Constraint::Max(help_size),
             ])
             .areas(menu_area);
             let remaining_size = menu_area
@@ -520,7 +520,8 @@ pub fn render(
                 };
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().title("Help").borders(Borders::ALL))
-                    .wrap(Wrap { trim: true });
+                    .wrap(Wrap { trim: true })
+                    .style(ColorScheme::TEXT_GRAY);
                 frame.render_widget(paragraph, help_area);
             }
         } else {
@@ -603,7 +604,8 @@ pub fn render(
                     IN_GAME_HELP_LONG
                 };
                 let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Help").borders(Borders::ALL));
+                    .block(Block::default().title("Help").borders(Borders::ALL))
+                    .style(ColorScheme::TEXT_GRAY);
                 frame.render_widget(paragraph, help_area);
             }
 
