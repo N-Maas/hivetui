@@ -157,8 +157,8 @@ impl HiveAI {
                 let sliding = SlidingParams::new(
                     vec![8, 5],
                     vec![40, 20],
-                    vec![12, 8, 6, 6],
-                    vec![14, 9, 7, 7],
+                    vec![14, 10, 7, 6],
+                    vec![14, 10, 7, 7],
                     vec![50, 3],
                     vec![1, 1],
                 );
@@ -205,10 +205,10 @@ impl HiveAI {
             Character::Strategic => RatingWeights {
                 own_queen: 1.0,
                 enemy_queen: 0.9,
-                own_movability: 1.2,
+                own_movability: 1.1,
                 enemy_movability: 1.1,
-                own_pieces: 1.1,
-                enemy_pieces: 1.1,
+                own_pieces: 1.2,
+                enemy_pieces: 1.2,
             },
         };
         let rater = HiveRater {
