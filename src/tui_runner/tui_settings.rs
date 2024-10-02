@@ -604,6 +604,8 @@ impl Settings {
 }
 
 pub trait MenuSetting {
+    fn val(&self, state: &mut Settings) -> u8;
+
     fn increase(&self, state: &mut Settings);
 
     fn decrease(&self, state: &mut Settings);
@@ -645,17 +647,15 @@ struct MenuSettingImpl<E, F: Fn(&mut Settings) -> &mut E> {
     get_setting_fn: F,
 }
 
-impl<E: Copy + Into<u8>, F: Fn(&mut Settings) -> &mut E> MenuSettingImpl<E, F> {
-    fn val(&self, state: &mut Settings) -> u8 {
-        (*(self.get_setting_fn)(state)).into()
-    }
-}
-
 impl<E: Copy + TryFrom<u8> + Into<u8>, F: Fn(&mut Settings) -> &mut E> MenuSetting
     for MenuSettingImpl<E, F>
 where
     <E as TryFrom<u8>>::Error: Debug,
 {
+    fn val(&self, state: &mut Settings) -> u8 {
+        (*(self.get_setting_fn)(state)).into()
+    }
+
     fn increase(&self, state: &mut Settings) {
         let current_val = self.val(state);
         if usize::from(current_val + 1) < self.texts.len() {
@@ -916,6 +916,11 @@ impl SettingRenderer {
         }
     }
 
+    pub fn show_second_row(&self, settings: &mut Settings, index: usize) -> bool {
+        assert!(index < 2);
+        self.players[index][0].val(settings) != 0
+    }
+
     pub fn render_player_settings(
         &self,
         settings: &mut Settings,
@@ -925,6 +930,7 @@ impl SettingRenderer {
         for (i, [p_type, ai_type]) in self.players.iter().enumerate() {
             let (is_selected, is_char) =
                 selection.map_or((false, false), |(index, is_char)| (index == i, is_char));
+            let position = p_type.val(settings);
             let color = if is_selected {
                 settings.color_scheme.primary()
             } else {
@@ -932,14 +938,10 @@ impl SettingRenderer {
             };
             let mut spans = vec![Span::styled(format!("[{}] ", i + 1), color)];
             spans.push(Span::raw(PLAYER_PREFIXES[i]));
-            let position: u8 = if i == 0 {
-                settings.white_player_type.into()
-            } else {
-                settings.black_player_type.into()
-            };
             spans.push(Span::raw(PLAYER_TYPES[position as usize]));
             if position > 0 {
-                spans.push(Span::raw(" AI"));
+                let ai_type = AI_TYPES[ai_type.val(settings) as usize];
+                spans.push(Span::raw(format!(" AI ({ai_type})")));
             }
             lines.push(Line::from(spans));
 
@@ -955,7 +957,7 @@ impl SettingRenderer {
             lines.push(Line::from(spans));
 
             spans = Vec::new();
-            if is_selected {
+            if is_selected && position != 0 {
                 spans.push(Span::raw("   "));
                 for j in 0..AI_TYPES.len() {
                     ai_type.get_spans(settings, &mut spans, is_char, j);

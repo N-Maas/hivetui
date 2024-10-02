@@ -482,6 +482,9 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     if let Some((_, is_char)) = ui_state
                         .mut_index(&mut menu_selection)
                         .filter(|(index, is_char)| **index < 2 && !**is_char)
+                        .filter(|(index, _)| {
+                            setting_renderer.show_second_row(&mut settings, **index)
+                        })
                     {
                         *is_char = true;
                     } else if let UIState::GameSetup(index, is_char) = &mut ui_state {
