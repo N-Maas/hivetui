@@ -608,7 +608,7 @@ pub fn render(
                 };
                 let [piece_area, help_area] = Layout::vertical(constraints).areas(menu_area);
                 let suggestion_height = 12;
-                render_both = state.ui_state == UIState::ShowAIMoves
+                render_both = matches!(state.ui_state, UIState::ShowAIMoves(_))
                     && piece_area.height >= suggestion_height + piece_height;
                 let [piece_area, suggestion_area] = if render_both {
                     Layout::vertical([Constraint::Fill(1), Constraint::Max(suggestion_height)])
@@ -620,7 +620,7 @@ pub fn render(
             };
 
             // the AI suggested moves
-            if state.ui_state == UIState::ShowAIMoves {
+            if let UIState::ShowAIMoves(_) = state.ui_state {
                 let text;
                 if let Some(ai_result) = state.ai_state.actual_result() {
                     text = ai_suggestions(ai_result, state.game_state);
@@ -635,7 +635,7 @@ pub fn render(
                 frame.render_widget(paragraph, suggestion_area);
             }
             // the available pieces
-            if render_both || state.ui_state != UIState::ShowAIMoves {
+            if render_both || !matches!(state.ui_state, UIState::ShowAIMoves(_)) {
                 let zoom = state.settings.piece_zoom_level.multiplier();
                 let x_len = zoom * (f64::from(2 * piece_area.width) - 4.5);
                 let y_len = zoom * 2.1 * (f64::from(2 * piece_area.height) - 4.48);
@@ -686,7 +686,7 @@ pub fn render(
                         frame.render_widget(Clear, msg_area);
                         frame.render_widget(skip_turn_message(state.game_state), msg_area);
                     }
-                    UIState::GameFinished(result) => {
+                    UIState::GameFinished(result, _) => {
                         frame.render_widget(Clear, msg_area);
                         frame.render_widget(game_finished_message(settings, result), msg_area);
                     }
@@ -827,8 +827,12 @@ fn render_action_area(frame: &mut Frame, mut area: Rect) -> u16 {
         Span::raw(" save game"),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("[h]", ColorScheme::TEXT_GRAY),
+        Span::styled("[j]", ColorScheme::TEXT_GRAY),
         Span::raw(" rules and tutorial"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("[r]", ColorScheme::TEXT_GRAY),
+        Span::raw(" restore default settings"),
     ]));
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
@@ -1270,7 +1274,7 @@ pub fn draw_board(
                 level,
             );
         }
-        UIState::GameFinished(result) => {
+        UIState::GameFinished(result, _) => {
             if let Some((index, _)) = find_losing_queen(board, result) {
                 let (x_mid, y_mid) = translate_index(index);
                 tui_graphics::draw_interior_hex_border(ctx, x_mid, y_mid, 0.0, 0.0, primary_color);
@@ -1309,7 +1313,7 @@ pub fn draw_board(
                 );
             }
         }
-    } else if state.ui_state == UIState::ShowAIMoves {
+    } else if let UIState::ShowAIMoves(_) = state.ui_state {
         if let Some(ai_result) = state.ai_state.actual_result() {
             let annot_to_str = |(i, piece_t): (usize, Option<PieceType>)| {
                 let str = if let Some(piece_t) = piece_t {
@@ -1357,7 +1361,10 @@ pub fn draw_board(
 fn available_pieces_player(state: AllState<'_>) -> Player {
     if matches!(
         state.ui_state,
-        UIState::PlaysAnimation(false) | UIState::ShowOptions(_, true)
+        UIState::PlaysAnimation(true)
+            | UIState::ShowOptions(_, true)
+            | UIState::GameFinished(_, true)
+            | UIState::ShowAIMoves(true)
     ) {
         state.game_state.player().switched()
     } else {

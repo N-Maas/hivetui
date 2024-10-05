@@ -35,6 +35,7 @@ pub enum Event {
     NewGame,
     LoadGame,
     SaveGame,
+    RestoreDefault,
     Undo,
     Redo,
     LetAIMove,
@@ -72,8 +73,8 @@ pub fn pull_event(
     animation: bool,
     has_message: bool,
 ) -> io::Result<(Option<Event>, bool)> {
-    let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
+    let show_suggestions = matches!(ui_state, UIState::ShowAIMoves(_));
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_, _));
     let game_setup = matches!(ui_state, UIState::GameSetup(_, _));
     let save_game = matches!(ui_state, UIState::SaveScreen(_));
@@ -101,8 +102,14 @@ pub fn pull_event(
             KeyCode::Esc => Some(Event::Exit)
                 .filter(|_| ui_state != UIState::Toplevel && !(has_message && msg_visible)),
             KeyCode::Char('q') => Some(Event::Exit),
-            KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
-            KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
+            KeyCode::Char('u') => Some(Event::Undo).filter(|_| !top_level),
+            KeyCode::Char('r') => {
+                if top_level {
+                    Some(Event::RestoreDefault).filter(|_| !rules_summary && !game_setup)
+                } else {
+                    Some(Event::Redo)
+                }
+            }
             KeyCode::Char('c') => Some(if top_level {
                 Event::ContinueGame
             } else {

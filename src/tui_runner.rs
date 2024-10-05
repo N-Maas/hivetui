@@ -71,10 +71,12 @@ enum UIState {
     PositionSelected(OpenIndex),
     /// selected base field
     PieceSelected(OpenIndex),
-    GameFinished(HiveResult),
-    /// true if the animation is waiting for ai
+    /// true if pieces are switched
+    GameFinished(HiveResult, bool),
+    /// true if pieces are switched
     PlaysAnimation(bool),
-    ShowAIMoves,
+    /// true if pieces are switched
+    ShowAIMoves(bool),
 }
 
 impl UIState {
@@ -85,12 +87,12 @@ impl UIState {
                 true
             }
             ShowOptions(_, _) | PositionSelected(_) | PieceSelected(_) => false,
-            GameFinished(_) | PlaysAnimation(_) | ShowAIMoves => false,
+            GameFinished(_, _) | PlaysAnimation(_) | ShowAIMoves(_) => false,
         }
     }
 
     fn show_game(self) -> bool {
-        !self.top_level() && self != UIState::ShowAIMoves
+        !self.top_level() && !matches!(self, UIState::ShowAIMoves(_))
     }
 
     fn mut_index<'a>(
@@ -120,7 +122,7 @@ impl UIState {
         match self {
             PositionSelected(_) => *self = ShowOptions(false, false),
             PieceSelected(_) => *self = ShowOptions(false, false),
-            ShowAIMoves => *self = ShowOptions(false, false),
+            ShowAIMoves(_) => *self = ShowOptions(false, false),
             _ => (),
         };
     }
@@ -343,9 +345,9 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     UIState::ShowOptions(_, _) => ui_state = UIState::Toplevel,
                     UIState::PositionSelected(_) => ui_state = UIState::ShowOptions(false, false),
                     UIState::PieceSelected(_) => ui_state = UIState::ShowOptions(false, false),
-                    UIState::GameFinished(_) => ui_state = UIState::Toplevel,
+                    UIState::GameFinished(_, _) => ui_state = UIState::Toplevel,
                     UIState::PlaysAnimation(_) => ui_state = UIState::Toplevel,
-                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
+                    UIState::ShowAIMoves(_) => ui_state = UIState::ShowOptions(false, false),
                 },
                 Event::Switch => {
                     // TODO: use similar to escape to return from some menus?
@@ -357,8 +359,12 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                         if menu_selection.index() >= max_index {
                             *menu_selection.index_mut() = max_index - 1;
                         }
-                    } else if let UIState::ShowOptions(is_skip, switch) = ui_state {
-                        ui_state = UIState::ShowOptions(is_skip, !switch);
+                    } else if let UIState::ShowOptions(_, switch)
+                    | UIState::GameFinished(_, switch)
+                    | UIState::PlaysAnimation(switch)
+                    | UIState::ShowAIMoves(switch) = &mut ui_state
+                    {
+                        *switch = !*switch;
                     }
                 }
                 Event::Cancel => {
@@ -367,7 +373,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 }
                 Event::SoftCancel => {
                     animation_state.stop();
-                    if ui_state == UIState::ShowAIMoves {
+                    if let UIState::ShowAIMoves(_) = ui_state {
                         ui_state = UIState::ShowOptions(false, false);
                     }
                 }
@@ -414,6 +420,10 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     engine = Engine::new_logging(2, game_setup.new_game_state());
                     start_game(&game_setup, &engine, &mut ui_state);
                 }
+                Event::RestoreDefault => {
+                    game_setup = GameSetup::default();
+                    settings = Settings::default_settings();
+                }
                 Event::Undo => {
                     if engine.undo_last_decision() {
                         animation_state.reset();
@@ -444,16 +454,16 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     UIState::ShowOptions(_, _)
                     | UIState::PositionSelected(_)
                     | UIState::PieceSelected(_)
-                    | UIState::ShowAIMoves
+                    | UIState::ShowAIMoves(_)
                     | UIState::PlaysAnimation(_)
-                    | UIState::GameFinished(_) => ui_state = UIState::RulesSummary(0, false),
+                    | UIState::GameFinished(_, _) => ui_state = UIState::RulesSummary(0, false),
                     UIState::GameSetup(_, _) | UIState::SaveScreen(_) => (),
                 },
                 Event::Help => match ui_state {
                     UIState::ShowOptions(false, _)
                     | UIState::PositionSelected(_)
-                    | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
-                    UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
+                    | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves(false),
+                    UIState::ShowAIMoves(_) => ui_state = UIState::ShowOptions(false, false),
                     _ => (),
                 },
                 Event::ZoomIn => graphics_state.zoom_in(),
@@ -622,7 +632,13 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
             &mut animation_state,
             input,
         )?;
-        if state_change == GameStateChange::DecisionCompleted {
+        while let GameState::PendingEffect(pe) = engine.pull() {
+            ai_state.reset();
+            animation_state.reset_count();
+            pe.next_effect();
+            ui_state.state_changed();
+        }
+        if state_change {
             do_autosave(&io_manager, &game_setup, &engine);
         }
 
@@ -630,12 +646,15 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         if animation_state
             .animation()
             .is_some_and(|a| !a.is_finished())
-            && ui_state.show_game()
-            && !matches!(ui_state, UIState::GameFinished(_))
+            && !matches!(ui_state, UIState::GameFinished(_, _))
+        {
+            if !matches!(ui_state, UIState::PlaysAnimation(_)) && !ai_state.animation_has_started()
+            {
+                ui_state = UIState::PlaysAnimation(true);
+            }
+        } else if matches!(ui_state, UIState::PlaysAnimation(_))
             && !ai_state.animation_has_started()
         {
-            ui_state = UIState::PlaysAnimation(false);
-        } else if matches!(ui_state, UIState::PlaysAnimation(_)) {
             ui_state = UIState::ShowOptions(false, false);
         }
         // do we need to update the camera position?
@@ -720,13 +739,6 @@ fn compute_view_boundaries(board: &HiveBoard) -> ([f64; 2], [f64; 2]) {
     ([min_x - 10.0, max_x + 10.0], [min_y - 10.0, max_y + 10.0])
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum GameStateChange {
-    EffectCompleted,
-    DecisionCompleted,
-    None,
-}
-
 fn update_game_state_and_fill_input_mapping(
     engine: &mut Engine<HiveGameState, EventLog<HiveGameState>>,
     board_annotations: &mut HashMap<OpenIndex, usize>,
@@ -736,15 +748,9 @@ fn update_game_state_and_fill_input_mapping(
     settings: &Settings,
     animation_state: &mut AnimationState,
     input: Option<usize>,
-) -> Result<GameStateChange, FatalError> {
-    Ok(match engine.pull() {
-        GameState::PendingEffect(pe) => {
-            ai_state.reset();
-            animation_state.reset_count();
-            pe.next_effect();
-            ui_state.state_changed();
-            GameStateChange::EffectCompleted
-        }
+) -> Result<bool, FatalError> {
+    let result = match engine.pull() {
+        GameState::PendingEffect(_) => false,
         GameState::PendingDecision(decision) => {
             ai_state.update(
                 decision.data(),
@@ -758,7 +764,7 @@ fn update_game_state_and_fill_input_mapping(
                 let decision = match follow_up {
                     Ok(d) => {
                         d.retract_all();
-                        return Ok(GameStateChange::None);
+                        return Ok(false);
                     }
                     Err(d) => d,
                 };
@@ -768,11 +774,16 @@ fn update_game_state_and_fill_input_mapping(
                     assert!(result.player == Player::from(decision.player()));
                     let best = &result.best_move;
                     apply_computed_move(engine, best, settings, animation_state);
-                    return Ok(GameStateChange::DecisionCompleted);
-                } else {
-                    *ui_state = UIState::PlaysAnimation(ai_state.animation_has_started());
+                    if *ui_state == UIState::PlaysAnimation(false) {
+                        *ui_state = UIState::PlaysAnimation(true);
+                    }
+                    return Ok(true);
+                } else if ai_state.animation_has_started()
+                    && !matches!(ui_state, UIState::PlaysAnimation(_))
+                {
+                    *ui_state = UIState::PlaysAnimation(false);
                 }
-                return Ok(GameStateChange::None); // don't risk a weird decision state
+                return Ok(false); // don't risk a weird decision state
             }
 
             use UIState::*;
@@ -786,7 +797,7 @@ fn update_game_state_and_fill_input_mapping(
                     Ok(d),
                 ) => {
                     d.retract_all();
-                    GameStateChange::None
+                    false
                 }
                 (
                     Toplevel
@@ -795,10 +806,10 @@ fn update_game_state_and_fill_input_mapping(
                     | LoadScreen(_, _)
                     | SaveScreen(_),
                     Err(_),
-                ) => GameStateChange::None,
+                ) => false,
                 (ShowOptions(_, _), Ok(d)) => {
                     d.retract_all();
-                    GameStateChange::None
+                    false
                 }
                 (ShowOptions(is_skip, switch), Err(d)) => {
                     match d.context() {
@@ -823,15 +834,15 @@ fn update_game_state_and_fill_input_mapping(
                                 *ui_state = ShowOptions(false, switch);
                             }
                             // selecting a subdecision is not an actual state change
-                            GameStateChange::None
+                            false
                         }
                         HiveContext::SkipPlayer => {
                             if is_skip && input == Some(0) {
                                 d.select_option(0);
-                                GameStateChange::DecisionCompleted
+                                true
                             } else {
                                 *ui_state = ShowOptions(true, switch);
-                                GameStateChange::None
+                                false
                             }
                         }
                         _ => unreachable!("this can not be a follow-up decision"),
@@ -842,13 +853,13 @@ fn update_game_state_and_fill_input_mapping(
                         if let Some(index) = input.filter(|&index| index < d.option_count()) {
                             animation_state.stop();
                             handle_placed_piece(d, index, b_index, settings, animation_state);
-                            GameStateChange::DecisionCompleted
+                            true
                         } else {
                             // fill the annotation mapping
                             for (i, &(piece_type, _)) in pieces.into_iter().enumerate() {
                                 piece_annotations.insert(piece_type, i);
                             }
-                            GameStateChange::None
+                            false
                         }
                     }
                     HiveContext::TargetField(_) => panic!("this should never happen"),
@@ -856,7 +867,7 @@ fn update_game_state_and_fill_input_mapping(
                 },
                 (PositionSelected(_), Err(_)) => {
                     *ui_state = ShowOptions(false, false);
-                    GameStateChange::None
+                    false
                 }
                 (PieceSelected(b_index), Ok(d)) => match d.context() {
                     HiveContext::TargetField(board_indizes) => {
@@ -870,13 +881,13 @@ fn update_game_state_and_fill_input_mapping(
                                 settings,
                                 animation_state,
                             );
-                            GameStateChange::DecisionCompleted
+                            true
                         } else {
                             // fill the annotation mapping
                             for (i, &board_index) in board_indizes.into_iter().enumerate() {
                                 board_annotations.insert(board_index, i);
                             }
-                            GameStateChange::None
+                            false
                         }
                     }
                     HiveContext::Piece(_) => panic!("this should never happen"),
@@ -884,36 +895,35 @@ fn update_game_state_and_fill_input_mapping(
                 },
                 (PieceSelected(_), Err(_)) => {
                     *ui_state = ShowOptions(false, false);
-                    GameStateChange::None
+                    false
                 }
-                (GameFinished(_), follow_up) => {
+                (GameFinished(_, _), follow_up) => {
                     *ui_state = ShowOptions(false, false);
                     if let Ok(d) = follow_up {
                         d.retract_all();
                     }
-                    GameStateChange::None
+                    false
                 }
-                (PlaysAnimation(is_ai), Ok(d)) => {
-                    assert!(is_ai, "selection during animation should be impossible");
+                (PlaysAnimation(_), Ok(d)) => {
                     d.retract_all();
-                    GameStateChange::None
+                    false
                 }
-                (PlaysAnimation(_), Err(_)) => GameStateChange::None,
-                (ShowAIMoves, Ok(d)) => {
+                (PlaysAnimation(_), Err(_)) => false,
+                (ShowAIMoves(_), Ok(d)) => {
                     d.retract_all();
-                    GameStateChange::None
+                    false
                 }
-                (ShowAIMoves, Err(_)) => {
+                (ShowAIMoves(_), Err(_)) => {
                     if let Some(index) = input {
                         let choice = ai_state
                             .actual_result()
                             .and_then(|result| result.all_ratings.get(index));
                         if let Some((_, path, _)) = choice {
                             apply_computed_move(engine, path, settings, animation_state);
-                            return Ok(GameStateChange::DecisionCompleted);
+                            return Ok(true);
                         }
                     }
-                    GameStateChange::None
+                    false
                 }
             }
         }
@@ -937,12 +947,16 @@ fn update_game_state_and_fill_input_mapping(
                     }
                 }
             }
-            if !ui_state.top_level() && !animation_state.runs() {
-                *ui_state = UIState::GameFinished(result);
+            if !ui_state.top_level()
+                && !animation_state.runs()
+                && !matches!(ui_state, UIState::GameFinished(_, _))
+            {
+                *ui_state = UIState::GameFinished(result, false);
             }
-            GameStateChange::None
+            false
         }
-    })
+    };
+    Ok(result)
 }
 
 fn apply_computed_move(
