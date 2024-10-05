@@ -29,7 +29,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{
         canvas::{Canvas, Context},
-        Block, Borders, Clear, Paragraph, Wrap,
+        Block, Borders, Clear, Padding, Paragraph, Wrap,
     },
     Frame,
 };
@@ -37,6 +37,7 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
     io::{self, Stdout},
+    mem,
     time::SystemTime,
 };
 use tgp_ai::RatingType;
@@ -60,62 +61,48 @@ pub struct AllState<'a> {
     pub graphics_state: GraphicsState,
 }
 
-const MENU_HELP_LONG: &str = "\
-    This is a TUI version of the board game Hive. \
-    Hive is a chess-like game where both players place and move pieces \
-    that correspond to insects. More information is available in the \
-    rules summary (press [h] or [r]).\n\
+const MENU_HELP: &str = "\
+    press [j] to show the rules and the tutorial\n\
     \n\
-    Everything is controlled with the keyboard. Keys are mapped to \
-    specific actions (which one depends on whether you are in the menu or \
-    in-game). The general rule is: an action marked with [x] is selected by \
-    pressing x. In addition, [Esc] and [↲/Space] are used for general menu \
-    navigation.\n\
-    \n\
-    [↑↓] or [1-9] to select a specific setting\n\
-    [←→] to change the current setting
-";
-
-const MENU_HELP_SHORT: &str = "\
-    This is a TUI version of the board game Hive \
-    (press [h] or [r] for rules).\
-    Everything is controlled with the keyboard. The general rule is: \
-    an action marked with [x] is selected by pressing x.\n\
-    \n\
-    [↑↓] or [1-9] to select a specific setting\n\
-    [←→] to change the current setting
+    [↑↓] navigate settings\n\
+    [←→] change current setting\n\
+    [1-9] directly jump to according setting\n\
+    [⇆] switch between general/graphic settings
 ";
 
 const IN_GAME_HELP_LONG: &str = "\
     press a number to select a move\n   \
-    (two digits: press [Space] or [↲] first)\n\
+    (two digits: press [Space] first)\n\
     \n\
-    [↑↓←→] or [wasd] to move the screen\n\
-    [+-] or [PgDown PgUp] for zooming\n\
-    [⇆] to switch the displayed pieces\n\
+    [↑↓←→][wasd] move the camera\n\
+    [PgDown PgUp][+-] zooming\n\
+    [⇆] switch displayed pieces\n\
     \n\
-    [h] to show AI suggested moves\n   \
-    (for human players: AI assistant)\n\
-    [u/z] to undo a move\n\
-    [r/y] to redo a move\n\
-    [c/BackSp] to cancel AI moves/animations\n\
-    [n] to start the AI move (if not automatic)\n\
+    [h] show AI suggested moves\n\
+    [u] undo a move\n\
+    [r] redo a move\n\
+    [c] cancel AI move\n\
+    [n] start AI move (if not automatic)\n\
     \n\
-    [q/Esc] to get back to the menu\
+    [l] load game\n\
+    [k] save game\n\
+    [j] show rules and tutorial\n\
+    [Esc] back to menu\
 ";
 
 const IN_GAME_HELP_SHORT: &str = "\
     press a number to select a move\n   \
-    (two digits: press [Space] or [↲] first)\n\
+    (two digits: press [Space] first)\n\
     \n\
-    [↑↓←→] or [wasd] to move the screen\n\
-    [+-] or [PgDown PgUp] for zooming\n\
-    [⇆] to switch the displayed pieces\n\
-    [h] to show AI suggested moves\n\
-    [u]ndo or [r]edo a move\n\
-    [c/BackSp] to cancel AI moves/animations\n\
-    [n] to start the AI move (if not automatic)\n\
-    [q/Esc] to get back to the menu\
+    [↑↓←→][wasd] move the camera\n\
+    [PgDown PgUp][+-] zooming\n\
+    [⇆] switch displayed pieces\n\
+    [h] show AI suggested moves\n\
+    [u] undo move      [r] redo move\n\
+    [c] cancel AI move\n\
+    [n] start AI move (if not automatic)\n\
+    [l] load game      [k] save game\n\
+    [Esc] back to menu\
 ";
 
 const INTRODUCTION_BEFORE_QUEEN: &str = "\
@@ -177,7 +164,7 @@ const GRASSHOPPER: [&str; 2] = [
 
 const BEETLE: [&str; 5] = [
     "Slow but powerful. The ",
-    " moves only one position at a time. However, he has a super-power: the ",
+    " moves only one position at a time. However, it has a super-power: the ",
     " can crawl atop another piece and travel along the top of the hive. \
     The piece below the ",
     " is blocked and unable to move. Also, the position now counts as \
@@ -190,6 +177,49 @@ const REMARKS: &str = "\
     Notes: This is a summary, not a comprehensive explanation of the \
     rules. Please refer to the official rules of Hive instead.\
 ";
+
+const TUTORIAL_FIRST: &str = "\
+    Hive is a chess-like game where both players place and move pieces that \
+    correspond to insects, aiming to surround the enemy Queen.\
+    This is a TUI (Terminal User Interface) implementation, which means that \
+    the game is played exclusively with the keyboard, using keys to navigate \
+    the menu and select moves during the game.\
+";
+
+const TUTORIAL_LAST: &str = "\
+    Generally, something that is done by pressing key X is marked with [X]. \
+    The help text in the bottom right provides additional explanations. Press \
+    [j] to open a rule summary as well as this tutorial.
+";
+
+const TUTORIAL_MENU: &str = "\
+    For general navigation, use enter [↲] to continue or confirm an action, \
+    escape [Esc] to return to the previous menu and tab [⇆] to switch between \
+    different settings. Specific actions such as starting a new game, saving or \
+    leaving the game are performed by pressing the displayed key. To change a \
+    setting, use the up/down arrow keys [↑↓] for navigation and the left/right \
+    arrow keys [←→] to change the selected setting.
+";
+
+const TUTORIAL_IN_GAME: &str = "\
+    An in-game move always consists of two steps. To move, a piece and the target \
+    of the move need to be chosen. To place a new piece, a free position and the \
+    type of piece to be placed need to be chosen. By default, the selection works \
+    by just pressing the number diplayed at the target. Two-digit numbers must be \
+    preceded with a space! Alternatively, the \"move selection\" setting can be \
+    changed to entering the number and confirming with [↲]. Further options, e.g. \
+    to move the camera, are provided in the bottom right.
+";
+
+const TUTORIAL_TIPS: [&str; 6] = [
+    "You can always undo and redo moves. Just press [u] if you accidentially entered the wrong move!",
+    "If you are unsure which move makes sense, press [h] to show moves suggested by the AI",
+    "For AI opponents, you can select a characteristic which influences the play style \
+    of the AI (\"balanced\" tends to be the hardest)",
+    "The current game state is automatically saved and will be restored at the start of the game",
+    "Change the text size by changing the text size of your terminal (often [Ctrl +/-])",
+    "Try playing around with the graphic settings!",
+];
 
 fn build_help_text(settings: &Settings) -> Text<'static> {
     // first a few helpers
@@ -227,7 +257,9 @@ fn build_help_text(settings: &Settings) -> Text<'static> {
     let spider = piece_color(PieceType::Spider);
     let ant = piece_color(PieceType::Ant);
     let lines = vec![
-        Line::styled("Summary of Rules", primary).alignment(Alignment::Center),
+        Line::styled("Summary of Rules", primary)
+            .bold()
+            .alignment(Alignment::Center),
         Line::raw(""),
         insert(
             INTRODUCTION_BEFORE_QUEEN,
@@ -271,6 +303,58 @@ fn build_help_text(settings: &Settings) -> Text<'static> {
         Line::raw(REMARKS),
     ];
     Text::from(lines)
+}
+
+fn build_tutorial(lines: &mut Vec<Line<'static>>, textwidth: u16) {
+    lines.push(
+        Line::styled("Tutorial", piece_color(PieceType::Queen))
+            .bold()
+            .alignment(Alignment::Center),
+    );
+    lines.push(Line::raw(""));
+    custom_linebreaks(lines, TUTORIAL_FIRST.into(), 0, true, textwidth);
+    lines.push(Line::raw(""));
+    custom_linebreaks(lines, TUTORIAL_LAST.into(), 0, true, textwidth);
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("Menu Navigation").bold());
+    custom_linebreaks(lines, TUTORIAL_MENU.into(), 0, true, textwidth);
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("In Game").bold());
+    custom_linebreaks(lines, TUTORIAL_IN_GAME.into(), 0, true, textwidth);
+    lines.push(Line::raw(""));
+
+    // the tips are tricky to render: we need manual line breaking
+    lines.push(Line::raw("Additional Tips").bold());
+    for tip in TUTORIAL_TIPS {
+        custom_linebreaks(lines, format!("- {tip}"), 1, false, textwidth);
+    }
+}
+
+fn custom_linebreaks(
+    lines: &mut Vec<Line<'static>>,
+    mut input: String,
+    indentation: usize,
+    trim: bool,
+    textwidth: u16,
+) {
+    while let Some((split_idx, _)) = input
+        .match_indices(" ")
+        .filter(|&(i, _)| i <= textwidth as usize)
+        .last()
+        .filter(|_| input.len() > textwidth as usize)
+    {
+        if split_idx < 5 {
+            break;
+        }
+        let mut remaining = input.split_off(split_idx);
+        if trim {
+            remaining = remaining.trim().to_string();
+        } else {
+            remaining = " ".repeat(indentation).to_string() + &remaining;
+        }
+        lines.push(Line::raw(mem::replace(&mut input, remaining)));
+    }
+    lines.push(Line::raw(input));
 }
 
 pub fn render(
@@ -320,7 +404,7 @@ pub fn render(
                     .areas(canvas_area);
             (canvas_area, action_area, menu_area)
         } else {
-            let menu_desired_width = 57;
+            let menu_desired_width = 55;
             let menu_min_width = 45;
             let action_min_width = 24;
             let menu_width = u16::min(
@@ -331,7 +415,7 @@ pub fn render(
                 ScreenSplitting::Auto => {
                     let cutoff_low = 125;
                     let cutoff_high = 250;
-                    let max_bonus = 13;
+                    let max_bonus = 10;
                     let added = max_bonus
                         * u16::min(area.width, cutoff_high).saturating_sub(cutoff_low)
                         / (cutoff_high - cutoff_low);
@@ -364,61 +448,62 @@ pub fn render(
             (canvas_area, action_area, menu_area)
         };
 
-        // the rules summary
-        if let UIState::RulesSummary(scroll) = state.ui_state {
-            render_rules_summary(frame, settings, canvas_area, scroll);
-        } else {
-            // the board
-            if !matches!(state.ui_state, UIState::RulesSummary(_)) {
-                let y_factor = 2.1;
-                let zoom = state.graphics_state.zoom_level.multiplier();
-                let center_x = state.graphics_state.center_x;
-                let center_y = state.graphics_state.center_y;
+        // the board
+        {
+            let y_factor = 2.1;
+            let zoom = state.graphics_state.zoom_level.multiplier();
+            let center_x = state.graphics_state.center_x;
+            let center_y = state.graphics_state.center_y;
 
-                let x_len = zoom * (f64::from(canvas_area.width) - 2.5);
-                let y_len = zoom * y_factor * (f64::from(canvas_area.height) - 2.5);
-                let x_bounds = [center_x - x_len, center_x + x_len];
-                let y_bounds = [center_y - y_len, center_y + y_len];
-                let canvas = Canvas::default()
-                    .block(Block::default().borders(Borders::ALL))
-                    .x_bounds(x_bounds)
-                    .y_bounds(y_bounds)
-                    .paint(|ctx| draw_board(ctx, state, x_bounds, y_bounds));
-                frame.render_widget(canvas, canvas_area);
-                output_bound = (x_bounds, y_bounds);
-            }
+            let x_len = zoom * (f64::from(canvas_area.width) - 2.5);
+            let y_len = zoom * y_factor * (f64::from(canvas_area.height) - 2.5);
+            let x_bounds = [center_x - x_len, center_x + x_len];
+            let y_bounds = [center_y - y_len, center_y + y_len];
+            let canvas = Canvas::default()
+                .block(Block::default().borders(Borders::ALL))
+                .x_bounds(x_bounds)
+                .y_bounds(y_bounds)
+                .paint(|ctx| draw_board(ctx, state, x_bounds, y_bounds));
+            frame.render_widget(canvas, canvas_area);
+            output_bound = (x_bounds, y_bounds);
         }
 
-        if state.ui_state.top_level() {
-            let is_rules_summary = matches!(state.ui_state, UIState::RulesSummary(_));
+        if let UIState::RulesSummary(scroll, _) = state.ui_state {
+            // the rules summary and the tutorial
+            let [_, rules_area, tutorial_area] = Layout::horizontal(vec![
+                Constraint::Fill(1),
+                Constraint::Max(84),
+                Constraint::Max(79),
+            ])
+            .areas(area);
+
+            frame.render_widget(Clear, rules_area);
+            render_rules_summary(frame, settings, rules_area, scroll);
+            frame.render_widget(Clear, tutorial_area);
+            render_tutorial(frame, tutorial_area, scroll);
+        } else if state.ui_state.top_level() {
             let render_setup_area = matches!(
                 state.ui_state,
                 UIState::GameSetup(_, _) | UIState::LoadScreen(_, _) | UIState::SaveScreen(_)
             );
 
             // the menu (actions)
-            if !is_rules_summary
-                && !matches!(
-                    state.ui_state,
-                    UIState::GameSetup(_, _) | UIState::SaveScreen(_)
-                )
-            {
+            if !matches!(
+                state.ui_state,
+                UIState::GameSetup(_, _) | UIState::SaveScreen(_)
+            ) {
                 let y_offset = render_action_area(frame, action_area);
                 render_messages(frame, messages, action_area, y_offset + 1);
             }
 
-            let (player_size, mut settings_size, mut help_size) = (7, 10, 16);
+            let help_size = Text::raw(MENU_HELP).height() as u16 + 2;
+            let (player_size, mut settings_size) = (7, 10);
             if render_setup_area {
                 settings_size = 15;
             }
             let both_settings = menu_area.height >= 27 + help_size && !render_setup_area;
-            let small_help = menu_area.height < player_size + settings_size + help_size;
-            assert!(!(both_settings && small_help));
             if both_settings {
                 settings_size = 22;
-            }
-            if small_help {
-                (settings_size, help_size) = (settings_size - 2, 8);
             }
             let [player_area, settings_area, help_area] = Layout::vertical([
                 Constraint::Max(player_size),
@@ -452,18 +537,12 @@ pub fn render(
 
             // the settings (or game setup/load/save)
             {
-                let available_size = settings_size
-                    + if small_help {
-                        remaining_size.saturating_sub(3) / 3
-                    } else {
-                        (remaining_size + 1) / 2
-                    };
                 if let UIState::GameSetup(index, _) = state.ui_state {
                     let par = game_setup.render_game_setup(settings, index, 2);
                     frame.render_widget(par, settings_area);
                 } else if let UIState::LoadScreen(index, _) = state.ui_state {
                     let save_games = io_manager.as_ref().unwrap().save_files_list();
-                    let par = load_game_widget(settings, available_size, save_games, index, 2);
+                    let par = load_game_widget(settings, remaining_size, save_games, index, 2);
                     frame.render_widget(par, settings_area);
                 } else if let UIState::SaveScreen(_) = state.ui_state {
                     let save_games = io_manager.as_ref().unwrap().save_files_list();
@@ -471,7 +550,7 @@ pub fn render(
                         frame,
                         settings_area,
                         settings,
-                        available_size,
+                        remaining_size,
                         state.text_input,
                         save_games,
                     );
@@ -494,12 +573,7 @@ pub fn render(
 
             // the top level help text
             {
-                let text = if small_help {
-                    MENU_HELP_SHORT
-                } else {
-                    MENU_HELP_LONG
-                };
-                let paragraph = Paragraph::new(text)
+                let paragraph = Paragraph::new(MENU_HELP)
                     .block(Block::default().borders(Borders::ALL))
                     .wrap(Wrap { trim: true })
                     .style(ColorScheme::TEXT_GRAY);
@@ -694,16 +768,40 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
 fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scroll: u16) {
     let [top_area, body_area] =
         Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).areas(area);
-    let top_line = Line::styled("[ws][Space] scroll   [Esc] return ", ColorScheme::TEXT_GRAY)
-        .alignment(Alignment::Right);
+    let top_line = Line::styled(" [ws][Space] scroll", ColorScheme::TEXT_GRAY);
     let paragraph =
         Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
     frame.render_widget(paragraph, top_area);
 
     let text = build_help_text(settings);
     let paragraph = Paragraph::new(text)
-        .block(Block::default().borders(Borders::TOP.complement()))
+        .block(
+            Block::default()
+                .padding(Padding::horizontal(1))
+                .borders(Borders::TOP.complement()),
+        )
         .wrap(Wrap { trim: true })
+        .scroll((scroll, 0));
+    frame.render_widget(paragraph, body_area);
+}
+
+fn render_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
+    let [top_area, body_area] =
+        Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).areas(area);
+    let top_line =
+        Line::styled("[Esc] return ", ColorScheme::TEXT_GRAY).alignment(Alignment::Right);
+    let paragraph =
+        Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
+    frame.render_widget(paragraph, top_area);
+
+    let mut lines = Vec::new();
+    build_tutorial(&mut lines, area.width - 4);
+    let paragraph = Paragraph::new(Text::from(lines))
+        .block(
+            Block::default()
+                .padding(Padding::horizontal(1))
+                .borders(Borders::TOP.complement()),
+        )
         .scroll((scroll, 0));
     frame.render_widget(paragraph, body_area);
 }
@@ -730,7 +828,7 @@ fn render_action_area(frame: &mut Frame, mut area: Rect) -> u16 {
     ]));
     lines.push(Line::from(vec![
         Span::styled("[h]", ColorScheme::TEXT_GRAY),
-        Span::raw(" rules and help"),
+        Span::raw(" rules and tutorial"),
     ]));
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
@@ -739,8 +837,7 @@ fn render_action_area(frame: &mut Frame, mut area: Rect) -> u16 {
     ]));
     let text = Text::from(lines);
     area.height = u16::min(area.height, text.height() as u16 + 2);
-    let paragraph =
-        Paragraph::new(text).block(Block::default().title("Menu").borders(Borders::ALL));
+    let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
     frame.render_widget(Clear, area);
     frame.render_widget(paragraph, area);
     area.height

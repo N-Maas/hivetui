@@ -39,6 +39,7 @@ pub enum Event {
     Redo,
     LetAIMove,
     Help,
+    Rules,
     ZoomIn,
     ZoomOut,
     MoveLeft,
@@ -73,7 +74,7 @@ pub fn pull_event(
 ) -> io::Result<(Option<Event>, bool)> {
     let show_suggestions = ui_state == UIState::ShowAIMoves;
     let top_level = ui_state.top_level();
-    let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
+    let rules_summary = matches!(ui_state, UIState::RulesSummary(_, _));
     let game_setup = matches!(ui_state, UIState::GameSetup(_, _));
     let save_game = matches!(ui_state, UIState::SaveScreen(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
@@ -115,6 +116,7 @@ pub fn pull_event(
             })
             .filter(|_| !rules_summary),
             KeyCode::Char('h') => Some(Event::Help),
+            KeyCode::Char('j') => Some(Event::Rules),
             KeyCode::Char('k') => Some(Event::SaveGame).filter(|_| !rules_summary && !game_setup),
             KeyCode::Char('l') => Some(Event::LoadGame).filter(|_| !rules_summary && !game_setup),
             KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
@@ -138,7 +140,7 @@ pub fn pull_event(
                     Some(Event::StartGame)
                 } else if matches!(ui_state, UIState::LoadScreen(_, _) | UIState::SaveScreen(_)) {
                     Some(Event::SelectMenuOption)
-                } else if matches!(ui_state, UIState::RulesSummary(_)) {
+                } else if matches!(ui_state, UIState::RulesSummary(_, _)) {
                     Some(Event::Exit)
                 } else if top_level {
                     Some(Event::ScrollDown)
@@ -148,8 +150,14 @@ pub fn pull_event(
                     Some(Event::SoftCancel)
                 }
             }
-            KeyCode::Char(' ') => (!animation && !two_digit && !is_skip && !show_suggestions)
-                .then(|| Event::TwoDigitInit),
+            KeyCode::Char(' ') => {
+                if rules_summary {
+                    Some(Event::ScrollDown)
+                } else {
+                    (!animation && !two_digit && !is_skip && !show_suggestions)
+                        .then_some(Event::TwoDigitInit)
+                }
+            }
             KeyCode::Tab => Some(Event::Switch),
             KeyCode::Backspace => Some(Event::Cancel),
             KeyCode::Char(c) => {

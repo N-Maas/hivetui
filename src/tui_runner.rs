@@ -56,8 +56,8 @@ pub mod tui_settings;
 enum UIState {
     // TODO: show enemy pieces during animation?
     Toplevel,
-    /// the current scrolling
-    RulesSummary(u16),
+    /// the current scrolling, true if previous screen was toplevel
+    RulesSummary(u16, bool),
     /// the currently selected option
     GameSetup(usize, bool),
     /// the currently selected save
@@ -81,7 +81,9 @@ impl UIState {
     fn top_level(self) -> bool {
         use UIState::*;
         match self {
-            Toplevel | RulesSummary(_) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_) => true,
+            Toplevel | RulesSummary(_, _) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_) => {
+                true
+            }
             ShowOptions(_, _) | PositionSelected(_) | PieceSelected(_) => false,
             GameFinished(_) | PlaysAnimation(_) | ShowAIMoves => false,
         }
@@ -329,10 +331,9 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
             match e {
                 Event::Exit => match ui_state {
                     UIState::Toplevel => break,
-                    UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
                     UIState::GameSetup(_, _) => ui_state = UIState::Toplevel,
                     UIState::LoadScreen(_, _) => ui_state = UIState::Toplevel,
-                    UIState::SaveScreen(top_level) => {
+                    UIState::RulesSummary(_, top_level) | UIState::SaveScreen(top_level) => {
                         if top_level {
                             ui_state = UIState::Toplevel;
                         } else {
@@ -368,9 +369,6 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     animation_state.stop();
                     if ui_state == UIState::ShowAIMoves {
                         ui_state = UIState::ShowOptions(false, false);
-                    }
-                    if let UIState::RulesSummary(_) = ui_state {
-                        ui_state = UIState::Toplevel;
                     }
                 }
                 Event::LetAIMove => {
@@ -432,20 +430,31 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                         do_autosave(&io_manager, &game_setup, &engine);
                     }
                 }
-                Event::Help => match ui_state {
+                Event::Rules => match ui_state {
                     UIState::Toplevel | UIState::LoadScreen(_, _) => {
-                        ui_state = UIState::RulesSummary(0)
+                        ui_state = UIState::RulesSummary(0, true)
                     }
-                    UIState::RulesSummary(_) => ui_state = UIState::Toplevel,
+                    UIState::RulesSummary(_, top_level) => {
+                        if top_level {
+                            ui_state = UIState::Toplevel;
+                        } else {
+                            ui_state = UIState::ShowOptions(false, false);
+                        }
+                    }
+                    UIState::ShowOptions(_, _)
+                    | UIState::PositionSelected(_)
+                    | UIState::PieceSelected(_)
+                    | UIState::ShowAIMoves
+                    | UIState::PlaysAnimation(_)
+                    | UIState::GameFinished(_) => ui_state = UIState::RulesSummary(0, false),
+                    UIState::GameSetup(_, _) | UIState::SaveScreen(_) => (),
+                },
+                Event::Help => match ui_state {
                     UIState::ShowOptions(false, _)
                     | UIState::PositionSelected(_)
                     | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves,
                     UIState::ShowAIMoves => ui_state = UIState::ShowOptions(false, false),
-                    UIState::ShowOptions(true, _)
-                    | UIState::GameSetup(_, _)
-                    | UIState::PlaysAnimation(_)
-                    | UIState::GameFinished(_)
-                    | UIState::SaveScreen(_) => (),
+                    _ => (),
                 },
                 Event::ZoomIn => graphics_state.zoom_in(),
                 Event::ZoomOut => graphics_state.zoom_out(),
@@ -540,13 +549,13 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     }
                 },
                 Event::ScrollUp => {
-                    if let UIState::RulesSummary(i) = ui_state {
-                        ui_state = UIState::RulesSummary(i.saturating_sub(1));
+                    if let UIState::RulesSummary(i, _) = &mut ui_state {
+                        *i = i.saturating_sub(1);
                     }
                 }
                 Event::ScrollDown => {
-                    if let UIState::RulesSummary(i) = ui_state {
-                        ui_state = UIState::RulesSummary(i + 1);
+                    if let UIState::RulesSummary(i, _) = &mut ui_state {
+                        *i += 1;
                     }
                 }
                 Event::SelectMenuOption => {
@@ -769,14 +778,22 @@ fn update_game_state_and_fill_input_mapping(
             use UIState::*;
             match (*ui_state, follow_up) {
                 (
-                    Toplevel | RulesSummary(_) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_),
+                    Toplevel
+                    | RulesSummary(_, _)
+                    | GameSetup(_, _)
+                    | LoadScreen(_, _)
+                    | SaveScreen(_),
                     Ok(d),
                 ) => {
                     d.retract_all();
                     GameStateChange::None
                 }
                 (
-                    Toplevel | RulesSummary(_) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_),
+                    Toplevel
+                    | RulesSummary(_, _)
+                    | GameSetup(_, _)
+                    | LoadScreen(_, _)
+                    | SaveScreen(_),
                     Err(_),
                 ) => GameStateChange::None,
                 (ShowOptions(_, _), Ok(d)) => {
