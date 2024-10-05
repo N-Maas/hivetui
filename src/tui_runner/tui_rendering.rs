@@ -1,10 +1,11 @@
 use super::{
     animation_and_ai_state::{AIState, AnimationState},
+    game_setup::GameSetup,
+    setting_renderer::{SettingRenderer, SettingSelection},
     text_input::TextInput,
     tui_animations::{AnimationContext, Layer},
     tui_settings::{
-        BordersStyle, ColorScheme, FillingStyle, GameSetup, GraphicsState, ScreenSplitting,
-        SettingRenderer, SettingSelection, Settings,
+        BordersStyle, ColorScheme, FillingStyle, GraphicsState, ScreenSplitting, Settings,
     },
     AIResult, Message, UIState,
 };
@@ -58,16 +59,6 @@ pub struct AllState<'a> {
     pub text_input: &'a TextInput,
     pub graphics_state: GraphicsState,
 }
-
-const MENU: &str = "\
-    [c] continue game  [↲]\n\
-    [n] new game\n\
-    [k] save game\n\
-    [l] load game\n\
-    [h] rules summary\n\
-    \n\
-    [q] quit
-";
 
 const MENU_HELP_LONG: &str = "\
     This is a TUI version of the board game Hive. \
@@ -406,23 +397,13 @@ pub fn render(
             );
 
             // the menu (actions)
-            let mut y_offset = 0;
             if !is_rules_summary
                 && !matches!(
                     state.ui_state,
                     UIState::GameSetup(_, _) | UIState::SaveScreen(_)
                 )
             {
-                let mut action_area = action_area;
-                let text = Text::from(MENU);
-                action_area.height = u16::min(action_area.height, text.height() as u16 + 2);
-                y_offset += action_area.height;
-                let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Menu").borders(Borders::ALL));
-                frame.render_widget(Clear, action_area);
-                frame.render_widget(paragraph, action_area);
-            }
-            if !is_rules_summary {
+                let y_offset = render_action_area(frame, action_area);
                 render_messages(frame, messages, action_area, y_offset + 1);
             }
 
@@ -519,7 +500,7 @@ pub fn render(
                     MENU_HELP_LONG
                 };
                 let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Help").borders(Borders::ALL))
+                    .block(Block::default().borders(Borders::ALL))
                     .wrap(Wrap { trim: true })
                     .style(ColorScheme::TEXT_GRAY);
                 frame.render_widget(paragraph, help_area);
@@ -604,7 +585,7 @@ pub fn render(
                     IN_GAME_HELP_LONG
                 };
                 let paragraph = Paragraph::new(text)
-                    .block(Block::default().title("Help").borders(Borders::ALL))
+                    .block(Block::default().borders(Borders::ALL))
                     .style(ColorScheme::TEXT_GRAY);
                 frame.render_widget(paragraph, help_area);
             }
@@ -713,11 +694,8 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
 fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scroll: u16) {
     let [top_area, body_area] =
         Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).areas(area);
-    let top_line = Line::styled(
-        "[ws] or [Space] to scroll, [Esc] to return ",
-        ColorScheme::TEXT_GRAY,
-    )
-    .alignment(Alignment::Right);
+    let top_line = Line::styled("[ws][Space] scroll   [Esc] return ", ColorScheme::TEXT_GRAY)
+        .alignment(Alignment::Right);
     let paragraph =
         Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
     frame.render_widget(paragraph, top_area);
@@ -728,6 +706,44 @@ fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scro
         .wrap(Wrap { trim: true })
         .scroll((scroll, 0));
     frame.render_widget(paragraph, body_area);
+}
+
+/// returns the y offset
+fn render_action_area(frame: &mut Frame, mut area: Rect) -> u16 {
+    let mut lines = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled("[c]", ColorScheme::TEXT_GRAY),
+        Span::raw(" continue game"),
+        Span::styled("  [↲]", ColorScheme::TEXT_GRAY),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("[n]", ColorScheme::TEXT_GRAY),
+        Span::raw(" new game"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("[l]", ColorScheme::TEXT_GRAY),
+        Span::raw(" load game"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("[k]", ColorScheme::TEXT_GRAY),
+        Span::raw(" save game"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("[h]", ColorScheme::TEXT_GRAY),
+        Span::raw(" rules and help"),
+    ]));
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::styled("[q]", ColorScheme::TEXT_GRAY),
+        Span::raw(" quit"),
+    ]));
+    let text = Text::from(lines);
+    area.height = u16::min(area.height, text.height() as u16 + 2);
+    let paragraph =
+        Paragraph::new(text).block(Block::default().title("Menu").borders(Borders::ALL));
+    frame.render_widget(Clear, area);
+    frame.render_widget(paragraph, area);
+    area.height
 }
 
 fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offset: u16) {
@@ -743,7 +759,7 @@ fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offs
             msg_len / (msg_area.width - 5) + 1
         };
         msg_area.y = offset;
-        msg_area.height = line_estimate + 5;
+        msg_area.height = line_estimate + 4;
         offset += msg_area.height;
         if offset > area.height {
             break;
@@ -769,8 +785,7 @@ fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offs
             } else {
                 Alignment::Left
             }),
-            Line::raw(""),
-            Line::styled("[Esc] to confirm", ColorScheme::TEXT_GRAY).alignment(Alignment::Right),
+            Line::styled("[Esc]", ColorScheme::TEXT_GRAY).alignment(Alignment::Right),
         ];
         let paragraph = Paragraph::new(Text::from(lines))
             .block(Block::default().borders(Borders::ALL).border_style(color))
@@ -802,13 +817,10 @@ pub fn load_game_widget(
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        "[↲] to load the selected game",
+        "[↲] load selected game",
         ColorScheme::TEXT_GRAY,
     ));
-    lines.push(Line::styled(
-        "[Esc] or [q] to return",
-        ColorScheme::TEXT_GRAY,
-    ));
+    lines.push(Line::styled("[Esc] return", ColorScheme::TEXT_GRAY));
     let text = Text::from(lines);
     Paragraph::new(text).block(Block::default().title("Load Game").borders(Borders::ALL))
 }
@@ -832,11 +844,8 @@ pub fn render_save_game_widget(
     create_save_game_list(&mut lines, settings, save_games, 0, 1, n_displayable, 0);
 
     lines.push(Line::raw(""));
-    lines.push(Line::styled("[↲] to save the game", ColorScheme::TEXT_GRAY));
-    lines.push(Line::styled(
-        "[Esc] or [q] to return",
-        ColorScheme::TEXT_GRAY,
-    ));
+    lines.push(Line::styled("[↲] save the game", ColorScheme::TEXT_GRAY));
+    lines.push(Line::styled("[Esc] return", ColorScheme::TEXT_GRAY));
     let text = Text::from(lines);
     let par = Paragraph::new(text).block(Block::default().title("Save Game").borders(Borders::ALL));
     frame.render_widget(par, area);
@@ -998,7 +1007,7 @@ pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<
             "press a number to apply the according move",
             ColorScheme::TEXT_GRAY,
         ),
-        Line::styled("[Esc] or [h] to return", ColorScheme::TEXT_GRAY),
+        Line::styled("[h][Esc] return", ColorScheme::TEXT_GRAY),
     ]);
     text
 }

@@ -75,10 +75,12 @@ pub fn pull_event(
     let top_level = ui_state.top_level();
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_));
     let game_setup = matches!(ui_state, UIState::GameSetup(_, _));
+    let save_game = matches!(ui_state, UIState::SaveScreen(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
+    let msg_visible = !rules_summary && !game_setup && !save_game;
     let key = pull_key_event()?;
-    let event = key.and_then(|key| {
-        if matches!(ui_state, UIState::SaveScreen(_)) {
+    let event = key.and_then(|mut key| {
+        if save_game {
             let result = match key {
                 KeyCode::Char(c) => Some(Event::EnterChar(c)),
                 KeyCode::Left => Some(Event::CursorLeft),
@@ -91,10 +93,12 @@ pub fn pull_event(
                 return result;
             }
         }
+        if let KeyCode::Char(c) = &mut key {
+            *c = c.to_ascii_lowercase();
+        }
         match key {
-            KeyCode::Esc => {
-                Some(Event::Exit).filter(|_| ui_state != UIState::Toplevel && !has_message)
-            }
+            KeyCode::Esc => Some(Event::Exit)
+                .filter(|_| ui_state != UIState::Toplevel && !(has_message && msg_visible)),
             KeyCode::Char('q') => Some(Event::Exit),
             KeyCode::Char('u') | KeyCode::Char('z') => Some(Event::Undo).filter(|_| !top_level),
             KeyCode::Char('r') | KeyCode::Char('y') => Some(Event::Redo).filter(|_| !top_level),
@@ -109,10 +113,10 @@ pub fn pull_event(
             } else {
                 Event::LetAIMove
             })
-            .filter(|_| !rules_summary && !game_setup),
+            .filter(|_| !rules_summary),
             KeyCode::Char('h') => Some(Event::Help),
-            KeyCode::Char('k') => Some(Event::SaveGame),
-            KeyCode::Char('l') => Some(Event::LoadGame),
+            KeyCode::Char('k') => Some(Event::SaveGame).filter(|_| !rules_summary && !game_setup),
+            KeyCode::Char('l') => Some(Event::LoadGame).filter(|_| !rules_summary && !game_setup),
             KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
             KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
             KeyCode::Char('w') => Some(if rules_summary {
@@ -127,25 +131,25 @@ pub fn pull_event(
                 Event::MoveDown
             }),
             KeyCode::Char('d') => Some(Event::MoveRight).filter(|_| !rules_summary),
-            KeyCode::Enter | KeyCode::Char(' ') => {
+            KeyCode::Enter => {
                 if ui_state == UIState::Toplevel {
                     Some(Event::ContinueGame)
                 } else if matches!(ui_state, UIState::GameSetup(_, _)) {
                     Some(Event::StartGame)
                 } else if matches!(ui_state, UIState::LoadScreen(_, _) | UIState::SaveScreen(_)) {
                     Some(Event::SelectMenuOption)
-                } else if matches!(ui_state, UIState::RulesSummary(_)) && key == KeyCode::Enter {
+                } else if matches!(ui_state, UIState::RulesSummary(_)) {
                     Some(Event::Exit)
                 } else if top_level {
                     Some(Event::ScrollDown)
                 } else if !animation && !two_digit && !is_skip && !show_suggestions {
                     Some(Event::TwoDigitInit)
-                } else if key == KeyCode::Enter {
-                    Some(Event::SoftCancel)
                 } else {
-                    None
+                    Some(Event::SoftCancel)
                 }
             }
+            KeyCode::Char(' ') => (!animation && !two_digit && !is_skip && !show_suggestions)
+                .then(|| Event::TwoDigitInit),
             KeyCode::Tab => Some(Event::Switch),
             KeyCode::Backspace => Some(Event::Cancel),
             KeyCode::Char(c) => {
@@ -189,12 +193,12 @@ pub fn pull_event(
             _ => None,
         }
     });
-    let removes_msg = key.map_or(false, |key| match key {
-        KeyCode::Esc | KeyCode::Char('q') => true,
-        KeyCode::Enter => event.is_some() || !top_level,
-        KeyCode::Char('c') | KeyCode::Char('n') => top_level && event.is_some(),
-        KeyCode::Char(' ') => top_level && !rules_summary && event.is_some(),
-        _ => false,
-    });
+    let removes_msg = msg_visible
+        && key.map_or(false, |key| match key {
+            KeyCode::Esc | KeyCode::Char('q') => true,
+            KeyCode::Enter => event.is_some() || !top_level,
+            KeyCode::Char('c') => top_level && event.is_some(),
+            _ => false,
+        });
     Ok((event, removes_msg))
 }

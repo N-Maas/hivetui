@@ -6,6 +6,7 @@ use crossterm::{
 };
 use event_mapping::{pull_event, Event};
 use ratatui::prelude::{CrosstermBackend, Terminal};
+use setting_renderer::{SettingRenderer, SettingSelection};
 use std::{
     collections::HashMap,
     ffi::OsString,
@@ -35,16 +36,17 @@ use crate::{
 };
 
 use self::{
+    game_setup::GameSetup,
     tui_animations::{build_blink_animation, build_complete_piece_move_animation},
     tui_rendering::{find_losing_queen, translate_index},
-    tui_settings::{
-        AutomaticCameraMoves, GameSetup, GraphicsState, SettingRenderer, SettingSelection, Settings,
-    },
+    tui_settings::{AutomaticCameraMoves, GraphicsState, Settings},
 };
 
 // mod dynamic_layout;
 mod animation_and_ai_state;
 mod event_mapping;
+pub mod game_setup;
+mod setting_renderer;
 mod text_input;
 mod tui_animations;
 mod tui_rendering;
@@ -378,10 +380,16 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     ui_state = UIState::ShowOptions(false, false);
                 }
                 Event::NewGame => {
-                    ui_state = UIState::GameSetup(2, false);
+                    if let UIState::GameSetup(_, _) = ui_state {
+                        ui_state = UIState::Toplevel;
+                    } else {
+                        ui_state = UIState::GameSetup(2, false);
+                    }
                 }
                 Event::LoadGame => {
-                    if let Some(io_manager) = io_manager.as_mut() {
+                    if let UIState::LoadScreen(_, _) = ui_state {
+                        ui_state = UIState::Toplevel;
+                    } else if let Some(io_manager) = io_manager.as_mut() {
                         match io_manager.recompute_save_files_list() {
                             Ok(_) => ui_state = UIState::LoadScreen(2, false),
                             Err(e) => messages
@@ -517,9 +525,9 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     _ => {
                         if let Some(selection) = ui_state.get_menu_selection(menu_selection) {
                             if e == Event::MenuIncrease {
-                                setting_renderer.get(selection).increase(&mut settings);
+                                setting_renderer.increase(selection, &mut settings);
                             } else {
-                                setting_renderer.get(selection).decrease(&mut settings);
+                                setting_renderer.decrease(selection, &mut settings);
                             }
                             if setting_renderer.is_ai_setting(selection) {
                                 ai_state.reset();

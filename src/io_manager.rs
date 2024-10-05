@@ -12,7 +12,7 @@ use tgp::engine::{
     LoggingEngine,
 };
 
-use crate::{state::HiveGameState, tui_runner::tui_settings::GameSetup};
+use crate::{state::HiveGameState, tui_runner::game_setup::GameSetup};
 
 pub const HEADER: &str = "hive-tui version 0.1.0";
 pub const APP_NAME: &str = "hivetui";

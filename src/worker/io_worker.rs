@@ -1,5 +1,6 @@
 use crate::io_manager::HEADER;
-use crate::tui_runner::tui_settings::{GameSetup, Settings};
+use crate::tui_runner::game_setup::GameSetup;
+use crate::tui_runner::tui_settings::Settings;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
