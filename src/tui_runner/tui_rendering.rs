@@ -338,7 +338,7 @@ fn custom_linebreaks(
     textwidth: u16,
 ) {
     while let Some((split_idx, _)) = input
-        .match_indices(" ")
+        .match_indices(' ')
         .filter(|&(i, _)| i <= textwidth as usize)
         .last()
         .filter(|_| input.len() > textwidth as usize)
@@ -808,37 +808,38 @@ fn render_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
 
 /// returns the y offset
 fn render_action_area(frame: &mut Frame, mut area: Rect) -> u16 {
-    let mut lines = Vec::new();
-    lines.push(Line::from(vec![
-        Span::styled("[c]", ColorScheme::TEXT_GRAY),
-        Span::raw(" continue game"),
-        Span::styled("  [↲]", ColorScheme::TEXT_GRAY),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("[n]", ColorScheme::TEXT_GRAY),
-        Span::raw(" new game"),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("[l]", ColorScheme::TEXT_GRAY),
-        Span::raw(" load game"),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("[k]", ColorScheme::TEXT_GRAY),
-        Span::raw(" save game"),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("[j]", ColorScheme::TEXT_GRAY),
-        Span::raw(" rules and tutorial"),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("[r]", ColorScheme::TEXT_GRAY),
-        Span::raw(" restore default settings"),
-    ]));
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        Span::styled("[q]", ColorScheme::TEXT_GRAY),
-        Span::raw(" quit"),
-    ]));
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("[c]", ColorScheme::TEXT_GRAY),
+            Span::raw(" continue game"),
+            Span::styled("  [↲]", ColorScheme::TEXT_GRAY),
+        ]),
+        Line::from(vec![
+            Span::styled("[n]", ColorScheme::TEXT_GRAY),
+            Span::raw(" new game"),
+        ]),
+        Line::from(vec![
+            Span::styled("[l]", ColorScheme::TEXT_GRAY),
+            Span::raw(" load game"),
+        ]),
+        Line::from(vec![
+            Span::styled("[k]", ColorScheme::TEXT_GRAY),
+            Span::raw(" save game"),
+        ]),
+        Line::from(vec![
+            Span::styled("[j]", ColorScheme::TEXT_GRAY),
+            Span::raw(" rules and tutorial"),
+        ]),
+        Line::from(vec![
+            Span::styled("[r]", ColorScheme::TEXT_GRAY),
+            Span::raw(" restore default settings"),
+        ]),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled("[q]", ColorScheme::TEXT_GRAY),
+            Span::raw(" quit"),
+        ]),
+    ];
     let text = Text::from(lines);
     area.height = u16::min(area.height, text.height() as u16 + 2);
     let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
