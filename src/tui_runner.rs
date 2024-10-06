@@ -647,6 +647,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         if animation_state
             .animation()
             .is_some_and(|a| !a.is_finished())
+            && !ui_state.top_level()
             && !matches!(ui_state, UIState::GameFinished(_, _))
         {
             if !matches!(ui_state, UIState::PlaysAnimation(_)) && !ai_state.animation_has_started()
@@ -780,6 +781,7 @@ fn update_game_state_and_fill_input_mapping(
                     }
                     return Ok(true);
                 } else if ai_state.animation_has_started()
+                    && !ui_state.top_level()
                     && !matches!(ui_state, UIState::PlaysAnimation(_))
                 {
                     *ui_state = UIState::PlaysAnimation(false);
