@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, iter};
 
 use ratatui::{
-    style::Color,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
@@ -143,15 +142,19 @@ impl GameSetup {
             let color = if any_selected && selection == 0 {
                 settings.color_scheme.primary()
             } else {
-                Color::White
+                ColorScheme::TEXT_GRAY
             };
             let mut spans = vec![Span::styled(format!("[{}] ", offset + 1), color)];
             spans.push(Span::raw("Symmetric pieces: "));
             for sym in [true, false] {
                 let selected = sym == self.is_symmetric();
                 let str = if sym { "yes" } else { "no" };
-                if selected {
+                if selected && selection == 0 {
                     spans.push(Span::styled(format!("<{str}>"), color));
+                } else if selected {
+                    spans.push(Span::styled("<", ColorScheme::TEXT_GRAY));
+                    spans.push(Span::raw(str));
+                    spans.push(Span::styled(">", ColorScheme::TEXT_GRAY));
                 } else {
                     spans.push(Span::raw(format!(" {str} ")));
                 }
@@ -161,7 +164,11 @@ impl GameSetup {
             if self.is_symmetric() {
                 lines.push(Line::raw(""));
             } else {
-                lines.push(Line::raw(" ".repeat(16) + "White [⇆] Black"));
+                lines.push(Line::from(vec![
+                    Span::raw(" ".repeat(16) + "White "),
+                    Span::styled("[⇆]", ColorScheme::TEXT_GRAY),
+                    Span::raw(" Black"),
+                ]));
             }
         }
         let pieces_iter = no_queen(self.white_pieces.iter())
@@ -172,7 +179,7 @@ impl GameSetup {
             let color = if is_selected {
                 settings.color_scheme.primary()
             } else {
-                Color::White
+                ColorScheme::TEXT_GRAY
             };
             let p_color = tui_graphics::piece_color(p_type);
             let mut spans = vec![Span::styled(format!("[{}] ", i + offset + 2), color)];
