@@ -377,10 +377,6 @@ impl PieceType {
                 let piece_set = Self::get_mosquito_piece_set(field, false);
                 for p_type in piece_set.movable_dominance_set().iter() {
                     if p_type.is_movable(field) {
-                        let moves = self.get_moves(field);
-                        if moves.is_empty() {
-                            panic!("p_type={p_type}, p_moves={:?}", p_type.get_moves(field));
-                        }
                         return true;
                     }
                 }
