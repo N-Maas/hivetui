@@ -32,7 +32,7 @@ use std::{
 };
 use tgp_ai::RatingType;
 use tgp_board::open_board::OpenIndex;
-use tutorial::{build_rules_summary, build_tutorial};
+use tutorial::{bee_offset, build_bees_at_offset, build_rules_summary, build_tutorial};
 
 #[derive(Clone, Copy)]
 pub struct AllState<'a> {
@@ -510,7 +510,17 @@ fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scro
         Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
     frame.render_widget(paragraph, top_area);
 
-    let text = build_rules_summary(settings);
+    let textwidth = area.width - 4;
+    let textheight = area.height - 4;
+    let threshold = bee_offset(textwidth, textheight);
+    let (text, scroll) = if scroll < threshold {
+        (build_rules_summary(settings, textwidth, textheight), scroll)
+    } else {
+        (
+            build_bees_at_offset(textwidth, textheight, scroll - threshold),
+            0,
+        )
+    };
     let paragraph = Paragraph::new(text)
         .block(
             Block::default()

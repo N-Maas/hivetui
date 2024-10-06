@@ -1,5 +1,5 @@
 use core::slice;
-use std::mem;
+use std::{iter, mem};
 
 use ratatui::{
     layout::Alignment,
@@ -149,7 +149,22 @@ const TUTORIAL_TIPS: [&str; 6] = [
     "Try playing around with the graphic settings!",
 ];
 
-pub fn build_rules_summary(settings: &Settings) -> Text<'static> {
+const BEE: &str = r"
+              \     /
+          \    o ^ o    /
+            \ (     ) /
+ ____________(%%%%%%%)____________
+(     /   /  )%%%%%%%(  \   \     )
+(___/___/__/           \__\___\___)
+   (     /  /(%%%%%%%)\  \     )
+    (__/___/ (%%%%%%%) \___\__)
+            /(       )\
+          /   (%%%%%)   \
+               (%%%)
+                 !
+";
+
+pub fn build_rules_summary(settings: &Settings, textwidth: u16, textheight: u16) -> Text<'static> {
     // first a few helpers
     let insert = |start, val, end, color| {
         let span = Span::styled(val, color);
@@ -183,7 +198,7 @@ pub fn build_rules_summary(settings: &Settings) -> Text<'static> {
     let ant = piece_color(PieceType::Ant);
     let mosquito = piece_color(PieceType::Mosquito);
     let beetle = piece_color(PieceType::Beetle);
-    let lines = vec![
+    let mut lines = vec![
         Line::styled("Summary of Rules", primary)
             .bold()
             .alignment(Alignment::Center),
@@ -250,6 +265,8 @@ pub fn build_rules_summary(settings: &Settings) -> Text<'static> {
         Line::raw(""),
         Line::raw(REMARKS),
     ];
+    lines.extend(iter::repeat(Line::raw("")).take(textheight as usize));
+    build_bee(&mut lines, textwidth, 0);
     Text::from(lines)
 }
 
@@ -303,4 +320,75 @@ fn custom_linebreaks(
         lines.push(Line::raw(mem::replace(&mut input, remaining)));
     }
     lines.push(Line::raw(input));
+}
+
+fn build_bee(lines: &mut Vec<Line<'static>>, textwidth: u16, seed: usize) {
+    let bee_width = BEE.lines().map(|l| l.len()).max().unwrap();
+    let Some(buffer) = (textwidth as usize).checked_sub(bee_width) else {
+        return;
+    };
+
+    let offset = if buffer == 0 || seed == 0 {
+        buffer / 2
+    } else {
+        ((seed * 137) ^ ((seed >> 1) * 23)) % buffer
+    };
+    for l in BEE.lines() {
+        // use non-breakable spaces for correct rendering
+        lines.push(Line::raw(
+            "\u{00A0}".repeat(offset) + &l.replace(' ', "\u{00A0}"),
+        ));
+    }
+}
+
+pub fn bee_offset(textwidth: u16, textheight: u16) -> u16 {
+    5000 / textwidth + 80 + 2 * textheight
+}
+
+pub fn build_bees_at_offset(textwidth: u16, textheight: u16, offset: u16) -> Text<'static> {
+    let offset = u32::from(offset);
+    let bee_height = BEE.lines().count() as u32;
+    let bee_index = {
+        // we are lazy and use binary search instead of more advanced numeric methods..
+        let mut min = 0;
+        let mut max = offset / bee_height + 1;
+        assert!(bee_to_pos(max, bee_height, textheight) > offset);
+        while min + 1 < max {
+            let mid = (min + max) / 2;
+            let mid_val = bee_to_pos(mid, bee_height, textheight);
+            if mid_val <= offset {
+                min = mid;
+            } else {
+                max = mid;
+            }
+        }
+        min
+    };
+    let n_bees = u32::from(textheight) / bee_height + 1;
+
+    let mut lines = Vec::new();
+    let n_skipped = offset - bee_to_pos(bee_index, bee_height, textheight);
+    for i in 0..n_bees {
+        let bee_index = bee_index + i;
+        let pos = bee_to_pos(bee_index, bee_height, textheight);
+        assert!(pos + n_skipped >= offset);
+        while lines.len() < (pos + n_skipped - offset) as usize {
+            lines.push(Line::raw(""));
+        }
+        if bee_index > 0 {
+            build_bee(&mut lines, textwidth, bee_index as usize);
+        }
+    }
+    Text::from_iter(lines.into_iter().skip(n_skipped as usize))
+}
+
+fn bee_to_pos(bee: u32, bee_height: u32, textheight: u16) -> u32 {
+    if bee == 0 {
+        0
+    } else {
+        let bee = bee - 1;
+        textheight as u32
+            + bee * bee_height
+            + f64::ceil(20.0 * (f64::from(bee + 2).sqrt() - 1.41) * f64::from(bee_height)) as u32
+    }
 }
