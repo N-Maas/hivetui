@@ -7,7 +7,11 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 
-use crate::{pieces::PieceType, tui_graphics::piece_color, tui_runner::tui_settings::{ColorScheme, Settings}};
+use crate::{
+    pieces::PieceType,
+    tui_graphics::piece_color,
+    tui_runner::tui_settings::{ColorScheme, Settings},
+};
 
 const INTRODUCTION_BEFORE_QUEEN: &str = "\
     Hive is a chess-like game played with hexagonal pieces. \
