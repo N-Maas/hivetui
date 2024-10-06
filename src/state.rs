@@ -321,9 +321,7 @@ impl HiveGameState {
         }
 
         let field = self.board.get_field(from).unwrap();
-
         let (neighbors, in_a_row) = self.neighbors_in_a_row(field);
-
         if in_a_row {
             for i in neighbors {
                 let field = self.board.get_field(i).unwrap();
@@ -337,16 +335,15 @@ impl HiveGameState {
 
     /// does not test the moved/placed piece itself
     fn check_movable_to(&mut self, to: OpenIndex) -> bool {
-        if self.white_pieces_on_board + self.black_pieces_on_board <= 2 {
-            return false;
-        }
-
         let field = self.board.get_field(to).unwrap();
+        let stack_size = field.content().len();
         let (neighbors, in_a_row) = self.neighbors_in_a_row(field);
         if in_a_row {
             for &i in neighbors.iter() {
                 let field = self.board.get_field(i).unwrap();
-                if neighbors.len() == 1 && self.board[i].len() == 1 {
+                let pieces_on_board = usize::from(self.white_pieces_on_board + self.black_pieces_on_board);
+                // third condition is necessary for the edge case that only two fields are occupied (beetles..)
+                if neighbors.len() == 1 && self.board[i].len() == 1 && stack_size + 1 < pieces_on_board {
                     self.board[i].is_movable = false;
                 } else if neighbors.len() <= 2 && self.board[i].is_movable {
                     let p_type = self.board[i].top().unwrap().p_type;
