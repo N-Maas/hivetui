@@ -208,12 +208,11 @@ pub fn pull_event(
             _ => None,
         }
     });
-    let removes_msg = msg_visible
-        && key.map_or(false, |key| match key {
-            KeyCode::Esc | KeyCode::Char('q') => true,
-            KeyCode::Enter => event.is_some() || !top_level,
-            KeyCode::Char('c') => top_level && event.is_some(),
-            _ => false,
-        });
+    let removes_msg = key.map_or(false, |key| match key {
+        KeyCode::Esc | KeyCode::Char('q') => msg_visible,
+        KeyCode::Enter => event.is_some() || !top_level,
+        KeyCode::Char('c') => top_level && event.is_some() && msg_visible,
+        _ => false,
+    });
     Ok((event, removes_msg))
 }
