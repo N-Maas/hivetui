@@ -20,6 +20,7 @@ use tgp::{
     vec_context::VecContext,
 };
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
+use tui_rendering::board::find_losing_queen;
 
 use crate::{
     io_manager::{load_game, IOManager, APP_NAME, AUTOSAVE},
@@ -38,7 +39,7 @@ use crate::{
 use self::{
     game_setup::GameSetup,
     tui_animations::{build_blink_animation, build_complete_piece_move_animation},
-    tui_rendering::{find_losing_queen, translate_index},
+    tui_rendering::translate_index,
     tui_settings::{AutomaticCameraMoves, GraphicsState, Settings},
 };
 

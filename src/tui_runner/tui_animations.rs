@@ -381,7 +381,7 @@ pub fn flying_piece(
         move |ctx, anim_ctx, _ratio, (x, y)| {
             let zoom = anim_ctx.graphics_state.zoom_level.multiplier();
             if draw_interior {
-                tui_rendering::draw_interior(ctx, style, x, y, color_interior);
+                tui_rendering::board::draw_interior(ctx, style, x, y, color_interior);
                 ctx.layer();
             }
             tui_graphics::draw_piece(ctx, piece_t, x, y, zoom);
