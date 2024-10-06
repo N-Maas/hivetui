@@ -7,7 +7,7 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 
-use crate::{pieces::PieceType, tui_graphics::piece_color, tui_runner::tui_settings::Settings};
+use crate::{pieces::PieceType, tui_graphics::piece_color, tui_runner::tui_settings::{ColorScheme, Settings}};
 
 const INTRODUCTION_BEFORE_QUEEN: &str = "\
     Hive is a chess-like game played with hexagonal pieces. \
@@ -272,7 +272,7 @@ pub fn build_rules_summary(settings: &Settings, textwidth: u16, textheight: u16)
 
 pub fn build_tutorial(lines: &mut Vec<Line<'static>>, textwidth: u16) {
     lines.push(
-        Line::styled("Tutorial", piece_color(PieceType::Queen))
+        Line::styled("Tutorial", ColorScheme::GOLD)
             .bold()
             .alignment(Alignment::Center),
     );

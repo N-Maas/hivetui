@@ -282,7 +282,7 @@ impl SettingRenderer {
             graphic: vec![
                 create_menu_setting(
                     "color scheme: ",
-                    vec!["red", "blue", "green", "purple"],
+                    vec!["red", "blue", "green", "purple", "gold"],
                     graphics_offset,
                     |state| &mut state.color_scheme,
                 ),

@@ -427,6 +427,7 @@ pub enum ColorScheme {
     Blue = 1,
     Green = 2,
     Purple = 3,
+    Gold = 4,
 }
 
 impl ColorScheme {
@@ -440,6 +441,8 @@ impl ColorScheme {
     pub const YELLOW_GREEN: Color = Color::from_u32(0x00A0D030);
     pub const PURPLE: Color = Color::from_u32(0x009030DA);
     pub const PINK: Color = Color::from_u32(0x00D830B0);
+    pub const GOLD: Color = Color::from_u32(0x00BABA10);
+    pub const SILVER: Color = Color::from_u32(0x009A9AB0);
     pub const TEXT_GRAY: Color = Color::from_u32(0x00A0A0A0);
     pub const TEXT_YELLOW: Color = Color::from_u32(0x00D8D830);
     pub const DARK_GRAY: Color = Color::from_u32(0x00464646);
@@ -452,6 +455,7 @@ impl ColorScheme {
             ColorScheme::Blue => Self::BLUE,
             ColorScheme::Green => Self::GREEN,
             ColorScheme::Purple => Self::PURPLE,
+            ColorScheme::Gold => Self::GOLD,
         }
     }
 
@@ -461,6 +465,7 @@ impl ColorScheme {
             ColorScheme::Blue => Self::TURQUOISE,
             ColorScheme::Green => Self::YELLOW_GREEN,
             ColorScheme::Purple => Self::PINK,
+            ColorScheme::Gold => Self::SILVER,
         }
     }
 
@@ -470,6 +475,7 @@ impl ColorScheme {
             ColorScheme::Blue => (0x30, 0x90, 0xEA),
             ColorScheme::Green => (0x30, 0xFF, 0x30),
             ColorScheme::Purple => (0x90, 0x30, 0xEA),
+            ColorScheme::Gold => (0xE0, 0xE0, 0x30),
         }
     }
 }
