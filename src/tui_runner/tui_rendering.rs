@@ -137,16 +137,22 @@ const MOVEMENT_AFTER_QUEEN: &str = ". \
     does not \"fit\" through the bottleneck.\
 ";
 
+const EXTENSIONS: &str = "\
+    While the original game only contains the above pieces, some more were \
+    added by extensions. From each piece in the following list, one is added \
+    to the game setup by different extensions.
+";
+
 const QUEEN: [&str; 3] = [
     "The most important piece, since you loose the game if the ",
     " is surrounded. She must be placed within your first four turns. \
     Once placed, the ",
-    " can move to any adjacent non-occupied position.",
+    " can move to any adjacent unoccupied position.",
 ];
 
 const ANT: [&str; 2] = [
     "Flexible pieces that travel the edge of the hive. The ",
-    " can move to any position that is reachable via a non-occupied path.",
+    " can move to any position that is reachable via an unoccupied path.",
 ];
 
 const SPIDER: [&str; 4] = [
@@ -159,7 +165,7 @@ const SPIDER: [&str; 4] = [
 const GRASSHOPPER: [&str; 2] = [
     "Less flexible, but ignores obstacles. The ",
     " jumps over adjacent pieces (at least one!) in a straight line, \
-    moving to the first non-occupied position in the line.",
+    moving to the first unoccupied position in the line.",
 ];
 
 const BEETLE: [&str; 5] = [
@@ -173,8 +179,26 @@ const BEETLE: [&str; 5] = [
     a piece next to it even if the piece below is not yours).",
 ];
 
+const LADYBUG: [&str; 3] = [
+    "Powerful for short ranges. The ",
+    " makes exactly three steps: First, it moves atop an adjacent piece. \
+    Second, it moves one position on top of the hive. Third, it moves down to an adjacent \
+    unoccupied position. Thus, the ",
+    " is only temporarily atop the hive and always ends its move at an unoccupied position.",
+];
+
+const MOSQUITO: [&str; 6] = [
+    "The ",
+    " has no movement on its own, but instead imitates other pieces. It can use the \
+    movement rules of any piece adjacent to its current position. However, if the ",
+    " uses a ",
+    " move to get atop the hive, it must move like a ",
+    " until it crawls down. If its only neighbor is another ",
+    ", it can not move at all.",
+];
+
 const REMARKS: &str = "\
-    Notes: This is a summary, not a comprehensive explanation of the \
+    Note: This is a summary, not a comprehensive explanation of the \
     rules. Please refer to the official rules of Hive instead.\
 ";
 
@@ -207,8 +231,8 @@ const TUTORIAL_IN_GAME: &str = "\
     type of piece to be placed need to be chosen. By default, the selection works \
     by just pressing the number diplayed at the target. Two-digit numbers must be \
     preceded with a space! Alternatively, the \"move selection\" setting can be \
-    changed to entering the number and confirming with [↲]. Further options, e.g. \
-    to move the camera, are provided in the bottom right.
+    changed to entering the number and confirming with [↲]. Further controls, e.g. \
+    to move the camera, are shown in the bottom right.
 ";
 
 const TUTORIAL_TIPS: [&str; 6] = [
@@ -224,11 +248,8 @@ const TUTORIAL_TIPS: [&str; 6] = [
 fn build_help_text(settings: &Settings) -> Text<'static> {
     // first a few helpers
     let insert = |start, val, end, color| {
-        Line::from(vec![
-            Span::raw(start),
-            Span::styled(val, color),
-            Span::raw(end),
-        ])
+        let span = Span::styled(val, color);
+        Line::from(vec![Span::raw(start), span.bold(), Span::raw(end)])
     };
     let combine = |left: Line<'static>, right: Line<'static>| {
         let mut spans = left.spans;
@@ -256,6 +277,8 @@ fn build_help_text(settings: &Settings) -> Text<'static> {
     let primary = settings.color_scheme.primary();
     let spider = piece_color(PieceType::Spider);
     let ant = piece_color(PieceType::Ant);
+    let mosquito = piece_color(PieceType::Mosquito);
+    let beetle = piece_color(PieceType::Beetle);
     let lines = vec![
         Line::styled("Summary of Rules", primary)
             .bold()
@@ -268,16 +291,15 @@ fn build_help_text(settings: &Settings) -> Text<'static> {
             piece_color(PieceType::Queen),
         ),
         Line::raw(""),
-        insert("", String::from("Placing a piece: "), PLACEMENT, primary),
+        Line::raw("Placing a Piece").bold(),
+        Line::raw(PLACEMENT),
         Line::raw(""),
-        combine(
-            Line::from(Span::styled("Moving a piece: ", primary)),
-            insert(
-                MOVEMENT_BEFORE_QUEEN,
-                String::from("Bee Queen"),
-                MOVEMENT_AFTER_QUEEN,
-                piece_color(PieceType::Queen),
-            ),
+        Line::raw("Moving a Piece").bold(),
+        insert(
+            MOVEMENT_BEFORE_QUEEN,
+            String::from("Queen"),
+            MOVEMENT_AFTER_QUEEN,
+            piece_color(PieceType::Queen),
         ),
         Line::raw(""),
         piece_text(QUEEN.iter(), PieceType::Queen),
@@ -298,6 +320,28 @@ fn build_help_text(settings: &Settings) -> Text<'static> {
         piece_text(GRASSHOPPER.iter(), PieceType::Grasshopper),
         Line::raw(""),
         piece_text(BEETLE.iter(), PieceType::Beetle),
+        Line::raw(""),
+        Line::raw("Extensions").bold(),
+        Line::raw(EXTENSIONS),
+        Line::raw(""),
+        piece_text(LADYBUG.iter(), PieceType::Ladybug),
+        Line::raw(""),
+        combine(
+            combine(
+                insert("", String::from("Mosquito: "), MOSQUITO[0], mosquito),
+                insert("", String::from("Mosquito"), MOSQUITO[1], mosquito),
+            ),
+            combine(
+                combine(
+                    insert("", String::from("Mosquito"), MOSQUITO[2], mosquito),
+                    insert("", String::from("Beetle"), MOSQUITO[3], beetle),
+                ),
+                combine(
+                    insert("", String::from("Beetle"), MOSQUITO[4], beetle),
+                    insert("", String::from("Mosquito"), MOSQUITO[5], mosquito),
+                ),
+            ),
+        ),
         Line::raw(""),
         Line::raw(""),
         Line::raw(REMARKS),
@@ -1109,7 +1153,7 @@ pub fn ai_suggestions(ai_result: &AIResult, game_state: &HiveGameState) -> Text<
             "press a number to apply the according move",
             ColorScheme::TEXT_GRAY,
         ),
-        Line::styled("[h][Esc] return", ColorScheme::TEXT_GRAY),
+        Line::styled("[Esc] return", ColorScheme::TEXT_GRAY),
     ]);
     text
 }
