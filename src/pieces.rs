@@ -224,7 +224,7 @@ impl PieceType {
         B: Board<Index = OpenIndex, Content = HiveContent>,
         B::Structure: NeighborhoodStructure<B>,
     {
-        debug_assert!(
+        assert!(
             top_piece_removed
                 || field
                     .content()

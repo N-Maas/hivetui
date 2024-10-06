@@ -558,7 +558,6 @@ pub fn render(
             let remaining_size = menu_area
                 .height
                 .saturating_sub(player_size)
-                .saturating_sub(settings_size)
                 .saturating_sub(help_size);
 
             // the players
