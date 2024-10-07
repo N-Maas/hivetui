@@ -445,20 +445,15 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     UIState::Toplevel | UIState::LoadScreen(_, _) => {
                         ui_state = UIState::RulesSummary(0, true)
                     }
-                    UIState::RulesSummary(_, top_level) => {
-                        if top_level {
-                            ui_state = UIState::Toplevel;
-                        } else {
-                            ui_state = UIState::ShowOptions(false, false);
-                        }
-                    }
                     UIState::ShowOptions(_, _)
                     | UIState::PositionSelected(_)
                     | UIState::PieceSelected(_)
                     | UIState::ShowAIMoves(_)
                     | UIState::PlaysAnimation(_)
                     | UIState::GameFinished(_, _) => ui_state = UIState::RulesSummary(0, false),
-                    UIState::GameSetup(_, _) | UIState::SaveScreen(_) => (),
+                    UIState::RulesSummary(_, _)
+                    | UIState::GameSetup(_, _)
+                    | UIState::SaveScreen(_) => (),
                 },
                 Event::Help => match ui_state {
                     UIState::ShowOptions(false, _)

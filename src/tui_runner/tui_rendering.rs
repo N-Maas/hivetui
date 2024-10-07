@@ -505,7 +505,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
 fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scroll: u16) {
     let [top_area, body_area] =
         Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).areas(area);
-    let top_line = Line::styled(" [ws][Space] scroll", ColorScheme::TEXT_GRAY);
+    let top_line = Line::styled(" [↑↓][Space] scroll", ColorScheme::TEXT_GRAY);
     let paragraph =
         Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
     frame.render_widget(paragraph, top_area);

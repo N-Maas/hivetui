@@ -94,6 +94,14 @@ pub fn pull_event(
             if result.is_some() {
                 return result;
             }
+        } else if rules_summary {
+            let result = match key {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('j') => Some(Event::Exit),
+                KeyCode::Up => Some(Event::ScrollUp),
+                KeyCode::Down | KeyCode::Char(' ') => Some(Event::ScrollDown),
+                _ => None,
+            };
+            return result;
         }
         if let KeyCode::Char(c) = &mut key {
             *c = c.to_ascii_lowercase();
@@ -105,7 +113,7 @@ pub fn pull_event(
             KeyCode::Char('u') => Some(Event::Undo).filter(|_| !top_level),
             KeyCode::Char('r') => {
                 if top_level {
-                    Some(Event::RestoreDefault).filter(|_| !rules_summary && !game_setup)
+                    Some(Event::RestoreDefault).filter(|_| !game_setup)
                 } else {
                     Some(Event::Redo)
                 }
@@ -115,31 +123,22 @@ pub fn pull_event(
             } else {
                 Event::Cancel
             })
-            .filter(|_| !rules_summary && !game_setup),
+            .filter(|_| !game_setup),
             KeyCode::Char('n') => Some(if top_level {
                 Event::NewGame
             } else {
                 Event::LetAIMove
-            })
-            .filter(|_| !rules_summary),
+            }),
             KeyCode::Char('h') => Some(Event::Help),
             KeyCode::Char('j') => Some(Event::Rules),
-            KeyCode::Char('k') => Some(Event::SaveGame).filter(|_| !rules_summary && !game_setup),
-            KeyCode::Char('l') => Some(Event::LoadGame).filter(|_| !rules_summary && !game_setup),
-            KeyCode::Char('+') => Some(Event::ZoomIn).filter(|_| !rules_summary),
-            KeyCode::Char('-') => Some(Event::ZoomOut).filter(|_| !rules_summary),
-            KeyCode::Char('w') => Some(if rules_summary {
-                Event::ScrollUp
-            } else {
-                Event::MoveUp
-            }),
-            KeyCode::Char('a') => Some(Event::MoveLeft).filter(|_| !rules_summary),
-            KeyCode::Char('s') => Some(if rules_summary {
-                Event::ScrollDown
-            } else {
-                Event::MoveDown
-            }),
-            KeyCode::Char('d') => Some(Event::MoveRight).filter(|_| !rules_summary),
+            KeyCode::Char('k') => Some(Event::SaveGame).filter(|_| !game_setup),
+            KeyCode::Char('l') => Some(Event::LoadGame).filter(|_| !game_setup),
+            KeyCode::Char('+') => Some(Event::ZoomIn),
+            KeyCode::Char('-') => Some(Event::ZoomOut),
+            KeyCode::Char('w') => Some(Event::MoveUp),
+            KeyCode::Char('a') => Some(Event::MoveLeft),
+            KeyCode::Char('s') => Some(Event::MoveDown),
+            KeyCode::Char('d') => Some(Event::MoveRight),
             KeyCode::Enter => {
                 if ui_state == UIState::Toplevel {
                     Some(Event::ContinueGame)
@@ -157,14 +156,8 @@ pub fn pull_event(
                     Some(Event::SoftCancel)
                 }
             }
-            KeyCode::Char(' ') => {
-                if rules_summary {
-                    Some(Event::ScrollDown)
-                } else {
-                    (!animation && !two_digit && !is_skip && !show_suggestions)
-                        .then_some(Event::TwoDigitInit)
-                }
-            }
+            KeyCode::Char(' ') => (!animation && !two_digit && !is_skip && !show_suggestions)
+                .then_some(Event::TwoDigitInit),
             KeyCode::Tab => Some(Event::Switch),
             KeyCode::Backspace => Some(Event::Cancel),
             KeyCode::Char(c) => {
@@ -203,8 +196,8 @@ pub fn pull_event(
             } else {
                 Event::MoveDown
             }),
-            KeyCode::PageDown => Some(Event::ZoomIn).filter(|_| !rules_summary),
-            KeyCode::PageUp => Some(Event::ZoomOut).filter(|_| !rules_summary),
+            KeyCode::PageDown => Some(Event::ZoomIn),
+            KeyCode::PageUp => Some(Event::ZoomOut),
             _ => None,
         }
     });
