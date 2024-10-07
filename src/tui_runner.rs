@@ -446,6 +446,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     game_setup = GameSetup::default();
                     settings = Settings::default_settings();
                     save_settings(&io_manager, settings);
+                    do_autosave(&io_manager, &game_setup, &engine);
                 }
                 Event::Undo => {
                     if engine.undo_last_decision() {
