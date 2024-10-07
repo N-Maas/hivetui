@@ -341,9 +341,13 @@ impl HiveGameState {
         if in_a_row {
             for &i in neighbors.iter() {
                 let field = self.board.get_field(i).unwrap();
-                let pieces_on_board = usize::from(self.white_pieces_on_board + self.black_pieces_on_board);
+                let pieces_on_board =
+                    usize::from(self.white_pieces_on_board + self.black_pieces_on_board);
                 // third condition is necessary for the edge case that only two fields are occupied (beetles..)
-                if neighbors.len() == 1 && self.board[i].len() == 1 && stack_size + 1 < pieces_on_board {
+                if neighbors.len() == 1
+                    && self.board[i].len() == 1
+                    && stack_size + 1 < pieces_on_board
+                {
                     self.board[i].is_movable = false;
                 } else if neighbors.len() <= 2 && self.board[i].is_movable {
                     let p_type = self.board[i].top().unwrap().p_type;
