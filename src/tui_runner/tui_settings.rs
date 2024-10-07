@@ -562,7 +562,7 @@ impl Settings {
     pub fn default_settings() -> Self {
         Self {
             show_tutorial: true,
-            black_player_type: PlayerType::AI2,
+            black_player_type: PlayerType::AI1,
             ..Default::default()
         }
     }
