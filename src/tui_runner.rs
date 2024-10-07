@@ -20,7 +20,7 @@ use tgp::{
     vec_context::VecContext,
 };
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
-use tui_rendering::board::find_losing_queen;
+use tui_rendering::{board::find_losing_queen, TUTORIAL_HEIGHT};
 
 use crate::{
     io_manager::{load_game, IOManager, APP_NAME, AUTOSAVE},
@@ -55,8 +55,9 @@ pub mod tui_settings;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum UIState {
-    // TODO: show enemy pieces during animation?
     Toplevel,
+    /// the current scrolling
+    Tutorial(u16),
     /// the current scrolling, true if previous screen was toplevel
     RulesSummary(u16, bool),
     /// the currently selected option
@@ -84,9 +85,12 @@ impl UIState {
     fn top_level(self) -> bool {
         use UIState::*;
         match self {
-            Toplevel | RulesSummary(_, _) | GameSetup(_, _) | LoadScreen(_, _) | SaveScreen(_) => {
-                true
-            }
+            Toplevel
+            | Tutorial(_)
+            | RulesSummary(_, _)
+            | GameSetup(_, _)
+            | LoadScreen(_, _)
+            | SaveScreen(_) => true,
             ShowOptions(_, _) | PositionSelected(_) | PieceSelected(_) => false,
             GameFinished(_, _) | PlaysAnimation(_) | ShowAIMoves(_) => false,
         }
@@ -262,6 +266,11 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
     } else {
         messages.push(Message::warning("Could not initialize game data directory"));
     }
+    if settings.show_tutorial {
+        ui_state = UIState::Tutorial(0);
+    };
+
+    // small helper functions for saving things
     let do_autosave = |io_manager: &Option<IOManager>,
                        setup: &GameSetup,
                        engine: &LoggingEngine<HiveGameState>| {
@@ -272,6 +281,12 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 engine.serialized_log(),
                 false,
             ));
+        }
+    };
+    let save_settings = |io_manager: &Option<IOManager>, settings: Settings| {
+        if let Some(io_manager) = io_manager.as_ref() {
+            let path = io_manager.config_path();
+            io_endpoint.send(WriteTask::save_settings(path, settings, false));
         }
     };
 
@@ -332,8 +347,14 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 do_autosave(&io_manager, game_setup, engine);
             };
             match e {
+                Event::CloseTutorial(show_again) => {
+                    assert!(matches!(ui_state, UIState::Tutorial(_)));
+                    settings.show_tutorial = show_again;
+                    save_settings(&io_manager, settings);
+                    ui_state = UIState::Toplevel;
+                }
                 Event::Exit => match ui_state {
-                    UIState::Toplevel => break,
+                    UIState::Toplevel | UIState::Tutorial(_) => break,
                     UIState::GameSetup(_, _) => ui_state = UIState::Toplevel,
                     UIState::LoadScreen(_, _) => ui_state = UIState::Toplevel,
                     UIState::RulesSummary(_, top_level) | UIState::SaveScreen(top_level) => {
@@ -424,6 +445,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 Event::RestoreDefault => {
                     game_setup = GameSetup::default();
                     settings = Settings::default_settings();
+                    save_settings(&io_manager, settings);
                 }
                 Event::Undo => {
                     if engine.undo_last_decision() {
@@ -452,6 +474,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     | UIState::PlaysAnimation(_)
                     | UIState::GameFinished(_, _) => ui_state = UIState::RulesSummary(0, false),
                     UIState::RulesSummary(_, _)
+                    | UIState::Tutorial(_)
                     | UIState::GameSetup(_, _)
                     | UIState::SaveScreen(_) => (),
                 },
@@ -547,20 +570,19 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                             if setting_renderer.is_ai_setting(selection) {
                                 ai_state.reset();
                             }
-                            if let Some(io_manager) = io_manager.as_ref() {
-                                let path = io_manager.config_path();
-                                io_endpoint.send(WriteTask::save_settings(path, settings, false));
-                            }
+                            save_settings(&io_manager, settings);
                         }
                     }
                 },
                 Event::ScrollUp => {
-                    if let UIState::RulesSummary(i, _) = &mut ui_state {
+                    if let UIState::Tutorial(i) | UIState::RulesSummary(i, _) = &mut ui_state {
                         *i = i.saturating_sub(1);
                     }
                 }
                 Event::ScrollDown => {
-                    if let UIState::RulesSummary(i, _) = &mut ui_state {
+                    if let UIState::Tutorial(i) = &mut ui_state {
+                        *i = (*i + 1).clamp(0, TUTORIAL_HEIGHT - 6)
+                    } else if let UIState::RulesSummary(i, _) = &mut ui_state {
                         *i += 1;
                     }
                 }
@@ -788,6 +810,7 @@ fn update_game_state_and_fill_input_mapping(
             match (*ui_state, follow_up) {
                 (
                     Toplevel
+                    | Tutorial(_)
                     | RulesSummary(_, _)
                     | GameSetup(_, _)
                     | LoadScreen(_, _)
@@ -799,6 +822,7 @@ fn update_game_state_and_fill_input_mapping(
                 }
                 (
                     Toplevel
+                    | Tutorial(_)
                     | RulesSummary(_, _)
                     | GameSetup(_, _)
                     | LoadScreen(_, _)

@@ -48,6 +48,8 @@ pub struct AllState<'a> {
     pub graphics_state: GraphicsState,
 }
 
+pub const TUTORIAL_HEIGHT: u16 = 42;
+
 const MENU_HELP: &str = "\
     press [j] to show the rules and the tutorial\n\
     \n\
@@ -224,7 +226,7 @@ pub fn render(
             frame.render_widget(Clear, rules_area);
             render_rules_summary(frame, settings, rules_area, scroll);
             frame.render_widget(Clear, tutorial_area);
-            render_tutorial(frame, tutorial_area, scroll);
+            render_inline_tutorial(frame, tutorial_area, scroll);
         } else if state.ui_state.top_level() {
             let render_setup_area = matches!(
                 state.ui_state,
@@ -321,6 +323,42 @@ pub fn render(
                     .wrap(Wrap { trim: true })
                     .style(ColorScheme::TEXT_GRAY);
                 frame.render_widget(paragraph, help_area);
+            }
+
+            // the tutorial at the start of the game
+            if let UIState::Tutorial(scroll) = state.ui_state {
+                let [_, tutorial_area, _] = Layout::horizontal([
+                    Constraint::Fill(1),
+                    Constraint::Max(92),
+                    Constraint::Fill(1),
+                ])
+                .areas(area);
+                let [_, tutorial_area, _] = Layout::vertical([
+                    Constraint::Fill(3),
+                    Constraint::Max(TUTORIAL_HEIGHT),
+                    Constraint::Fill(4),
+                ])
+                .areas(tutorial_area);
+
+                let mut extended_area = tutorial_area;
+                let trim = u16::min(extended_area.y, 1);
+                extended_area.y -= trim;
+                extended_area.height += trim + 1;
+                extended_area.height = u16::min(extended_area.height, area.height);
+                let trim = u16::min(extended_area.x, 2);
+                extended_area.x -= trim;
+                extended_area.width += trim + 2;
+                extended_area.width = u16::min(extended_area.width, area.width);
+                frame.render_widget(
+                    Block::default()
+                        .borders(Borders::NONE)
+                        .style(ColorScheme::TEXT_GRAY),
+                    area,
+                );
+                frame.render_widget(Clear, extended_area);
+                frame.render_widget(Block::default().borders(Borders::ALL), extended_area);
+                frame.render_widget(Clear, tutorial_area);
+                render_startup_tutorial(frame, tutorial_area, scroll);
             }
         } else {
             // in-game rendering
@@ -510,8 +548,8 @@ fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scro
         Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
     frame.render_widget(paragraph, top_area);
 
-    let textwidth = area.width - 4;
-    let textheight = area.height - 4;
+    let textwidth = area.width.saturating_sub(4);
+    let textheight = area.height.saturating_sub(4);
     let threshold = bee_offset(textwidth, textheight);
     let (text, scroll) = if scroll < threshold {
         (build_rules_summary(settings, textwidth, textheight), scroll)
@@ -532,7 +570,7 @@ fn render_rules_summary(frame: &mut Frame, settings: &Settings, area: Rect, scro
     frame.render_widget(paragraph, body_area);
 }
 
-fn render_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
+fn render_inline_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
     let [top_area, body_area] =
         Layout::vertical(vec![Constraint::Max(3), Constraint::Fill(1)]).areas(area);
     let top_line =
@@ -542,8 +580,8 @@ fn render_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
     frame.render_widget(paragraph, top_area);
 
     let mut lines = Vec::new();
-    build_tutorial(&mut lines, area.width - 4);
-    let paragraph = Paragraph::new(Text::from(lines))
+    build_tutorial(&mut lines, area.width.saturating_sub(4));
+    let paragraph = Paragraph::new(lines)
         .block(
             Block::default()
                 .padding(Padding::horizontal(1))
@@ -551,6 +589,43 @@ fn render_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
         )
         .scroll((scroll, 0));
     frame.render_widget(paragraph, body_area);
+}
+
+fn render_startup_tutorial(frame: &mut Frame, area: Rect, scroll: u16) {
+    let [top_area, body_area, bottom_area] = Layout::vertical(vec![
+        Constraint::Max(3),
+        Constraint::Fill(1),
+        Constraint::Max(3),
+    ])
+    .areas(area);
+    let top_line = Line::styled(" [↑↓][Space] scroll", ColorScheme::TEXT_GRAY);
+    let paragraph =
+        Paragraph::new(top_line).block(Block::default().borders(Borders::BOTTOM.complement()));
+    frame.render_widget(paragraph, top_area);
+
+    let mut lines = Vec::new();
+    build_tutorial(&mut lines, area.width - 4);
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .padding(Padding::horizontal(1))
+                .borders(Borders::TOP.complement().difference(Borders::BOTTOM)),
+        )
+        .scroll((scroll, 0));
+    frame.render_widget(paragraph, body_area);
+
+    let bottom_left = " [q] leave";
+    let bottom_right = "[x] don't show again   [↲] continue ";
+    let fill_up = area.width.saturating_sub(
+        2 + bottom_left.chars().count() as u16 + bottom_right.chars().count() as u16,
+    );
+    let bottom_line = Line::styled(
+        bottom_left.to_string() + &" ".repeat(usize::from(fill_up)) + bottom_right,
+        ColorScheme::TEXT_GRAY,
+    );
+    let paragraph = Paragraph::new(vec![Line::raw(""), bottom_line])
+        .block(Block::default().borders(Borders::TOP.complement()));
+    frame.render_widget(paragraph, bottom_area);
 }
 
 /// returns the y offset
@@ -602,10 +677,10 @@ fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offs
     for msg in messages {
         let mut msg_area = area;
         let msg_len = msg.content.len() as u16;
-        let line_estimate = if msg_len <= msg_area.width - 2 {
+        let line_estimate = if msg_len <= msg_area.width.saturating_sub(2) {
             1
         } else {
-            msg_len / (msg_area.width - 5) + 1
+            msg_len / (msg_area.width.saturating_sub(5)) + 1
         };
         msg_area.y = offset;
         msg_area.height = line_estimate + 4;
@@ -636,7 +711,7 @@ fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offs
             }),
             Line::styled("[Esc]", ColorScheme::TEXT_GRAY).alignment(Alignment::Right),
         ];
-        let paragraph = Paragraph::new(Text::from(lines))
+        let paragraph = Paragraph::new(lines)
             .block(Block::default().borders(Borders::ALL).border_style(color))
             .wrap(Wrap { trim: true });
         frame.render_widget(Clear, msg_area);
@@ -652,7 +727,7 @@ pub fn load_game_widget(
     offset: usize,
 ) -> Paragraph<'static> {
     let mut lines = vec![Line::raw("Select game to load:"), Line::raw("")];
-    let n_displayable = usize::from((available_size - 8) / 2);
+    let n_displayable = usize::from(available_size.saturating_sub(8) / 2);
     let n_skip = (selection + 1).saturating_sub(offset + n_displayable);
     create_save_game_list(
         &mut lines,

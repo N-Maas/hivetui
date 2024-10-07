@@ -112,7 +112,7 @@ const REMARKS: &str = "\
 
 const TUTORIAL_FIRST: &str = "\
     Hive is a chess-like game where both players place and move pieces that \
-    correspond to insects, aiming to surround the enemy Queen.\
+    correspond to insects, aiming to surround the enemy Queen. \
     This is a TUI (Terminal User Interface) implementation, which means that \
     the game is played exclusively with the keyboard, using keys to navigate \
     the menu and select moves during the game.\
@@ -120,8 +120,8 @@ const TUTORIAL_FIRST: &str = "\
 
 const TUTORIAL_LAST: &str = "\
     Generally, something that is done by pressing key X is marked with [X]. \
-    The help text in the bottom right provides additional explanations. Press \
-    [j] to open a rule summary as well as this tutorial.
+    For example, you can press [j] to open a rule summary as well as this tutorial. \
+    In addition, the bottom right contains a summary of important controls. \
 ";
 
 const TUTORIAL_MENU: &str = "\
@@ -139,7 +139,7 @@ const TUTORIAL_IN_GAME: &str = "\
     type of piece to be placed need to be chosen. By default, the selection works \
     by just pressing the number diplayed at the target. Two-digit numbers must be \
     preceded with a space! Alternatively, the \"move selection\" setting can be \
-    changed to entering the number and confirming with [↲]. Further controls, e.g. \
+    changed to entering the number and confirming with [↲]. Further controls, e.g., \
     to move the camera, are shown in the bottom right.
 ";
 

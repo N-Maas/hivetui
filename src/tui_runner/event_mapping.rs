@@ -17,6 +17,7 @@ fn pull_key_event() -> io::Result<Option<KeyCode>> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Event {
+    CloseTutorial(bool),
     Selection(usize),
     MenuOption(usize),
     SelectMenuOption,
@@ -75,11 +76,12 @@ pub fn pull_event(
 ) -> io::Result<(Option<Event>, bool)> {
     let top_level = ui_state.top_level();
     let show_suggestions = matches!(ui_state, UIState::ShowAIMoves(_));
+    let tutorial = matches!(ui_state, UIState::Tutorial(_));
     let rules_summary = matches!(ui_state, UIState::RulesSummary(_, _));
     let game_setup = matches!(ui_state, UIState::GameSetup(_, _));
     let save_game = matches!(ui_state, UIState::SaveScreen(_));
     let is_skip = matches!(ui_state, UIState::ShowOptions(true, _));
-    let msg_visible = !rules_summary && !game_setup && !save_game;
+    let msg_visible = !tutorial && !rules_summary && !game_setup && !save_game;
     let key = pull_key_event()?;
     let event = key.and_then(|mut key| {
         if save_game {
@@ -94,11 +96,20 @@ pub fn pull_event(
             if result.is_some() {
                 return result;
             }
-        } else if rules_summary {
+        } else if tutorial || rules_summary {
             let result = match key {
-                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('j') => Some(Event::Exit),
+                KeyCode::Char('q') => Some(Event::Exit),
+                KeyCode::Esc | KeyCode::Char('j') => Some(Event::Exit).filter(|_| rules_summary),
                 KeyCode::Up => Some(Event::ScrollUp),
                 KeyCode::Down | KeyCode::Char(' ') => Some(Event::ScrollDown),
+                KeyCode::Enter => {
+                    if tutorial {
+                        Some(Event::CloseTutorial(true))
+                    } else {
+                        Some(Event::Exit)
+                    }
+                }
+                KeyCode::Char('x') => Some(Event::CloseTutorial(false)),
                 _ => None,
             };
             return result;
@@ -203,7 +214,7 @@ pub fn pull_event(
     });
     let removes_msg = key.map_or(false, |key| match key {
         KeyCode::Esc | KeyCode::Char('q') => msg_visible,
-        KeyCode::Enter => event.is_some() || !top_level,
+        KeyCode::Enter => !top_level || (event.is_some() && !tutorial),
         KeyCode::Char('c') => top_level && event.is_some() && msg_visible,
         _ => false,
     });

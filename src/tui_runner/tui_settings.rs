@@ -523,6 +523,7 @@ impl GraphicsState {
 
 #[derive(Debug, Default, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Settings {
+    pub show_tutorial: bool,
     pub white_player_type: PlayerType,
     pub black_player_type: PlayerType,
     #[serde(default)]
@@ -560,6 +561,7 @@ pub struct Settings {
 impl Settings {
     pub fn default_settings() -> Self {
         Self {
+            show_tutorial: true,
             black_player_type: PlayerType::AI2,
             ..Default::default()
         }
