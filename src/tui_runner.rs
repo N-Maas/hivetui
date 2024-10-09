@@ -211,6 +211,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
     // this is the ugly pile of mutable state, which is said to be the heart of any non-trivial UI...
     let mut settings = Settings::default_settings();
     let mut game_setup = GameSetup::default();
+    let mut setup_of_current_game = GameSetup::default();
     let mut engine = Engine::new_logging(2, game_setup.new_game_state());
     let mut ui_state = UIState::Toplevel;
     let mut graphics_state = GraphicsState::new();
@@ -230,7 +231,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         if game_path.is_file() {
             match load_game(&game_path) {
                 Ok(result) => {
-                    (engine, game_setup) = result;
+                    (engine, setup_of_current_game) = result;
                     restored_state = true;
                 }
                 Err(e) => {
@@ -440,20 +441,20 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 }
                 Event::StartGame => {
                     engine = Engine::new_logging(2, game_setup.new_game_state());
-                    start_game(&game_setup, &engine, &mut ui_state);
+                    setup_of_current_game = game_setup.clone();
+                    start_game(&setup_of_current_game, &engine, &mut ui_state);
                 }
                 Event::RestoreDefault => {
                     game_setup = GameSetup::default();
                     settings = Settings::default_settings();
                     save_settings(&io_manager, settings);
-                    do_autosave(&io_manager, &game_setup, &engine);
                 }
                 Event::Undo => {
                     if engine.undo_last_decision() {
                         animation_state.reset();
                         ai_state.reset();
                         ui_state.state_changed();
-                        do_autosave(&io_manager, &game_setup, &engine);
+                        do_autosave(&io_manager, &setup_of_current_game, &engine);
                     }
                 }
                 Event::Redo => {
@@ -461,7 +462,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                         animation_state.reset();
                         ai_state.reset();
                         ui_state.state_changed();
-                        do_autosave(&io_manager, &game_setup, &engine);
+                        do_autosave(&io_manager, &setup_of_current_game, &engine);
                     }
                 }
                 Event::Rules => match ui_state {
@@ -596,8 +597,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                             if let Some(result) = result {
                                 match result {
                                     Ok(result) => {
-                                        (engine, game_setup) = result;
-                                        start_game(&game_setup, &engine, &mut ui_state);
+                                        (engine, setup_of_current_game) = result;
+                                        start_game(&setup_of_current_game, &engine, &mut ui_state);
                                     }
                                     Err(e) => messages
                                         .push(Message::error(format!("Could not load game: {e}"))),
@@ -658,7 +659,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
             ui_state.state_changed();
         }
         if state_change {
-            do_autosave(&io_manager, &game_setup, &engine);
+            do_autosave(&io_manager, &setup_of_current_game, &engine);
         }
 
         // update ui state if an animation was started
