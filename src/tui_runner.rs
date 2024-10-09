@@ -97,7 +97,7 @@ impl UIState {
         }
     }
 
-    fn show_game(self) -> bool {
+    fn ai_may_move(self) -> bool {
         !self.top_level() && !matches!(self, UIState::ShowAIMoves(_))
     }
 
@@ -476,6 +476,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     if engine.undo_last_decision() {
                         animation_state.reset();
                         ai_state.reset();
+                        ai_state.set_pause();
                         ui_state.state_changed();
                         do_autosave(&io_manager, &setup_of_current_game, &engine);
                     }
@@ -484,6 +485,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     if engine.redo_decision() {
                         animation_state.reset();
                         ai_state.reset();
+                        ai_state.set_pause();
                         ui_state.state_changed();
                         do_autosave(&io_manager, &setup_of_current_game, &engine);
                     }
@@ -800,12 +802,13 @@ fn update_game_state_and_fill_input_mapping(
             ai_state.update(
                 decision.data(),
                 settings,
+                ui_state.ai_may_move(),
                 Player::from(decision.player()),
                 animation_state,
                 postprocess_ai_suggestions,
             )?;
             let follow_up = decision.try_into_follow_up_decision();
-            if ai_state.should_use_ai() && ui_state.show_game() {
+            if ai_state.should_use_ai() && ui_state.ai_may_move() {
                 let decision = match follow_up {
                     Ok(d) => {
                         d.retract_all();
@@ -830,6 +833,10 @@ fn update_game_state_and_fill_input_mapping(
                     *ui_state = UIState::PlaysAnimation(false);
                 }
                 return Ok(false); // don't risk a weird decision state
+            } else if ai_state.should_use_ai() {
+                // the UI is in a state where the AI move should not be applied,
+                // thus we ensure there is also a pause when returning
+                ai_state.set_pause();
             }
 
             use UIState::*;

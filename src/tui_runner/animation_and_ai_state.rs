@@ -138,10 +138,12 @@ pub struct AIState {
     should_use_ai: bool,
     should_show_animation: bool,
     result: Option<AIResult>,
-    animation_progress: usize,
+    animation_progress: Option<usize>,
+    remaining_pause: Option<usize>,
 }
 
 impl AIState {
+    const AI_PAUSE: usize = 60;
     const AI_DELAY: usize = 40;
 
     pub fn new(endpoint: AIEndpoint) -> Self {
@@ -152,7 +154,8 @@ impl AIState {
             should_use_ai: false,
             should_show_animation: false,
             result: None,
-            animation_progress: 0,
+            animation_progress: None,
+            remaining_pause: None,
         }
     }
 
@@ -160,13 +163,15 @@ impl AIState {
         self.endpoint.cancel();
         self.is_started = false;
         self.result = None;
-        self.animation_progress = 0;
+        self.animation_progress = None;
+        self.remaining_pause = None;
     }
 
     pub fn update<F>(
         &mut self,
         state: &HiveGameState,
         settings: &Settings,
+        ai_may_move: bool,
         player: Player,
         animation: &mut AnimationState,
         postprocess_fn: F,
@@ -178,7 +183,7 @@ impl AIState {
         // TODO: pause when undo
         assert!(self.current_player == player || !self.is_started);
         if !self.is_started {
-            assert!(self.result.is_none() && self.animation_progress == 0);
+            assert!(self.result.is_none() && self.animation_progress.is_none());
             let level = if settings.is_ai(player) {
                 settings.player_type(player).into_ai_level()
             } else {
@@ -214,10 +219,21 @@ impl AIState {
             }
         }
         if self.should_show_animation {
-            if self.animation_progress > 0 || !animation.runs() {
-                self.animation_progress += 1;
+            if self.animation_progress.is_some() || !animation.runs() {
+                if !ai_may_move || self.remaining_pause.is_none() {
+                    self.animation_progress = Some(self.animation_progress.unwrap_or(0) + 1);
+                } else if let Some(pause) = self.remaining_pause {
+                    if ai_may_move {
+                        self.remaining_pause = pause.checked_sub(1); // None if pause == 0
+                        if pause == 0 {
+                            self.animation_progress = self.animation_progress.map(|_| 0);
+                        }
+                    }
+                }
             }
-            if self.animation_progress < Self::AI_DELAY || self.result.is_none() {
+            if (!ai_may_move || self.remaining_pause.is_none())
+                && (self.animation_progress.unwrap_or(0) < Self::AI_DELAY || self.result.is_none())
+            {
                 if let Some(s) = animation.try_set() {
                     s.set_animation(Animation::new(loader(settings, 30)), None)
                 }
@@ -234,17 +250,23 @@ impl AIState {
         if settings.is_ai(self.current_player) {
             self.should_use_ai = true;
             self.should_show_animation = true;
+            self.remaining_pause = None;
         }
     }
 
     pub fn dont_use_ai(&mut self) {
         self.should_use_ai = false;
         self.should_show_animation = false;
-        self.animation_progress = 0;
+        self.animation_progress = None;
+    }
+
+    pub fn set_pause(&mut self) {
+        self.remaining_pause = Some(Self::AI_PAUSE);
     }
 
     pub fn result(&self) -> Option<&AIResult> {
-        if self.animation_progress >= Self::AI_DELAY {
+        if self.remaining_pause.is_none() && self.animation_progress.unwrap_or(0) >= Self::AI_DELAY
+        {
             self.result.as_ref()
         } else {
             None
@@ -256,6 +278,6 @@ impl AIState {
     }
 
     pub fn animation_has_started(&self) -> bool {
-        self.animation_progress > 0
+        self.animation_progress.is_some()
     }
 }
