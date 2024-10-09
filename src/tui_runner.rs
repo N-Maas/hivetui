@@ -506,7 +506,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 Event::Help => match ui_state {
                     UIState::ShowOptions(false, _)
                     | UIState::PositionSelected(_)
-                    | UIState::PieceSelected(_) => ui_state = UIState::ShowAIMoves(false),
+                    | UIState::PieceSelected(_)
+                    | UIState::PlaysAnimation(_) => ui_state = UIState::ShowAIMoves(false),
                     UIState::ShowAIMoves(_) => ui_state = UIState::ShowOptions(false, false),
                     _ => (),
                 },
