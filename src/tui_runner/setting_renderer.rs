@@ -278,12 +278,12 @@ impl SettingRenderer {
                     general_offset,
                     |state| &mut state.piece_zoom_level,
                 ),
-                create_menu_setting(
-                    "screen splitting",
-                    vec!["auto", "1", "2", "3", "4", "5"],
-                    general_offset,
-                    |state| &mut state.splitting,
-                ),
+                // create_menu_setting(
+                //     "screen splitting",
+                //     vec!["auto", "1", "2", "3", "4", "5"],
+                //     general_offset,
+                //     |state| &mut state.splitting,
+                // ),
             ],
             graphic: vec![
                 create_menu_setting(
