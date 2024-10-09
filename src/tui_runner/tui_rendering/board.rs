@@ -12,7 +12,7 @@ use crate::{
     tui_runner::{
         game_setup::GameSetup,
         tui_animations::{AnimationContext, Layer},
-        tui_settings::{BordersStyle, ColorScheme, DarkTileColor, FillingStyle},
+        tui_settings::{BordersStyle, ColorScheme, DarkTileColor, FillingStyle, InputMode},
         UIState,
     },
 };
@@ -206,10 +206,15 @@ pub fn draw_board(
         for (&board_index, &number) in state.board_annotations.iter() {
             let (x, y) = translate_index(board_index);
             if number >= 9 {
+                let (marker, offset) = if state.settings.input_mode == InputMode::Direct {
+                    (format!("[ {}]", number + 1), 4.0)
+                } else {
+                    (format!("[{}]", number + 1), 2.5)
+                };
                 ctx.print(
-                    x - zoom * 4.0,
+                    x - zoom * offset,
                     y - zoom * 2.0,
-                    Line::styled(format!("[ {}]", number + 1), color),
+                    Line::styled(marker, color),
                 );
             } else {
                 ctx.print(

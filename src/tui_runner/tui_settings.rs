@@ -211,6 +211,25 @@ pub enum AIMoves {
     Deserialize,
 )]
 #[repr(u8)]
+pub enum InputMode {
+    #[default]
+    Direct = 0,
+    Confirm = 1,
+}
+
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Default,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+)]
+#[repr(u8)]
 pub enum FilterAISuggestions {
     #[default]
     Yes = 0,
@@ -530,6 +549,8 @@ pub struct Settings {
     pub white_ai_character: AICharacter,
     #[serde(default)]
     pub black_ai_character: AICharacter,
+    #[serde(default)]
+    pub input_mode: InputMode,
     #[serde(default)]
     pub automatic_camera_moves: AutomaticCameraMoves,
     #[serde(default)]

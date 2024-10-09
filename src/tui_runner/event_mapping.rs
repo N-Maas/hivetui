@@ -30,7 +30,7 @@ pub enum Event {
     Exit,
     Switch,
     Cancel,
-    SoftCancel,
+    SoftCancelConfirm,
     ContinueGame,
     StartGame,
     NewGame,
@@ -164,7 +164,7 @@ pub fn pull_event(
                 } else if !animation && !two_digit && !is_skip && !show_suggestions {
                     Some(Event::TwoDigitInit)
                 } else {
-                    Some(Event::SoftCancel)
+                    Some(Event::SoftCancelConfirm)
                 }
             }
             KeyCode::Char(' ') => (!animation && !two_digit && !is_skip && !show_suggestions)

@@ -213,7 +213,7 @@ impl SettingRenderer {
 
     pub fn is_ai_setting(&self, selection: SettingSelection) -> bool {
         if let SettingSelection::General(index, _) = selection {
-            [0, 1, 3, 4, 5].contains(&index)
+            [0, 1, 4, 5, 6].contains(&index)
         } else {
             selection.index() < 2
         }
@@ -242,6 +242,12 @@ impl SettingRenderer {
                 ],
             ],
             general: vec![
+                create_menu_setting(
+                    "move input mode",
+                    vec!["direct", "confirm with ↲"],
+                    general_offset,
+                    |state| &mut state.input_mode,
+                ),
                 create_menu_setting(
                     "automatic camera moves",
                     vec!["on", "off"],

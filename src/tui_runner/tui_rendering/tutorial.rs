@@ -138,7 +138,7 @@ const TUTORIAL_IN_GAME: &str = "\
     of the move need to be chosen. To place a new piece, a free position and the \
     type of piece to be placed need to be chosen. By default, the selection works \
     by just pressing the number diplayed at the target. Two-digit numbers must be \
-    preceded with a space! Alternatively, the \"move selection\" setting can be \
+    preceded with a space! Alternatively, the \"move input mode\" setting can be \
     changed to entering the number and confirming with [↲]. Further controls, e.g., \
     to move the camera, are shown in the bottom right.
 ";

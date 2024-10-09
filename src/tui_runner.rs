@@ -21,6 +21,7 @@ use tgp::{
 };
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 use tui_rendering::{board::find_losing_queen, TUTORIAL_HEIGHT};
+use tui_settings::InputMode;
 
 use crate::{
     io_manager::{load_game, IOManager, APP_NAME, AUTOSAVE},
@@ -299,7 +300,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         // first, pull for user input and directly apply any ui status changes or high-level commands (e.g. undo)
         let (mut event, removes_msg) = pull_event(
             ui_state,
-            digits.is_some(),
+            digits.is_some() || settings.input_mode == InputMode::Confirm,
             animation_state.runs(),
             !messages.is_empty(),
         )?;
@@ -326,15 +327,37 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     digits = Some(Vec::new());
                 }
                 Event::TwoDigitAdd(digit) => {
+                    if settings.input_mode == InputMode::Confirm && digits.is_none() {
+                        digits = Some(Vec::new());
+                    }
                     let digits_ref = digits.as_mut().unwrap();
                     digits_ref.push(digit);
-                    if let &[first, second] = digits_ref.as_slice() {
-                        let val = 10 * first + second;
-                        (val > 0).then(|| {
-                            event = Some(Event::Selection(val - 1));
+                    if settings.input_mode == InputMode::Direct {
+                        if let &[first, second] = digits_ref.as_slice() {
+                            let val = 10 * first + second;
+                            if val > 0 {
+                                event = Some(Event::Selection(val - 1));
+                            }
                             digits = None;
-                        });
+                        }
                     }
+                }
+                Event::SoftCancelConfirm => {
+                    if let Some(digits) = digits.as_ref() {
+                        if settings.input_mode == InputMode::Confirm {
+                            let mut val = 0;
+                            for &d in digits {
+                                val *= 10;
+                                val += d;
+                            }
+                            if val > 0 {
+                                event = Some(Event::Selection(val - 1));
+                            }
+                        } else {
+                            event = None;
+                        }
+                    }
+                    digits = None;
                 }
                 _ => digits = None,
             }
@@ -394,7 +417,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     animation_state.stop();
                     ai_state.dont_use_ai();
                 }
-                Event::SoftCancel => {
+                Event::SoftCancelConfirm => {
                     animation_state.stop();
                     if let UIState::ShowAIMoves(_) = ui_state {
                         ui_state = UIState::ShowOptions(false, false);
@@ -636,7 +659,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
         board_annotations.clear();
         piece_annotations.clear();
         let input = event.and_then(|e| {
-            if matches!(ui_state, UIState::ShowOptions(true, _)) && e == Event::SoftCancel {
+            if matches!(ui_state, UIState::ShowOptions(true, _)) && e == Event::SoftCancelConfirm {
                 Some(0)
             } else {
                 e.as_selection()
