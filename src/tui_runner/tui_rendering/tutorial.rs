@@ -107,7 +107,11 @@ const MOSQUITO: [&str; 6] = [
 
 const REMARKS: &str = "\
     Note: This is a summary, not a comprehensive explanation of the \
-    rules. Please refer to the official rules of Hive instead.\
+    rules. Please refer to the official rules instead: \
+";
+
+const RULES_LINK: &str = "\
+    hivegame.com/download/rules.pdf
 ";
 
 const TUTORIAL_FIRST: &str = "\
@@ -267,7 +271,10 @@ pub fn build_rules_summary(settings: &Settings, textwidth: u16, textheight: u16)
         ),
         Line::raw(""),
         Line::raw(""),
-        Line::raw(REMARKS),
+        Line::from(vec![
+            Span::raw(REMARKS),
+            Span::styled(RULES_LINK, ColorScheme::LINK_BLUE).bold(),
+        ]),
     ];
     lines.extend(iter::repeat(Line::raw("")).take(textheight as usize));
     build_bee(&mut lines, textwidth, 0);

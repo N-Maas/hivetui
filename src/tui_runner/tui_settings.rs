@@ -464,6 +464,7 @@ impl ColorScheme {
     pub const SILVER: Color = Color::from_u32(0x009A9AB0);
     pub const TEXT_GRAY: Color = Color::from_u32(0x00A0A0A0);
     pub const TEXT_YELLOW: Color = Color::from_u32(0x00D8D830);
+    pub const LINK_BLUE: Color = Color::from_u32(0x005A70F0);
     pub const DARK_GRAY: Color = Color::from_u32(0x00464646);
     pub const SOFT_BLACK: Color = Color::from_u32(0x002A2A2A);
     pub const DARK_BLUE: Color = Color::from_u32(0x00303090);
