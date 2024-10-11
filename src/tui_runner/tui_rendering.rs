@@ -211,6 +211,13 @@ pub fn render(
                 .y_bounds(y_bounds)
                 .paint(|ctx| draw_board(ctx, state, x_bounds, y_bounds));
             frame.render_widget(canvas, canvas_area);
+
+            // the small message indicating whose turn it is
+            let is_animation = matches!(state.ui_state, UIState::PlaysAnimation(_))
+                && !state.ai_state.animation_has_started();
+            if !state.ui_state.top_level() && state.game_state.result().is_none() && !is_animation {
+                render_game_state(frame, state.game_state, canvas_area);
+            }
             output_bound = (x_bounds, y_bounds);
         }
 
@@ -491,6 +498,21 @@ pub fn color_palette(index: usize) -> Color {
         7 => ColorScheme::PINK,
         _ => panic!("invalid color index"),
     }
+}
+
+fn render_game_state(frame: &mut Frame, game_state: &HiveGameState, area: Rect) {
+    let player_name = match game_state.player() {
+        Player::White => "white",
+        Player::Black => "black",
+    };
+    let game_state_area = Rect {
+        x: 1,
+        y: 1,
+        width: u16::min(11, area.width.saturating_sub(1)),
+        height: 1,
+    };
+    frame.render_widget(Clear, game_state_area);
+    frame.render_widget(Text::from(format!(" {player_name} turn")), game_state_area);
 }
 
 fn skip_turn_message(game_state: &HiveGameState) -> Paragraph<'static> {

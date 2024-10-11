@@ -183,7 +183,10 @@ impl AIState {
         // TODO: pause when undo
         assert!(self.current_player == player || !self.is_started);
         if !self.is_started {
-            assert!(self.result.is_none() && self.animation_progress.is_none());
+            assert!(
+                self.result.is_none()
+                    && (self.animation_progress.is_none() || self.remaining_pause.is_some())
+            );
             let level = if settings.is_ai(player) {
                 settings.player_type(player).into_ai_level()
             } else {
@@ -226,7 +229,7 @@ impl AIState {
                     if ai_may_move {
                         self.remaining_pause = pause.checked_sub(1); // None if pause == 0
                         if pause == 0 {
-                            self.animation_progress = self.animation_progress.map(|_| 0);
+                            self.animation_progress = Some(0);
                         }
                     }
                 }
@@ -262,6 +265,9 @@ impl AIState {
 
     pub fn set_pause(&mut self) {
         self.remaining_pause = Some(Self::AI_PAUSE);
+        if self.animation_progress.is_none() && self.should_use_ai {
+            self.animation_progress = Some(0);
+        }
     }
 
     pub fn result(&self) -> Option<&AIResult> {
