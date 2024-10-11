@@ -617,6 +617,8 @@ fn rate_queen_situation(
     less_endangered: Option<Player>,
     enemies_reaching_queen: u32,
 ) -> RatingType {
+    let mut val = 6;
+
     const QUEEN_VAL: [RatingType; 6] = [0, 0, 20, 45, 80, 125];
     let is_less_endangered = less_endangered == Some(player);
     let mut can_move = false;
@@ -628,11 +630,15 @@ fn rate_queen_situation(
         for field in pos.neighbors() {
             if let Some(piece) = field.content().top() {
                 num_neighbors += 1;
-                if field.content().len() == 1
-                    && piece.player == player
-                    && data.is_movable(field, false)
-                {
-                    num_friendly_movable += 1;
+                if field.content().len() == 1 && piece.player == player {
+                    if let PieceType::Grasshopper | PieceType::Ladybug = piece.p_type {
+                        // bonus for defensive pieces
+                        // TODO: mosquito, beetle, pillbug?
+                        val += 2;
+                    }
+                    if data.is_movable(field, false) {
+                        num_friendly_movable += 1;
+                    }
                 }
             }
         }
@@ -640,12 +646,12 @@ fn rate_queen_situation(
 
     let enough = num_neighbors + enemies_reaching_queen >= 6;
     let exactly_enough = num_neighbors + enemies_reaching_queen == 6;
-    let mut val = 6 - QUEEN_VAL[num_neighbors as usize];
+    val -= QUEEN_VAL[num_neighbors as usize];
     if val < 0 {
         if num_friendly_movable > 0 && player == data.player() {
             val += 18;
         } else if num_friendly_movable > 0 && player != data.player() {
-            val += 10;
+            val += 12;
         }
         if num_friendly_movable > 1 {
             val += 6;
