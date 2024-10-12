@@ -1,7 +1,7 @@
 
 # hivetui #
 
-Hivetui is a TUI (Terminal User Interface) implementation of the board game [Hive](gen42.com/games/hive).
+Hivetui is a TUI (Terminal User Interface) implementation of the board game [Hive](https://gen42.com/games/hive).
 It is played with the keyboard and includes a challenging AI.
 
 
@@ -9,7 +9,7 @@ It is played with the keyboard and includes a challenging AI.
 
 Pre-built packages are available for some of the most common architectures (currently Windows x86_64 and Linux x86_64).
 
-1. Download the according zip file from the [latest release](https://github.com/N-Maas/hive/releases).
+1. Download the according zip file from the [latest release](https://github.com/N-Maas/hive/releases/latest).
 2. Extract the zip file in the location where you want to store the game
 
 ### Windows ###
