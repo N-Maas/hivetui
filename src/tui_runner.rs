@@ -11,12 +11,15 @@ use std::{
     collections::HashMap,
     ffi::OsString,
     fs::{self, File},
-    io::{self, BufReader},
+    io::{self, BufRead, BufReader},
 };
 use std::{io::stdout, panic, process};
 use text_input::TextInput;
 use tgp::{
-    engine::{logging::EventLog, Engine, FollowUpDecision, GameState, LoggingEngine},
+    engine::{
+        io::deserialize_initial_state, logging::EventLog, Engine, FollowUpDecision, GameState,
+        LoggingEngine,
+    },
     vec_context::VecContext,
 };
 use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
@@ -225,48 +228,19 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
     let mut camera_move: Option<CameraMove> = None;
 
     if let Some(io_manager) = io_manager.as_ref() {
-        // attempt to load saved state
         // TODO: CLI flag which avoids this?
-        let game_path = io_manager.autosave_path();
-        let mut restored_state = false;
-        if game_path.is_file() {
-            match load_game(&game_path) {
-                Ok(result) => {
-                    (engine, setup_of_current_game) = result;
-                    restored_state = true;
-                }
-                Err(e) => {
-                    messages.push(Message::warning(format!("Could not load saved state: {e}")))
-                }
-            }
-        }
-        let conf_path = io_manager.config_path();
-        let mut restored_settngs = false;
-        if conf_path.is_file() {
-            let result = File::open(conf_path)
-                .map_err(|e| e.to_string())
-                .and_then(|f| {
-                    let reader = BufReader::new(f);
-                    Settings::from_json(reader).map_err(|e| e.to_string())
-                });
-            match result {
-                Ok(new_settings) => {
-                    settings = new_settings;
-                    restored_settngs = true;
-                }
-                Err(e) => messages.push(Message::warning(format!(
-                    "Could not load saved settings: {e}"
-                ))),
-            }
-        }
-        match (restored_state, restored_settngs) {
-            (true, true) => messages.push(Message::info("Restored game state and settings.")),
-            (true, false) => messages.push(Message::info("Restored game state.")),
-            (false, true) => messages.push(Message::info("Restored settings.")),
-            (false, false) => (),
-        }
+        load_initial_state(
+            &io_manager,
+            &mut engine,
+            &mut setup_of_current_game,
+            &mut game_setup,
+            &mut settings,
+            &mut messages,
+        );
     } else {
-        messages.push(Message::warning("Could not initialize game data directory"));
+        messages.push(Message::warning(
+            "Could not initialize game data directory - saving and loading games is disabled",
+        ));
     }
     if settings.show_tutorial {
         ui_state = UIState::Tutorial(0);
@@ -283,6 +257,12 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                 engine.serialized_log(),
                 false,
             ));
+        }
+    };
+    let save_setup = |io_manager: &Option<IOManager>, setup: &GameSetup| {
+        if let Some(io_manager) = io_manager.as_ref() {
+            let path = io_manager.setup_path();
+            io_endpoint.send(WriteTask::save_setup(path, setup.clone(), false));
         }
     };
     let save_settings = |io_manager: &Option<IOManager>, settings: Settings| {
@@ -471,6 +451,8 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                     game_setup = GameSetup::default();
                     settings = Settings::default_settings();
                     save_settings(&io_manager, settings);
+                    save_setup(&io_manager, &game_setup);
+                    messages.push(Message::success("Default settings restored."));
                 }
                 Event::Undo => {
                     if engine.undo_last_decision() {
@@ -587,6 +569,7 @@ fn run_in_tui_impl() -> Result<(), FatalError> {
                         } else {
                             game_setup.decrease_at(index, 2);
                         }
+                        save_setup(&io_manager, &game_setup);
                     }
                     _ => {
                         if let Some(selection) = ui_state.get_menu_selection(menu_selection) {
@@ -784,6 +767,72 @@ fn compute_view_boundaries(board: &HiveBoard) -> ([f64; 2], [f64; 2]) {
         max_y = f64::max(max_y, this_y);
     }
     ([min_x - 10.0, max_x + 10.0], [min_y - 10.0, max_y + 10.0])
+}
+
+fn load_initial_state(
+    io_manager: &IOManager,
+    engine: &mut Engine<HiveGameState, EventLog<HiveGameState>>,
+    setup_of_current_game: &mut GameSetup,
+    game_setup: &mut GameSetup,
+    settings: &mut Settings,
+    messages: &mut Vec<Message>,
+) {
+    // attempt to load saved state
+    let game_path = io_manager.autosave_path();
+    let mut restored_state = false;
+    if game_path.is_file() {
+        match load_game(&game_path) {
+            Ok(result) => {
+                (*engine, *setup_of_current_game) = result;
+                restored_state = true;
+            }
+            Err(e) => messages.push(Message::warning(format!("Could not load saved state: {e}"))),
+        }
+    }
+    let conf_path = io_manager.config_path();
+    let mut restored_settngs = false;
+    if conf_path.is_file() {
+        let result = File::open(conf_path)
+            .map_err(|e| e.to_string())
+            .and_then(|f| {
+                let reader = BufReader::new(f);
+                Settings::from_json(reader).map_err(|e| e.to_string())
+            });
+        match result {
+            Ok(new_settings) => {
+                *settings = new_settings;
+                restored_settngs = true;
+            }
+            Err(e) => messages.push(Message::warning(format!(
+                "Could not load saved settings: {e}"
+            ))),
+        }
+    }
+    let setup_path = io_manager.setup_path();
+    if setup_path.is_file() {
+        let result = File::open(setup_path)
+            .map_err(|e| e.to_string())
+            .and_then(|f| {
+                let mut buf = String::new();
+                BufReader::new(f)
+                    .read_line(&mut buf)
+                    .map_err(|e| e.to_string())?;
+                let key_val = deserialize_initial_state(&buf)?;
+                GameSetup::from_key_val(key_val.into_iter())
+            });
+        match result {
+            Ok(new_setup) => {
+                *game_setup = new_setup;
+            }
+            Err(e) => messages.push(Message::warning(format!("Could not load game setup: {e}"))),
+        }
+    }
+    match (restored_state, restored_settngs) {
+        (true, true) => messages.push(Message::info("Restored game state and settings.")),
+        (true, false) => messages.push(Message::info("Restored game state.")),
+        (false, true) => messages.push(Message::info("Restored settings.")),
+        (false, false) => (),
+    }
 }
 
 fn update_game_state_and_fill_input_mapping(

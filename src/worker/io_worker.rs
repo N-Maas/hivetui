@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::{thread, time::Duration};
-use tgp::engine::io::{save_game_to_file, SerializedLog};
+use tgp::engine::io::{save_game_to_file, serialize_initial_state, SerializedLog};
 
 use super::{start_worker_thread, MasterEndpoint, WorkerEndpoint};
 
@@ -29,6 +29,15 @@ impl WriteTask {
             report_result,
         }
     }
+
+    pub fn save_setup(path: PathBuf, setup: GameSetup, report_result: bool) -> Self {
+        Self {
+            path,
+            content: WriteContent::GameSetup(setup),
+            report_result,
+        }
+    }
+
     pub fn save_settings(path: PathBuf, settings: Settings, report_result: bool) -> Self {
         Self {
             path,
@@ -41,6 +50,7 @@ impl WriteTask {
 #[derive(Debug)]
 enum WriteContent {
     Game(GameSetup, SerializedLog),
+    GameSetup(GameSetup),
     Settings(Settings),
 }
 
@@ -59,6 +69,9 @@ pub fn start_io_worker_thread() -> IOEndpoint {
                     2,
                     log,
                 ),
+                WriteContent::GameSetup(setup) => File::create(task.path).and_then(|mut f| {
+                    write!(f, "{}", serialize_initial_state(setup.into_key_val()))
+                }),
                 WriteContent::Settings(settings) => {
                     File::create(task.path).and_then(|mut f| write!(f, "{}", settings.to_json()))
                 }

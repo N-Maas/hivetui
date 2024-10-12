@@ -21,6 +21,7 @@ pub const AUTOSAVE: &str = "AUTOSAVE";
 const EXTENSION: &str = "hivetui";
 const SAVE_DIR: &str = "saves";
 const CONFIG: &str = "config.json";
+const SETUP: &str = "setup.hivetuis";
 
 pub fn version_two_digit() -> [u32; 2] {
     VERSION
@@ -68,6 +69,12 @@ impl IOManager {
     pub fn config_path(&self) -> PathBuf {
         let mut path = self.data_dir.clone();
         path.push(CONFIG);
+        path
+    }
+
+    pub fn setup_path(&self) -> PathBuf {
+        let mut path = self.data_dir.clone();
+        path.push(SETUP);
         path
     }
 
