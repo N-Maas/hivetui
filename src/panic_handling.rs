@@ -1,8 +1,8 @@
 use std::{backtrace::Backtrace, cell::RefCell, panic};
 
 thread_local! {
-    static MSG: RefCell<Option<String>> = RefCell::new(None);
-    static BACKTRACE: RefCell<Option<String>> = RefCell::new(None);
+    static MSG: RefCell<Option<String>> = const { RefCell::new(None) };
+    static BACKTRACE: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 pub fn setup_panic_reporting() {

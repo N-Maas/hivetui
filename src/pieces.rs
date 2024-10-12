@@ -385,13 +385,10 @@ impl PieceType {
         }
     }
 
-    pub fn is_movable_generic<B: Board<Index = OpenIndex, Content = HiveContent>>(
-        &self,
-        field: Field<B>,
-    ) -> bool
+    pub fn is_movable_generic<B>(&self, field: Field<B>) -> bool
     where
+        B: Board<Index = OpenIndex, Content = HiveContent> + BoardToMap<()>,
         B::Structure: DirectionStructure<B, Direction = HexaDirection> + NeighborhoodStructure<B>,
-        B: BoardToMap<()>,
     {
         assert!(!field.is_empty());
         match self {
