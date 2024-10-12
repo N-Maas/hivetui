@@ -1,5 +1,5 @@
 [package]
-name = "hive"
+name = "hivetui"
 version = "0.1.0"
 authors = ["Nikolai Maas <nikolai.maas@student.kit.edu>"]
 edition = "2021"
