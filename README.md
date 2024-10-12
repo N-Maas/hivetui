@@ -9,7 +9,7 @@ It is played with the keyboard and includes a challenging AI.
 
 Pre-built packages are available for some of the most common architectures (currently Windows x86_64 and Linux x86_64).
 
-1. Download the according zip file from the [latest release](https://github.com/N-Maas/hivetui/releases/latest).
+1. Download the according zip file from the [latest release](https://github.com/N-Maas/hivetui/releases/latest) (**not** "Source Code", but the single zip file corresponding to your OS)
 2. Extract the zip file in the location where you want to store the game
 
 ### Windows ###
