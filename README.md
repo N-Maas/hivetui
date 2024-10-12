@@ -20,9 +20,10 @@ Pre-built packages are available for some of the most common architectures (curr
 
 **Windows Defender:** It is possible that Windows Defender blocks execution of the downloaded files. This should be solvable by manually unblocking the files as follows:
 1. Right click on the `hive.bat` file
-2. Under General -> Security, mark `Unblock`
-3. Apply the change and confirm
-4. Repeat steps 1 to 3 for the `hive.exe` file in the `bin` directory
+2. Select "Properties"
+3. In "General"/"Security", mark "Unblock"
+4. Confirm the change
+5. Repeat steps 1 to 4 for the `hive.exe` file in the `bin` directory
 
 ### Linux ###
 
