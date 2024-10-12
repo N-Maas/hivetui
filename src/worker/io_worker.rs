@@ -1,4 +1,4 @@
-use crate::io_manager::HEADER;
+use crate::io_manager::{version_two_digit, HEADER};
 use crate::tui_runner::game_setup::GameSetup;
 use crate::tui_runner::tui_settings::Settings;
 use std::fs::File;
@@ -51,9 +51,14 @@ pub fn start_io_worker_thread() -> IOEndpoint {
         thread::sleep(Duration::from_millis(10));
         if let Some(task) = endpoint.get_new_msg() {
             let result = match task.content {
-                WriteContent::Game(setup, log) => {
-                    save_game_to_file(&task.path, HEADER, setup.into_key_val(), 2, log)
-                }
+                WriteContent::Game(setup, log) => save_game_to_file(
+                    &task.path,
+                    HEADER,
+                    version_two_digit(),
+                    setup.into_key_val(),
+                    2,
+                    log,
+                ),
                 WriteContent::Settings(settings) => {
                     File::create(task.path).and_then(|mut f| write!(f, "{}", settings.to_json()))
                 }

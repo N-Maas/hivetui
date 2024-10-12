@@ -8,22 +8,39 @@ use std::{
 
 use directories::ProjectDirs;
 use tgp::engine::{
-    io::{parse_saved_game, restore_game_state, LoadGameError},
+    io::{parse_saved_game, restore_game_state, CompatibilityPolicy, LoadGameError},
     LoggingEngine,
 };
 
 use crate::{state::HiveGameState, tui_runner::game_setup::GameSetup};
 
-pub const HEADER: &str = "hive-tui version 0.1.0";
+pub const HEADER: &str = "hive-tui";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_NAME: &str = "hivetui";
 pub const AUTOSAVE: &str = "AUTOSAVE";
 const EXTENSION: &str = "hivetui";
 const SAVE_DIR: &str = "saves";
 const CONFIG: &str = "config.json";
 
+pub fn version_two_digit() -> [u32; 2] {
+    VERSION
+        .split('.')
+        .map(|s| s.parse())
+        .take(2)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .try_into()
+        .unwrap()
+}
+
 pub fn load_game(path: &Path) -> Result<(LoggingEngine<HiveGameState>, GameSetup), LoadGameError> {
     let save_file = File::open(path).map_err(LoadGameError::IO)?;
-    let (initial_state, n_players, log) = parse_saved_game(BufReader::new(save_file), HEADER)?;
+    let (initial_state, n_players, log) = parse_saved_game(
+        BufReader::new(save_file),
+        HEADER,
+        version_two_digit(),
+        CompatibilityPolicy::MinorLessEqual,
+    )?;
     assert_eq!(n_players, 2);
     let game_setup = GameSetup::from_key_val(initial_state.into_iter())?;
     let engine = restore_game_state(2, || Ok(game_setup.new_game_state()), log)?;
