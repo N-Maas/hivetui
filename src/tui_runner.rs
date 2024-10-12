@@ -129,9 +129,9 @@ impl UIState {
     fn state_changed(&mut self) {
         use UIState::*;
         match self {
-            PositionSelected(_) => *self = ShowOptions(false, false),
-            PieceSelected(_) => *self = ShowOptions(false, false),
-            ShowAIMoves(_) => *self = ShowOptions(false, false),
+            PositionSelected(_) | PieceSelected(_) | ShowAIMoves(_) | PlaysAnimation(_) => {
+                *self = ShowOptions(false, false)
+            }
             _ => (),
         };
     }

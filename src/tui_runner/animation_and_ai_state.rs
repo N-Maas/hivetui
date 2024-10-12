@@ -226,12 +226,8 @@ impl AIState {
                 if !ai_may_move || self.remaining_pause.is_none() {
                     self.animation_progress = Some(self.animation_progress.unwrap_or(0) + 1);
                 } else if let Some(pause) = self.remaining_pause {
-                    if ai_may_move {
-                        self.remaining_pause = pause.checked_sub(1); // None if pause == 0
-                        if pause == 0 {
-                            self.animation_progress = Some(0);
-                        }
-                    }
+                    self.remaining_pause = pause.checked_sub(1); // None if pause == 0
+                    self.animation_progress = Some(0);
                 }
             }
             if (!ai_may_move || self.remaining_pause.is_none())
@@ -265,9 +261,6 @@ impl AIState {
 
     pub fn set_pause(&mut self) {
         self.remaining_pause = Some(Self::AI_PAUSE);
-        if self.animation_progress.is_none() && self.should_use_ai {
-            self.animation_progress = Some(0);
-        }
     }
 
     pub fn result(&self) -> Option<&AIResult> {
