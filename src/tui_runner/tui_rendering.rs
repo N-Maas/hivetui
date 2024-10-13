@@ -545,7 +545,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
                 .bold()
                 .alignment(Alignment::Center),
             Line::raw(""),
-            Line::styled(format!("The {} player has won!", player_name), Color::White)
+            Line::raw(format!("The {} player has won!", player_name))
                 .alignment(Alignment::Center),
         ]);
     } else {
@@ -555,7 +555,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
                 .bold()
                 .alignment(Alignment::Center),
             Line::raw(""),
-            Line::styled("None of the players could get on top!", Color::White)
+            Line::raw("None of the players could get on top!")
                 .alignment(Alignment::Center),
         ]);
     }
@@ -718,7 +718,7 @@ fn render_messages(frame: &mut Frame, messages: &[Message], area: Rect, mut offs
         };
         let color = match msg.msg_type {
             MessageType::Success => ColorScheme::GREEN,
-            MessageType::Info => Color::White,
+            MessageType::Info => Color::default(),
             MessageType::Warning => ColorScheme::TEXT_YELLOW,
             MessageType::Error => ColorScheme::RED,
         };

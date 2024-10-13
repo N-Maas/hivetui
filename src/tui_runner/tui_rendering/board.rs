@@ -376,7 +376,7 @@ pub fn draw_pieces(ctx: &mut Context<'_>, state: AllState<'_>, game_setup: &Game
                         } else {
                             (zoom + 1.0, format!("{count}/{intial_count}"))
                         };
-                        ctx.print(x - x_shift, y_pos, Line::styled(content, Color::White));
+                        ctx.print(x - x_shift, y_pos, Line::raw(content));
                     }
                 }
             }
