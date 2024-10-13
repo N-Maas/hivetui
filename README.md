@@ -15,15 +15,15 @@ Pre-built packages are available for some of the most common architectures (curr
 ### Windows ###
 
 - Before running hivetui, [Windows Terminal](https://apps.microsoft.com/detail/9n0dx20hk701) must be installed from the Microsoft Store
-- Afterwards, hivetui can be started with a double click on `hive.bat`
-- Alternatively, execute the `hive.exe` binary manually in Windows Terminal
+- Afterwards, hivetui can be started with a double click on `hivetui.bat`
+- Alternatively, execute the `hivetui.exe` binary manually in Windows Terminal
 
 **Windows Defender:** It is possible that Windows Defender blocks execution of the downloaded files. This should be solvable by manually unblocking the files as follows:
-1. Right click on the `hive.bat` file
+1. Right click on the `hivetui.bat` file
 2. Select "Properties"
 3. In "General"/"Security", mark "Unblock"
 4. Confirm the change
-5. Repeat steps 1 to 4 for the `hive.exe` file in the `bin` directory
+5. Repeat steps 1 to 4 for the `hivetui.exe` file in the `bin` directory
 
 ### Linux ###
 

@@ -1,6 +1,7 @@
 #!/usr/bin/bash
 
 target_folder=$1
+binname=hivetui
 
 mkdir -p $target_folder
 
@@ -12,8 +13,8 @@ BuildBinary() {
         exit 1
     fi
     mkdir -p $target_folder/$2_tmp
-    cp ./target/$1/release/hive $target_folder/$2_tmp
-    zip -j $target_folder/$2 $target_folder/$2_tmp/hive
+    cp ./target/$1/release/$binname $target_folder/$2_tmp
+    zip -j $target_folder/$2 $target_folder/$2_tmp/$binname
     rm -r $target_folder/$2_tmp
 }
 
@@ -25,8 +26,8 @@ BuildWindows() {
         exit 1
     fi
     mkdir -p $target_folder/$2_tmp/bin
-    cp ./target/$1/release/hive.exe $target_folder/$2_tmp/bin
-    cp ./hive.bat $target_folder/$2_tmp
+    cp ./target/$1/release/$binname.exe $target_folder/$2_tmp/bin
+    cp ./hivetui.bat $target_folder/$2_tmp
     cd $target_folder/$2_tmp/
     zip -r ./$2.zip *
     cd - > /dev/null
