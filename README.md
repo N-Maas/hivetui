@@ -18,13 +18,18 @@ Pre-built packages are available for some of the most common architectures (curr
 - Afterwards, hivetui can be started with a double click on `hivetui.bat`
 - Alternatively, execute the `hivetui.exe` binary manually in Windows Terminal
 
-**Windows Defender:** It is possible that Windows Defender blocks execution of the downloaded files. This should be solvable by manually unblocking the files as follows:
-1. Right click on the `hivetui.bat` file
-2. Select "Properties"
-3. In "General"/"Security", mark "Unblock"
-4. Confirm the change
-5. Repeat steps 1 to 4 for the `hivetui.exe` file in the `bin` directory
+**Windows Defender:** It is possible that Windows Defender blocks execution or even silenty deletes the file, causing an error when trying to start the program.
+
+To avoid this, add an exclusion to Windows Security as follows:
+1. Open Windows Security
+2. Under "Virus & threat protection", select "Manage settings", and then under "Exclusions", select "Add or remove exclusions"
+3. Select "Add an exclusion", choose "Folder", and then select the folder where the files are stored
 
 ### Linux ###
 
 Just execute the provided binary in a terminal of your choice (which has proper unicode and color support).
+
+### Additional Notes ###
+
+Currently, the game assumes that the active terminal style has black background and white foreground (text).
+If you use a different style, consider changing either the terminal or the style.
