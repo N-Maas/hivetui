@@ -16,7 +16,7 @@ Menu:
 
 With different graphic settings:
 <br>
-<img style="float: left;" src="/img/graphic_pieces.png" width="50%"> <img style="margin-left: 5em; float: right;" src="/img/graphic_rainbow.png" width="33%">
+<img style="float: left;" src="/img/graphic_pieces.png" width="50%"> &emsp; <img style="float: right;" src="/img/graphic_rainbow.png" width="33%">
 
 
 ## Installation and Usage ##
