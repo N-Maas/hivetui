@@ -254,7 +254,7 @@ pub fn render(
             if render_setup_area {
                 settings_size = 15;
             }
-            let both_settings = menu_area.height >= 27 + help_size && !render_setup_area;
+            let both_settings = menu_area.height >= 22 + player_size + help_size && !render_setup_area;
             if both_settings {
                 settings_size = 22;
             }
