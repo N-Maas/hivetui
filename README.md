@@ -4,6 +4,17 @@
 Hivetui is a TUI (Terminal User Interface) implementation of the board game [Hive](https://gen42.com/games/hive).
 It is played with the keyboard and includes a challenging AI.
 
+## Game Impressions ##
+
+In-game:
+<img src="/img/ingame.png" width="85%" alt="In-game screenshot">
+
+Menu:
+<img src="/img/menu.png" width="85%" alt="Menu screenshot">
+
+With different graphic settings:
+<img style="float: left;" src="/img/graphic_pieces.png" width="50%"> <img style="margin-left: 5em;" src="/img/graphic_rainbow.png" width="33%">
+
 
 ## Installation and Usage ##
 
