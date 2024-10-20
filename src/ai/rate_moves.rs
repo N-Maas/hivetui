@@ -1,8 +1,8 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use tgp::vec_context::VecContext;
-use tgp_ai::{rater::Rater, RatingType};
-use tgp_board::{
+use hivetuilib::vec_context::VecContext;
+use hivetuilib_ai::{rater::Rater, RatingType};
+use hivetuilib_board::{
     index_map::HashIndexMap,
     open_board::OpenIndex,
     prelude::*,
@@ -862,7 +862,7 @@ pub fn rate_moves(
 mod test {
     use std::collections::BTreeMap;
 
-    use tgp_board::{
+    use hivetuilib_board::{
         open_board::OpenIndex, structures::directions::HexaDirection, Board, BoardToMap,
     };
 

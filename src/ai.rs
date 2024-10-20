@@ -1,10 +1,10 @@
-use tgp::engine::{Engine, EventListener};
-use tgp_ai::{
+use hivetuilib::engine::{Engine, EventListener};
+use hivetuilib_ai::{
     add_context_to_ratings,
     rater::{DecisionType, Rater},
     MinMaxAlgorithm, MinMaxError, Params, PruningKind, RateAndMap, RatingType, SlidingParams,
 };
-use tgp_board::{
+use hivetuilib_board::{
     hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
     structures::NeighborhoodStructure,
 };

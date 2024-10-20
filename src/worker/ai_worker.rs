@@ -3,10 +3,10 @@ use crate::{
     pieces::{PieceType, Player},
     state::{HiveContext, HiveGameState},
 };
+use hivetuilib::engine::Engine;
+use hivetuilib_ai::RatingType;
+use hivetuilib_board::open_board::OpenIndex;
 use std::{collections::HashMap, thread, time::Duration};
-use tgp::engine::Engine;
-use tgp_ai::RatingType;
-use tgp_board::open_board::OpenIndex;
 
 use super::{start_worker_thread, MasterEndpoint};
 

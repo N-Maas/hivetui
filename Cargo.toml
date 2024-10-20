@@ -11,17 +11,17 @@ lto = "fat"
 debug = false
 
 [dependencies]
-tgp = { path = "../tgp/tgp" }
-tgp-board = { path = "../tgp/tgp-board" }
-tgp-ai = { path = "../tgp/tgp-ai" }
+hivetuilib = "0.1"
+hivetuilib-board = "0.1"
+hivetuilib-ai = "0.1"
 text_io = "0.1.8"
 either = "1.6"
-clap = { version = "4.5.1", features = ["derive"] }
-ratatui = "0.26.1"
-crossterm = "0.27.0"
-num_enum = "0.7.2"
-smallvec = "1.13.2"
-directories = "5.0.1"
-chrono = { version = "0.4.38" }
-serde_json = "1.0.125"
-serde = { version = "1.0.208", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
+ratatui = "0.28"
+crossterm = "0.28"
+num_enum = "0.7"
+smallvec = "1.13"
+directories = "5.0"
+chrono = { version = "0.4" }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }

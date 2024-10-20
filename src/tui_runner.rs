@@ -5,6 +5,14 @@ use crossterm::{
     ExecutableCommand,
 };
 use event_mapping::{pull_event, Event};
+use hivetuilib::{
+    engine::{
+        io::deserialize_initial_state, logging::EventLog, Engine, FollowUpDecision, GameState,
+        LoggingEngine,
+    },
+    vec_context::VecContext,
+};
+use hivetuilib_board::{open_board::OpenIndex, Board, BoardIndexable};
 use ratatui::prelude::{CrosstermBackend, Terminal};
 use setting_renderer::{SettingRenderer, SettingSelection};
 use std::{
@@ -15,14 +23,6 @@ use std::{
 };
 use std::{io::stdout, panic, process};
 use text_input::TextInput;
-use tgp::{
-    engine::{
-        io::deserialize_initial_state, logging::EventLog, Engine, FollowUpDecision, GameState,
-        LoggingEngine,
-    },
-    vec_context::VecContext,
-};
-use tgp_board::{open_board::OpenIndex, Board, BoardIndexable};
 use tui_rendering::{board::find_losing_queen, TUTORIAL_HEIGHT};
 use tui_settings::InputMode;
 

@@ -7,7 +7,7 @@ use std::{
 };
 
 use directories::ProjectDirs;
-use tgp::engine::{
+use hivetuilib::engine::{
     io::{parse_saved_game, restore_game_state, CompatibilityPolicy, LoadGameError},
     LoggingEngine,
 };

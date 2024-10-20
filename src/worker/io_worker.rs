@@ -1,11 +1,11 @@
 use crate::io_manager::{version_two_digit, HEADER};
 use crate::tui_runner::game_setup::GameSetup;
 use crate::tui_runner::tui_settings::Settings;
+use hivetuilib::engine::io::{save_game_to_file, serialize_initial_state, SerializedLog};
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::{thread, time::Duration};
-use tgp::engine::io::{save_game_to_file, serialize_initial_state, SerializedLog};
 
 use super::{start_worker_thread, MasterEndpoint, WorkerEndpoint};
 

@@ -6,10 +6,10 @@ use crate::{
     state::{HiveBoard, HiveContext, HiveGameState},
 };
 
-use tgp::engine::Engine;
-use tgp_ai::{add_context_to_ratings, rater::Rater, RatingType};
-use tgp_board::open_board::OpenIndex;
-use tgp_board::{prelude::*, structures::directions::HexaDirection};
+use hivetuilib::engine::Engine;
+use hivetuilib_ai::{add_context_to_ratings, rater::Rater, RatingType};
+use hivetuilib_board::open_board::OpenIndex;
+use hivetuilib_board::{prelude::*, structures::directions::HexaDirection};
 type HiveMap<T> = <HiveBoard as BoardToMap<T>>::Map;
 
 pub fn print_move_ratings(

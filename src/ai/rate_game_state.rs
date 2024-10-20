@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
-use tgp_ai::RatingType;
-use tgp_board::{
+use hivetuilib_ai::RatingType;
+use hivetuilib_board::{
     hypothetical::Hypothetical, index_map::ArrayIndexMap, open_board::OpenIndex, prelude::*,
 };
 
@@ -798,7 +798,9 @@ pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingTy
 mod test {
     use std::collections::BTreeMap;
 
-    use tgp_board::{open_board::OpenIndex, structures::directions::HexaDirection, BoardToMap};
+    use hivetuilib_board::{
+        open_board::OpenIndex, structures::directions::HexaDirection, BoardToMap,
+    };
 
     use crate::{
         ai::rate_game_state::Flags,

@@ -16,6 +16,8 @@ use crate::{
 use board::{draw_board, draw_pieces};
 use chrono::offset::Local;
 use chrono::DateTime;
+use hivetuilib_ai::RatingType;
+use hivetuilib_board::open_board::OpenIndex;
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     prelude::{CrosstermBackend, Terminal},
@@ -30,8 +32,6 @@ use std::{
     io::{self, Stdout},
     time::SystemTime,
 };
-use tgp_ai::RatingType;
-use tgp_board::open_board::OpenIndex;
 use tutorial::{bee_offset, build_bees_at_offset, build_rules_summary, build_tutorial};
 
 #[derive(Clone, Copy)]
@@ -115,7 +115,7 @@ pub fn render(
 ) -> io::Result<([f64; 2], [f64; 2])> {
     let mut output_bound = ([0.0, 0.0], [0.0, 0.0]);
     terminal.draw(|frame| {
-        let area = frame.size();
+        let area = frame.area();
 
         // first: decide whether to split vertically
         let action_desired_width = 35;
@@ -545,8 +545,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
                 .bold()
                 .alignment(Alignment::Center),
             Line::raw(""),
-            Line::raw(format!("The {} player has won!", player_name))
-                .alignment(Alignment::Center),
+            Line::raw(format!("The {} player has won!", player_name)).alignment(Alignment::Center),
         ]);
     } else {
         msg = Text::from(vec![
@@ -555,8 +554,7 @@ fn game_finished_message(settings: &Settings, result: HiveResult) -> Paragraph<'
                 .bold()
                 .alignment(Alignment::Center),
             Line::raw(""),
-            Line::raw("None of the players could get on top!")
-                .alignment(Alignment::Center),
+            Line::raw("None of the players could get on top!").alignment(Alignment::Center),
         ]);
     }
     Paragraph::new(msg).block(Block::default().borders(Borders::ALL).style(primary_color))

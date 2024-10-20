@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, thread::sleep, time::Duration};
 
 use either::Either;
-use tgp::engine::{Engine, EventListener, GameState, PendingDecision};
-use tgp_board::{index_map::HashIndexMap, prelude::*};
+use hivetuilib::engine::{Engine, EventListener, GameState, PendingDecision};
+use hivetuilib_board::{index_map::HashIndexMap, prelude::*};
 
 use crate::ai::Character;
 use crate::display::print_annotated_board;

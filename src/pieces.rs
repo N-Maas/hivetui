@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use tgp_board::{
+use hivetuilib_board::{
     hypothetical::Hypothetical,
     index_map::ArrayIndexMap,
     open_board::OpenIndex,

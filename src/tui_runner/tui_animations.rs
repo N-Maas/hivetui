@@ -1,8 +1,8 @@
+use hivetuilib_board::{open_board::OpenIndex, Board};
 use ratatui::{
     style::Color,
     widgets::canvas::{Context, Points},
 };
-use tgp_board::{open_board::OpenIndex, Board};
 
 use crate::{
     pieces::{PieceType, Player},

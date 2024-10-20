@@ -75,6 +75,6 @@ impl TextInput {
         }
         .block(Block::bordered().border_style(border_color));
         f.render_widget(input, area);
-        f.set_cursor(area.x + self.character_index as u16 + 1, area.y + 1);
+        f.set_cursor_position((area.x + self.character_index as u16 + 1, area.y + 1));
     }
 }

@@ -3,12 +3,11 @@ use std::{
     fmt::{self, Display},
 };
 
-use smallvec::SmallVec;
-use tgp::{
+use hivetuilib::{
     mapped_decision::MappedDecision, plain_decision::PlainDecision, vec_context::VecContext,
     Decision, GameData, Outcome, RevEffect,
 };
-use tgp_board::{
+use hivetuilib_board::{
     hypothetical::Hypothetical,
     index_map::ArrayIndexMap,
     open_board::{OpenBoard, OpenIndex},
@@ -18,6 +17,7 @@ use tgp_board::{
         OffsetStructure,
     },
 };
+use smallvec::SmallVec;
 
 use crate::pieces::{Piece, PieceType, Player};
 
@@ -488,7 +488,7 @@ impl HiveGameState {
         }
     }
 
-    fn create_placement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
+    fn create_placement_decision(&self, index: OpenIndex) -> Box<dyn Decision<Self>> {
         assert!(self.board.get_field_unchecked(index).is_empty());
         let mut dec = MappedDecision::with_inner(self.player_usize(), index);
 
@@ -518,7 +518,7 @@ impl HiveGameState {
         })
     }
 
-    fn create_movement_decision(&self, index: OpenIndex) -> Box<dyn tgp::Decision<Self>> {
+    fn create_movement_decision(&self, index: OpenIndex) -> Box<dyn Decision<Self>> {
         let field = self.board.get_field_unchecked(index);
         assert!(!field.is_empty());
         // unwrap: correct because of assertion

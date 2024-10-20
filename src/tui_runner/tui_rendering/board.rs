@@ -1,9 +1,9 @@
-use ratatui::{style::Color, text::Line, widgets::canvas::Context};
-use tgp_board::{
+use hivetuilib_board::{
     open_board::OpenIndex,
     structures::directions::{DirectionEnumerable, HexaDirection},
     Board,
 };
+use ratatui::{style::Color, text::Line, widgets::canvas::Context};
 
 use crate::{
     pieces::{PieceType, Player},

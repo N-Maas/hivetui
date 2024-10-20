@@ -1,8 +1,8 @@
+use hivetuilib_board::structures::directions::HexaDirection;
 use ratatui::{
     style::Color,
     widgets::canvas::{Circle, Context, Line, Points},
 };
-use tgp_board::structures::directions::HexaDirection;
 
 use crate::pieces::PieceType;
 
