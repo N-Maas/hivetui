@@ -4,6 +4,9 @@
 Hivetui is a TUI (Terminal User Interface) implementation of the board game [Hive](https://gen42.com/games/hive).
 It is played with the keyboard and includes a challenging AI.
 
+The game inlcudes a tutorial and rules summary.
+However, you might want to consult the [full rules](hivegame.com/download/rules.pdf) if you don't know Hive yet.
+
 ## Game Impressions ##
 
 In-game:
@@ -43,7 +46,31 @@ To avoid this, add an exclusion to Windows Security as follows:
 
 Just execute the provided binary in a terminal of your choice (which has proper unicode and color support).
 
-### Additional Notes ###
+### Terminal Colors ###
 
 Currently, the game assumes that the active terminal style has black background and white foreground (text).
 If you use a different style, consider changing either the terminal or the style.
+
+
+## Building from Source ##
+
+To build from source, the [Rust toolchain](https://www.rust-lang.org/tools/install) must be installed.
+Then, you can build the project with cargo:
+
+```
+cargo build --release
+```
+
+This should create a `hivetui` binary in the `target/release` directory.
+
+
+## Missing Features ##
+
+Features that might be added at some point in the future include:
+- Support for the Pillbug
+- A replay mode
+
+
+## Copyright ##
+
+Hive Copyright (c) 2016 Gen42 Games. Hivetui is not associated with or endorsed by Gen42 Games.
