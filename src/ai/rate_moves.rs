@@ -818,7 +818,7 @@ pub fn rate_moves(
                     if t == PieceType::Spider {
                         // TODO: not convinced anymore whether this is wise
                         rater.rate(0, i, 100);
-                    } else if t == PieceType::Grasshopper {
+                    } else if t == PieceType::Grasshopper || t == PieceType::Ladybug {
                         rater.rate(0, i, 90);
                     } else {
                         rater.rate(0, i, 0);

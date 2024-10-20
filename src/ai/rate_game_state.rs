@@ -185,14 +185,14 @@ fn rate_piece_movability(
     for field in data.board().iter_fields().filter(|f| !f.is_empty()) {
         let &piece = field.content().top().unwrap();
         if field.content().len() == 1 && data.is_movable(field, false) {
-            let (val, bonus, o_bonus, could_reach_queen) =
+            let (mut val, bonus, mut o_bonus, could_reach_queen) =
                 single_piece_rating(data, meta, piece, field, MovabilityType::Movable);
             let player = usize::from(piece.player);
-            rating[player] += if is_only_half_movable(data, meta, piece, field) {
-                val * 2 / 3 - 1
-            } else {
-                val
-            };
+            if is_only_half_movable(data, meta, piece, field) {
+                val = val * 2 / 3 - 1;
+                o_bonus = o_bonus * 2 / 3;
+            }
+            rating[player] += val;
             beetle_bonus[player] = RatingType::max(beetle_bonus[player], bonus);
             other_bonus[player] += o_bonus;
             pieces_reaching_queen[player] += if could_reach_queen { 1 } else { 0 };
