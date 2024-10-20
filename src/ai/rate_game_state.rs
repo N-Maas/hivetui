@@ -758,9 +758,11 @@ pub fn print_and_compare_rating(data: &HiveGameState, expected: Option<[RatingTy
         enemy_movability,
         my_beetle_bonus,
         enemy_beetle_bonus,
-        my_reach_queen,
-        enemy_reach_queen,
+        mut my_reach_queen,
+        mut enemy_reach_queen,
     ) = rate_piece_movability(data, &mut meta);
+    my_reach_queen += data.total_num_pieces(player);
+    enemy_reach_queen += data.total_num_pieces(enemy);
 
     let less_endangered = determine_less_endangered(data, &meta);
     let my_queen = rate_queen_situation(
@@ -908,7 +910,8 @@ mod test {
         state.place_piece(PieceType::Spider, zero + HexaDirection::UpLeft);
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
-        print_and_compare_rating(&state, Some([20, 10, 46, 43, -24, -15]));
+        // note: white has not enough pieces for surrounding black
+        print_and_compare_rating(&state, Some([20, 10, 45, 40, -20, -9]));
     }
 
     #[test]
@@ -958,8 +961,7 @@ mod test {
         );
 
         print_annotated_board::<usize>(&state, &state.board().get_index_map(), false, None, None);
-        // beetle bonus for black: 22
         // note that white queen is movable, but the beetle is only half movable
-        print_and_compare_rating(&state, Some([20, 15, 70, 53, -47, -46]));
+        print_and_compare_rating(&state, Some([21, 16, 63, 50, -47, -44]));
     }
 }

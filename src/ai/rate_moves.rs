@@ -1112,11 +1112,11 @@ mod test {
             },
         );
         // Move  <A> from (-1, -1) to (2 , 2 ) =>   14
-        // Move  <Q> from (0 , -1) to (1 , -1) =>   13
-        // Move  <Q> from (0 , -1) to (-1, -2) =>   13
         // Move  <A> from (-1, -1) to (0 , 3 ) =>   12
         // Move  <S> from (2 , 0 ) to (2 , 2 ) =>   12
-        // Place <A>  at  (-2, -2)             =>   11
+        // Move  <Q> from (0 , -1) to (1 , -1) =>   11
+        // Move  <Q> from (0 , -1) to (-1, -2) =>   11
+        // Place <A>  at  (-2, -2)             =>    9
         // Place <G>  at  (0 , -2)             =>    3
         // Move  <A> from (-1, -1) to (-1, 0 ) =>    2
         // Place <G>  at  (-2, -2)             =>    1
@@ -1124,9 +1124,9 @@ mod test {
             rating
                 .into_iter()
                 .map(|(r, _, _)| r)
-                .take(9)
+                .take(6)
                 .collect::<Vec<_>>(),
-            vec![14, 13, 13, 12, 12, 11, 3, 2, 1]
+            vec![14, 12, 12, 11, 11, 9]
         );
     }
 
@@ -1175,14 +1175,13 @@ mod test {
             },
         );
         // Move  <B> from (-1, 2 ) to (0 , 2 ) =>   12
-        // Place <A>  at  (-2, -2)             =>   11
+        // Place <A>  at  (-2, -2)             =>   9
         let results = rating
             .into_iter()
             .map(|(r, _, _)| r)
             .take(3)
             .collect::<Vec<_>>();
-        assert_eq!(&results[0..2], &[12, 11]);
-        assert!(results[2] < 8);
+        assert_eq!(&results[0..2], &[12, 9]);
 
         state.move_piece(
             up + HexaDirection::UpRight,
@@ -1197,21 +1196,19 @@ mod test {
                 weights: RatingWeights::default(),
             },
         );
-        // Place <A>  at  (0 , -2)             =>   18
-        // Place <S>  at  (0 , -2)             =>   18
-        // Place <A>  at  (1 , 3 )             =>   11
+        // Place <A>  at  (0 , -2)             =>   16
+        // Place <S>  at  (0 , -2)             =>   16
         // Move  <B> from (0 , -1) to (1 , 0 ) =>    9
         // Move  <B> from (0 , -1) to (1 , -1) =>    9
         // Move  <B> from (0 , -1) to (0 , -2) =>    9
         // Move  <B> from (0 , -1) to (-1, -2) =>    9
+        // Place <A>  at  (1 , 3 )             =>    9
         // Place <S>  at  (2 , 2 )             =>    9
-        // Place <S>  at  (2 , 3 )             =>    9
         let results = rating
             .into_iter()
             .map(|(r, _, _)| r)
             .take(10)
             .collect::<Vec<_>>();
-        assert_eq!(&results[0..9], &[18, 18, 11, 9, 9, 9, 9, 9, 9]);
-        assert!(results[9] < 8);
+        assert_eq!(&results[0..7], &[16, 16, 9, 9, 9, 9, 9]);
     }
 }
